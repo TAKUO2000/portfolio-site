@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f1eb;
+  --foreground: #010101;
+  color-scheme: light only;
 }
 
 @theme inline {
@@ -12,12 +13,14 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*＠いつかやる：ダークモードの追加
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    color-scheme: light only;
   }
-}
+} */
 
 body {
   background: var(--background);
