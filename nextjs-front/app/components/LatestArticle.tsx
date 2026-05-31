@@ -22,7 +22,7 @@ export default function LatestArticle({
 }: LatestArticleProps) {
   return (
     <section id={id} className="bg-[#f4f1eb] px-6 py-20">
-      <div className="mx-auto max-w-[790px]">
+      <div className="mx-auto max-w-197.5">
         <div className="mb-10 flex justify-center">
           <h2 className="text-4xl font-bold">{title}</h2>
         </div>
@@ -31,7 +31,7 @@ export default function LatestArticle({
             href={article.href}
             className="group grid gap-5 transition-opacity hover:opacity-80 md:grid-cols-2 md:gap-8"
           >
-            <div className="relative aspect-[16/10] w-full bg-black ">
+            <div className="relative aspect-16/10 w-full bg-black ">
               {article.image && (
                 <Image
                   src={article.image}
