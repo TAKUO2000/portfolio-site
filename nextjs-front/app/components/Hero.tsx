@@ -8,7 +8,7 @@ export default function Hero() {
     { href: "#popular-articles", label: "人気記事" },
     { href: "#about-site", label: "このサイトについて" },
   ];
-
+  // 画面内スクロールの実装(HTML idを利用して実装)
   const scrollToSection = (
     event: React.MouseEvent<HTMLAnchorElement>,
     href: string,
