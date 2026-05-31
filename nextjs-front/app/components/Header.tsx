@@ -1,3 +1,5 @@
+import HeaderAuthStatus from "./HeaderAuthStatus";
+
 export default function Header() {
   return (
     <header className="w-full bg-black text-white">
@@ -24,21 +26,7 @@ export default function Header() {
             </a>
           </li>
         </ul>
-        <ul className="flex gap-8">
-          <li>
-            <a href="#" className="text-sm hover:opacity-70 transition-opacity">
-              サインイン
-            </a>
-          </li>
-          <li>
-            <a
-              href="#"
-              className="text-sm hover:opacity-70 transition-opacity "
-            >
-              ログイン
-            </a>
-          </li>
-        </ul>
+        <HeaderAuthStatus />
       </nav>
     </header>
   );

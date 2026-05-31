@@ -1,0 +1,131 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+
+import { API_BASE_URL, getCsrfToken } from "../auth/authClient";
+
+type User = {
+  id: number;
+  name: string;
+  email: string;
+};
+
+export default function HeaderAuthStatus() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function fetchUser() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/user`, {
+          credentials: "include",
+          headers: {
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        });
+
+        if (!isActive) {
+          return;
+        }
+
+        if (!response.ok) {
+          setUser(null);
+          return;
+        }
+
+        const currentUser = (await response.json()) as User;
+        setUser(currentUser);
+      } catch {
+        if (isActive) {
+          setUser(null);
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    fetchUser();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+
+    try {
+      const xsrfToken = await getCsrfToken();
+      const response = await fetch(`${API_BASE_URL}/api/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-XSRF-TOKEN": xsrfToken,
+        },
+      });
+
+      if (response.ok) {
+        setUser(null);
+        router.push("/");
+        router.refresh();
+      }
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
+
+  if (isLoading) {
+    return <div className="min-h-5 min-w-32" aria-hidden="true" />;
+  }
+
+  if (user) {
+    return (
+      <div className="flex items-center gap-6">
+        <span className="max-w-36 truncate text-sm font-semibold">
+          {user.name}
+        </span>
+        <button
+          className="text-sm transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-50"
+          type="button"
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+        >
+          ログアウト
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="flex gap-8">
+      <li>
+        <Link
+          href="/auth/sign-up"
+          className="text-sm transition-opacity hover:opacity-70"
+        >
+          サインアップ
+        </Link>
+      </li>
+      <li>
+        <Link
+          href="/auth/sign-in"
+          className="text-sm transition-opacity hover:opacity-70"
+        >
+          ログイン
+        </Link>
+      </li>
+    </ul>
+  );
+}
