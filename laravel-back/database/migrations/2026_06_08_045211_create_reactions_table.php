@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('reactions', function (Blueprint $table) {
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('article_id')->constrained()->cascadeOnDelete();
-            $table->enum('type', ['like', 'bookmark']);
+            $table->string('type');
             $table->timestamp('created_at')->nullable();
             $table->primary(['user_id', 'article_id', 'type']);
         });

@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('url', 2048);
             $table->enum('type', ['header', 'body']);
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 
