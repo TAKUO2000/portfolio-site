@@ -20,8 +20,8 @@ class ArticleController extends Controller
 
     public function index(IndexArticleRequest $request): JsonResponse
     {
-        $article = $this->articleService->store($request->user(), $request->validated());
+        $article = $this->articleService->index($request->validated());
 
-        return response()->json($article, 201);
+        return response()->json($article);
     }
 }
