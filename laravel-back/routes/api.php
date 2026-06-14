@@ -10,6 +10,7 @@ Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('articles')->group(function () {
     Route::post('/', [ArticleController::class, 'store']);
+    Route::delete('/{id}', [ArticleController::class, 'delete']);
 });
 
 Route::prefix('articles')->group(function () {

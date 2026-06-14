@@ -27,6 +27,10 @@ class ArticleService
         return $article->load('tags');
     }
 
+    public function delete(int $id): void
+    {
+        Article::findOrFail($id)->delete();
+    }
 
     public function index(array $data): LengthAwarePaginator
     {
