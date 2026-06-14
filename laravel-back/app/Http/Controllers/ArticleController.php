@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\IndexArticleRequest;
 use App\Http\Requests\StoreArticleRequest;
 use App\Services\ArticleService;
 use Illuminate\Http\JsonResponse;
@@ -15,5 +16,12 @@ class ArticleController extends Controller
         $article = $this->articleService->store($request->user(), $request->validated());
 
         return response()->json($article, 201);
+    }
+
+    public function index(IndexArticleRequest $request): JsonResponse
+    {
+        $article = $this->articleService->index($request->validated());
+
+        return response()->json($article);
     }
 }

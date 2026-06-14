@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Category;
+use App\Models\Reaction;
 use App\Models\Tag;
 use App\Models\User;
 
@@ -99,4 +100,131 @@ test('存在しないcategory_idはバリデーションエラーになる', fun
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['category_id']);
+});
+
+// index
+test('記事一覧が取得できる', function () {
+    $this->adminUser->articles()->create([
+        'category_id'  => $this->category->id,
+        'title'        => '公開記事',
+        'summary'      => '概要',
+        'body'         => '本文',
+        'status'       => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->getJson('/api/articles');
+
+    $response->assertStatus(200)
+        ->assertJsonStructure(['data', 'current_page', 'total'])
+        ->assertJsonFragment(['title' => '公開記事']);
+});
+
+test('draft記事は一覧に含まれない', function () {
+    $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title'       => '下書き記事',
+        'summary'     => '概要',
+        'body'        => '本文',
+        'status'      => 'draft',
+    ]);
+
+    $response = $this->getJson('/api/articles');
+
+    $response->assertStatus(200)
+        ->assertJsonMissing(['title' => '下書き記事']);
+});
+
+test('keywordでタイトル検索できる', function () {
+    $this->adminUser->articles()->createMany([
+        ['category_id' => $this->category->id, 'title' => 'Laravel入門', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now()],
+        ['category_id' => $this->category->id, 'title' => 'PHP基礎',    'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now()],
+    ]);
+
+    $response = $this->getJson('/api/articles?keyword=Laravel');
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['title' => 'Laravel入門'])
+        ->assertJsonMissing(['title' => 'PHP基礎']);
+});
+
+test('categoriesで絞り込める', function () {
+    $other = Category::create(['name' => '別カテゴリ']);
+
+    $this->adminUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => '対象記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+    ]);
+    $this->adminUser->articles()->create([
+        'category_id' => $other->id, 'title' => '別カテゴリ記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+    ]);
+
+    $response = $this->getJson('/api/articles?categories[]=' . $this->category->id);
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['title' => '対象記事'])
+        ->assertJsonMissing(['title' => '別カテゴリ記事']);
+});
+
+test('tagsで絞り込める', function () {
+    $tags = Tag::all();
+
+    $articleWithTag = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => 'タグあり記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+    ]);
+    $articleWithTag->tags()->sync([$tags->first()->id]);
+
+    $this->adminUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => 'タグなし記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+    ]);
+
+    $response = $this->getJson('/api/articles?tags[]=' . $tags->first()->id);
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['title' => 'タグあり記事'])
+        ->assertJsonMissing(['title' => 'タグなし記事']);
+});
+
+test('author_idで絞り込める', function () {
+    $this->adminUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => '管理者の記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+    ]);
+    $this->generalUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => '一般ユーザーの記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+    ]);
+
+    $response = $this->getJson('/api/articles?author_id=' . $this->adminUser->id);
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['title' => '管理者の記事'])
+        ->assertJsonMissing(['title' => '一般ユーザーの記事']);
+});
+
+test('sort=latestで公開日降順になる', function () {
+    $this->adminUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => '古い記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now()->subDay(),
+    ]);
+    $this->adminUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => '新しい記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+    ]);
+
+    $response = $this->getJson('/api/articles?sort=latest');
+
+    $titles = collect($response->json('data'))->pluck('title');
+    expect($titles->first())->toBe('新しい記事');
+});
+
+test('sort=popularでreaction数降順になる', function () {
+    $articleA = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => 'reaction少ない記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+    ]);
+    $articleB = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id, 'title' => 'reaction多い記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now()->subDay(),
+    ]);
+
+    Reaction::create(['user_id' => $this->generalUser->id, 'article_id' => $articleB->id, 'type' => 'like']);
+
+    $response = $this->getJson('/api/articles?sort=popular');
+
+    $titles = collect($response->json('data'))->pluck('title');
+    expect($titles->first())->toBe('reaction多い記事');
 });
