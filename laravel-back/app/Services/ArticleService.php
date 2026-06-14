@@ -27,11 +27,6 @@ class ArticleService
         return $article->load('tags');
     }
 
-    public function delete(int $id): void
-    {
-        Article::findOrFail($id)->delete();
-    }
-
     public function index(array $data): LengthAwarePaginator
     {
         $query = Article::query()->where('status', 'published');
@@ -63,5 +58,17 @@ class ArticleService
 
         return $query->with(['user', 'category', 'tags'])
             ->paginate($data['per_page'] ?? 15);
+    }
+
+    public function show(int $id): Article
+    {
+        return Article::with(['user', 'category', 'tags'])
+            ->where('status', 'published')
+            ->findOrFail($id);
+    }
+
+    public function delete(int $id): void
+    {
+        Article::findOrFail($id)->delete();
     }
 }

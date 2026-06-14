@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 
 class ArticleController extends Controller
 {
+    //CRUDの順で追加予定～
     public function __construct(private ArticleService $articleService) {}
 
     public function store(StoreArticleRequest $request): JsonResponse
@@ -22,6 +23,13 @@ class ArticleController extends Controller
     public function index(IndexArticleRequest $request): JsonResponse
     {
         $articles = $this->articleService->index($request->validated());
+
+        return response()->json($articles);
+    }
+
+    public function show(IndexArticleRequest $request): JsonResponse
+    {
+        $articles = $this->articleService->show($request->validated());
 
         return response()->json($articles);
     }
