@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\DeleteArticleRequest;
 use App\Http\Requests\IndexArticleRequest;
 use App\Http\Requests\StoreArticleRequest;
 use App\Services\ArticleService;
@@ -20,8 +21,15 @@ class ArticleController extends Controller
 
     public function index(IndexArticleRequest $request): JsonResponse
     {
-        $article = $this->articleService->index($request->validated());
+        $articles = $this->articleService->index($request->validated());
 
-        return response()->json($article);
+        return response()->json($articles);
+    }
+
+    public function delete(DeleteArticleRequest $request): JsonResponse
+    {
+        $this->articleService->delete($request->validated()['id']);
+
+        return response()->json(null, 204);
     }
 }
