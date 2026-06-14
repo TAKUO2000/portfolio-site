@@ -2,13 +2,16 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Article;
 use Illuminate\Foundation\Http\FormRequest;
 
 class DeleteArticleRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        $article = Article::find($this->route('id'));
+
+        return $article && $article->user_id === $this->user()->id;
     }
 
     public function rules(): array

@@ -7,6 +7,7 @@ use App\Models\User;
 
 beforeEach(function () {
     $this->adminUser = User::factory()->create(['role' => 'admin']);
+    $this->subAdminUser = User::factory()->create(['role' => 'admin']);
     $this->generalUser = User::factory()->create(['role' => 'user']);
     $this->category = Category::create(['name' => 'テスト']);
     $this->tags = Tag::insert([
@@ -152,10 +153,20 @@ test('categoriesで絞り込める', function () {
     $other = Category::create(['name' => '別カテゴリ']);
 
     $this->adminUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => '対象記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+        'category_id' => $this->category->id,
+        'title' => '対象記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
     ]);
     $this->adminUser->articles()->create([
-        'category_id' => $other->id, 'title' => '別カテゴリ記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+        'category_id' => $other->id,
+        'title' => '別カテゴリ記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
     ]);
 
     $response = $this->getJson('/api/articles?categories[]=' . $this->category->id);
@@ -169,12 +180,22 @@ test('tagsで絞り込める', function () {
     $tags = Tag::all();
 
     $articleWithTag = $this->adminUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => 'タグあり記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+        'category_id' => $this->category->id,
+        'title' => 'タグあり記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
     ]);
     $articleWithTag->tags()->sync([$tags->first()->id]);
 
     $this->adminUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => 'タグなし記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+        'category_id' => $this->category->id,
+        'title' => 'タグなし記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
     ]);
 
     $response = $this->getJson('/api/articles?tags[]=' . $tags->first()->id);
@@ -186,10 +207,20 @@ test('tagsで絞り込める', function () {
 
 test('author_idで絞り込める', function () {
     $this->adminUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => '管理者の記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+        'category_id' => $this->category->id,
+        'title' => '管理者の記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
     ]);
     $this->generalUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => '一般ユーザーの記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+        'category_id' => $this->category->id,
+        'title' => '一般ユーザーの記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
     ]);
 
     $response = $this->getJson('/api/articles?author_id=' . $this->adminUser->id);
@@ -201,10 +232,20 @@ test('author_idで絞り込める', function () {
 
 test('sort=latestで公開日降順になる', function () {
     $this->adminUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => '古い記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now()->subDay(),
+        'category_id' => $this->category->id,
+        'title' => '古い記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now()->subDay(),
     ]);
     $this->adminUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => '新しい記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+        'category_id' => $this->category->id,
+        'title' => '新しい記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
     ]);
 
     $response = $this->getJson('/api/articles?sort=latest');
@@ -215,10 +256,20 @@ test('sort=latestで公開日降順になる', function () {
 
 test('sort=popularでreaction数降順になる', function () {
     $articleA = $this->adminUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => 'reaction少ない記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now(),
+        'category_id' => $this->category->id,
+        'title' => 'reaction少ない記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
     ]);
     $articleB = $this->adminUser->articles()->create([
-        'category_id' => $this->category->id, 'title' => 'reaction多い記事', 'summary' => '概要', 'body' => '本文', 'status' => 'published', 'published_at' => now()->subDay(),
+        'category_id' => $this->category->id,
+        'title' => 'reaction多い記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now()->subDay(),
     ]);
 
     Reaction::create(['user_id' => $this->generalUser->id, 'article_id' => $articleB->id, 'type' => 'like']);
@@ -227,4 +278,55 @@ test('sort=popularでreaction数降順になる', function () {
 
     $titles = collect($response->json('data'))->pluck('title');
     expect($titles->first())->toBe('reaction多い記事');
+});
+
+//削除用テスト
+test('自分の投稿記事を削除', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id'  => $this->category->id,
+        'title'        => '削除する記事',
+        'summary'      => '概要',
+        'body'         => '本文',
+        'status'       => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/' . $article->id);
+
+    $response->assertStatus(204);
+    $this->assertSoftDeleted('articles', ['id' => $article->id]);
+});
+
+test('他ユーザの記事は削除できない', function () {
+    $article = $this->subAdminUser->articles()->create([
+        'category_id'   => $this->category->id,
+        'title'        => 'subAdominUserが作った記事',
+        'summary'      => '概要',
+        'body'         => '本文',
+        'status'       => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/' . $article->id);
+
+    $response->assertStatus(403);
+    $this->assertDatabaseHas('articles', ['id' => $article->id]);
+});
+
+test('未認証ユーザーは記事を削除できない', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id'  => $this->category->id,
+        'title'        => '削除できない記事',
+        'summary'      => '概要',
+        'body'         => '本文',
+        'status'       => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->deleteJson('/api/articles/' . $article->id);
+
+    $response->assertStatus(401);
+    $this->assertDatabaseHas('articles', ['id' => $article->id]);
 });
