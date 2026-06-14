@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\DeleteArticleRequest;
 use App\Http\Requests\IndexArticleRequest;
+use App\Http\Requests\ShowArticleRequest;
 use App\Http\Requests\StoreArticleRequest;
 use App\Services\ArticleService;
 use Illuminate\Http\JsonResponse;
@@ -27,9 +28,9 @@ class ArticleController extends Controller
         return response()->json($articles);
     }
 
-    public function show(IndexArticleRequest $request): JsonResponse
+    public function show(ShowArticleRequest $request): JsonResponse
     {
-        $articles = $this->articleService->show($request->validated());
+        $articles = $this->articleService->show($request->validated()['id']);
 
         return response()->json($articles);
     }

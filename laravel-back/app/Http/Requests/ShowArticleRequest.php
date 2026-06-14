@@ -14,7 +14,7 @@ class ShowArticleRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'id' => ['required', 'integer', 'exists:articles,id'],
+            'id' => ['required', 'integer'],
         ];
     }
 

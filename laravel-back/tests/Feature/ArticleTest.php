@@ -330,3 +330,58 @@ test('未認証ユーザーは記事を削除できない', function () {
     $response->assertStatus(401);
     $this->assertDatabaseHas('articles', ['id' => $article->id]);
 });
+
+//記事表示show（記事ページ）
+test('未認証でも表示可能', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id'  => $this->category->id,
+        'title'        => '公開記事',
+        'summary'      => '概要',
+        'body'         => '本文',
+        'status'       => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->getJson('/api/articles/' . $article->id);
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['title' => '公開記事'])
+        ->assertJsonStructure(['id', 'title', 'summary', 'body', 'status', 'user', 'category', 'tags']);
+});
+
+test('記事が非公開の場合表示不可', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id'  => $this->category->id,
+        'title'        => '非表示記事',
+        'summary'      => '概要',
+        'body'         => '本文',
+        'status'       => 'draft',
+        'published_at' => null,
+    ]);
+
+    $response = $this->getJson('/api/articles/' . $article->id);
+
+    $response->assertStatus(404);
+});
+
+test('記事が削除されている場合も非表示', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id'  => $this->category->id,
+        'title'        => '非表示記事',
+        'summary'      => '概要',
+        'body'         => '本文',
+        'status'       => 'published',
+        'published_at' => now(),
+    ]);
+    $article->delete();
+
+    $response = $this->getJson('/api/articles/' . $article->id);
+
+    $response->assertStatus(404);
+});
+
+test('そもそも記事がない場合も非表示', function () {
+    $response = $this->getJson('/api/articles/1');
+
+    $response->assertStatus(404);
+});
