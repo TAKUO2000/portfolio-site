@@ -13,6 +13,8 @@ class Article extends Model
 {
     use HasFactory, SoftDeletes;
 
+    //追加予定：protected $hidden = [削除された日程はフロントで使わない'deleted_at',JSONが冗長になる'user_id'];
+
     protected $fillable = ['user_id', 'category_id', 'title', 'summary', 'body', 'status', 'published_at'];
 
     protected function casts(): array

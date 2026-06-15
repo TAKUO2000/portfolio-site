@@ -15,6 +15,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('articles')->group(fun
 
 Route::prefix('articles')->group(function () {
     Route::get('/', [ArticleController::class, 'index']);
+    Route::get('/{id}', [ArticleController::class, 'show']);
 });
 
 require __DIR__ . '/auth.php';
