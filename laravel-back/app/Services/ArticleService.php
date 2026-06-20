@@ -56,13 +56,13 @@ class ArticleService
             $query->withCount('reactions')->orderByDesc('reactions_count');
         }
 
-        return $query->with(['user', 'category', 'tags'])
+        return $query->with(['user', 'category', 'tags', 'images'])
             ->paginate($data['per_page'] ?? 15);
     }
 
     public function show(int $id): Article
     {
-        return Article::with(['user', 'category', 'tags'])
+        return Article::with(['user', 'category', 'tags', 'images'])
             ->where('status', 'published')
             ->findOrFail($id);
     }
