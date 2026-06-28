@@ -63,7 +63,7 @@ export default async function ArticlePage({
         {/* 本文 + 目次 の横並びレイアウト */}
         <div className="flex gap-8 items-start">
           {/* 本文エリア (8割) */}
-          <article className="w-4/5 min-w-0 bg-black/20 rounded-xl p-6">
+          <article className="w-4/5 min-w-0 bg-black/10 rounded-xl p-6">
             {headerImage && (
               <Image
                 src={headerImage.url}
@@ -84,20 +84,9 @@ export default async function ArticlePage({
               ))}
             </div>
             <h1 className="text-3xl font-bold mb-6">{article.title}</h1>
-            <ReactMarkdown
-              components={{
-                ul: ({ children }) => (
-                  <ul style={{ listStyleType: "disc", paddingLeft: "1.5rem" }}>
-                    {children}
-                  </ul>
-                ),
-                ol: ({ children }) => (
-                  <ol className="list-decimal pl-6">{children}</ol>
-                ),
-              }}
-            >
-              {article.body}
-            </ReactMarkdown>
+            <div className="prose prose-neutral [&_ul>li::marker]:text-black max-w-none wrap-break-word">
+              <ReactMarkdown>{article.body}</ReactMarkdown>
+            </div>
           </article>
 
           {/* 目次エリア (2割) */}

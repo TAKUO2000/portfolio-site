@@ -71,17 +71,19 @@ export default async function ArticlesListPage({
   return (
     <>
       <Header />
-      <main className="h-auto">
+      <main className="h-auto w-5xl mx-auto px-4 py-8">
         {articles.map((article, index) => (
-          <ArticleCard
-            key={`${article.title}-${index}`}
-            title={article.title}
-            author={article.user.name}
-            summary={article.summary}
-            image={article.header_image}
-            href={`articles/${article.id}`}
-            priority={index === 0}
-          />
+          <div key={`${article.title}-${index}`}>
+            {index !== 0 && <hr className="my-8 border-gray" />}
+            <ArticleCard
+              title={article.title}
+              author={article.user.name}
+              summary={article.summary}
+              image={article.header_image}
+              href={`articles/${article.id}`}
+              priority={index === 0}
+            />
+          </div>
         ))}
       </main>
       <Footer />
