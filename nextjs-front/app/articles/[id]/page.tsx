@@ -4,6 +4,7 @@ import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
+import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
 
 interface ShowResponse {
   data: {
@@ -70,6 +71,7 @@ export default async function ArticlePage({
                 width={1200}
                 height={630}
                 className="h-80 w-auto mb-6 rounded mx-auto block"
+                loading="eager"
               />
             )}
             <div className="flex flex-wrap gap-2 mb-3">
@@ -104,6 +106,7 @@ export default async function ArticlePage({
               <p className="font-semibold mb-2">目次</p>
               <p>（ダミー）</p>
             </div>
+            <ArticleActionButtons likeCount={article.like_count} />
           </aside>
         </div>
       </main>
