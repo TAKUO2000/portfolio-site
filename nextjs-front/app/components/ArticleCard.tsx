@@ -27,7 +27,7 @@ export default function ArticleCard({
           {image && (
             <Image
               src={image}
-              alt=""
+              alt={title}
               fill
               sizes="(min-width: 768px) 288px, 100vw"
               className="object-cover"

@@ -57,7 +57,7 @@ async function fetchArticles(sort: SortOrder): Promise<IndexResponse> {
   return res.json();
 }
 
-export default async function ArticlesPage({
+export default async function ArticlesListPage({
   searchParams,
 }: {
   searchParams: Promise<{ sort?: string }>;
@@ -88,23 +88,3 @@ export default async function ArticlesPage({
     </>
   );
 }
-
-// interface ArticleCardProps {
-//   title: string;
-//   author: string;
-//   excerpt: string;
-//   image: string | null;
-//   href: string;
-// }
-//
-// interface Article {
-//   id: number;
-//   title: string;
-//   summary: string;
-//   header_image: string;
-//   published_at: string;
-//   user: { id: number; name: string }; //idは著者ページに飛ぶ際に使用予定現在は不要だけど取得してます
-//   category: { id: number; name: string };
-//   tags: Tag[];
-//   like_count: number;
-// }
