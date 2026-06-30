@@ -23,7 +23,7 @@ export default function PopularArticles({
 }: PopularArticlesProps) {
   return (
     <section id={id} className="bg-[#f4f1eb] px-6 py-20">
-      <div className="mx-auto max-w-[790px]">
+      <div className="mx-auto max-w-197.5">
         <div className="mb-10 flex justify-center">
           <h2 className="px-16 py-3 text-4xl font-bold">{title}</h2>
         </div>
@@ -36,7 +36,7 @@ export default function PopularArticles({
               className="group grid gap-5 transition-opacity hover:opacity-80 md:grid-cols-[288px_1fr] md:gap-8"
             >
               <article className="contents">
-                <div className="relative aspect-[16/10] w-full bg-black md:aspect-auto md:h-[182px]">
+                <div className="relative aspect-16/10 w-full bg-black md:aspect-auto md:h-45.5">
                   {article.image && (
                     <Image
                       src={article.image}

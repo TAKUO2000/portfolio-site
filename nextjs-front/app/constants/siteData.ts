@@ -10,12 +10,12 @@ export const SITE_DATA = {
 
   latestArticle: {
     title: "Latest Article",
-    moreButtonHref: "#",
+    moreButtonHref: "/articles?sort=latest",
   },
 
   popularArticles: {
     title: "Popular Articles",
-    moreButtonHref: "#",
+    moreButtonHref: "/articles?sort=popular",
   },
 
   aboutMe: {

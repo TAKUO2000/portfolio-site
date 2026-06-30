@@ -117,8 +117,44 @@ test('記事一覧が取得できる', function () {
     $response = $this->getJson('/api/articles');
 
     $response->assertStatus(200)
-        ->assertJsonStructure(['data', 'current_page', 'total'])
+        ->assertJsonStructure(['data', 'meta' => ['current_page', 'total']])
         ->assertJsonFragment(['title' => '公開記事']);
+});
+
+test('記事一覧のレスポンス構造が正しい', function () {
+    $tag = Tag::first();
+    $article = $this->adminUser->articles()->create([
+        'category_id'  => $this->category->id,
+        'title'        => '構造確認記事',
+        'summary'      => '概要',
+        'body'         => '本文',
+        'status'       => 'published',
+        'published_at' => now(),
+    ]);
+    $article->headerImage()->create(['url' => 'https://example.com/image.png', 'type' => 'header']);
+    $article->tags()->sync([$tag->id]);
+
+    $response = $this->getJson('/api/articles');
+
+    $response->assertStatus(200)
+        ->assertJsonStructure([
+            'data' => [
+                '*' => [
+                    'id',
+                    'title',
+                    'summary',
+                    'header_image',
+                    'published_at',
+                    'user'     => ['id', 'name'],
+                    'category' => ['id', 'name'],
+                    'tags'     => [['id', 'name']],
+                ],
+            ],
+            'meta' => ['current_page', 'last_page', 'total'],
+        ])
+        ->assertJsonMissing(['body' => '本文'])
+        ->assertJsonMissing(['status' => 'published'])
+        ->assertJsonMissing(['pivot']);
 });
 
 test('draft記事は一覧に含まれない', function () {

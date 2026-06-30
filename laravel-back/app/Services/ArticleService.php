@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Article;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 class ArticleService
@@ -53,18 +54,23 @@ class ArticleService
         if (empty($data['sort']) || $data['sort'] === 'latest') {
             $query->orderByDesc('published_at');
         } else if ($data['sort'] === 'popular') {
-            $query->withCount('reactions')->orderByDesc('reactions_count');
+            $query->orderByDesc('like_count');
         }
 
-        return $query->with(['user', 'category', 'tags'])
+        return $this->withLikeCount($query->with(['user', 'category', 'tags', 'headerImage']))
             ->paginate($data['per_page'] ?? 15);
     }
 
     public function show(int $id): Article
     {
-        return Article::with(['user', 'category', 'tags'])
-            ->where('status', 'published')
-            ->findOrFail($id);
+        return $this->withLikeCount(
+            Article::with(['user', 'category', 'tags', 'images'])->where('status', 'published')
+        )->findOrFail($id);
+    }
+
+    private function withLikeCount(Builder $query): Builder
+    {
+        return $query->withCount(['reactions as like_count']);
     }
 
     public function delete(int $id): void

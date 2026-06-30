@@ -6,8 +6,11 @@ use App\Http\Requests\DeleteArticleRequest;
 use App\Http\Requests\IndexArticleRequest;
 use App\Http\Requests\ShowArticleRequest;
 use App\Http\Requests\StoreArticleRequest;
+use App\Http\Resources\ArticleDetailResource;
+use App\Http\Resources\ArticleResource;
 use App\Services\ArticleService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class ArticleController extends Controller
 {
@@ -21,18 +24,18 @@ class ArticleController extends Controller
         return response()->json($article, 201);
     }
 
-    public function index(IndexArticleRequest $request): JsonResponse
+    public function index(IndexArticleRequest $request): AnonymousResourceCollection
     {
         $articles = $this->articleService->index($request->validated());
 
-        return response()->json($articles);
+        return ArticleResource::collection($articles);
     }
 
-    public function show(ShowArticleRequest $request): JsonResponse
+    public function show(ShowArticleRequest $request): ArticleDetailResource
     {
-        $articles = $this->articleService->show($request->validated()['id']);
+        $article = $this->articleService->show($request->validated()['id']);
 
-        return response()->json($articles);
+        return new ArticleDetailResource($article);
     }
 
     public function delete(DeleteArticleRequest $request): JsonResponse
