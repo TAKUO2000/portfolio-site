@@ -3,14 +3,18 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ArticleController;
+use App\Http\Controllers\ImageController;
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::middleware(['auth:sanctum', 'role:admin'])->prefix('articles')->group(function () {
-    Route::post('/', [ArticleController::class, 'store']);
-    Route::delete('/{id}', [ArticleController::class, 'delete']);
+Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
+    Route::prefix('articles')->group(function () {
+        Route::post('/', [ArticleController::class, 'store']);
+        Route::delete('/{id}', [ArticleController::class, 'delete']);
+    });
+    Route::post('/images/upload-url', [ImageController::class, 'getUploadUrl']);
 });
 
 Route::prefix('articles')->group(function () {
