@@ -1,5 +1,7 @@
 "use client";
 
+import PlusIcon from "@/public/plus.svg";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -104,6 +106,14 @@ export default function HeaderAuthStatus() {
         >
           ログアウト
         </button>
+
+        <Link
+          href="articles/new"
+          className="text-sm transition-opacity hover:opacity-70 bg-white text-black rounded-4xl px-3 py-1 flex items-center"
+        >
+          <PlusIcon className="h-4 w-4 shrink-0 border bg-black text-white rounded-2xl mr-2" />
+          <span>記事投稿</span>
+        </Link>
       </div>
     );
   }
