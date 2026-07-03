@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, DragEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import { getCsrfToken, getApiErrorMessage } from "@/app/auth/authClient";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 interface Category {
   id: number;
@@ -15,6 +14,13 @@ interface Category {
 interface Tag {
   id: number;
   name: string;
+}
+
+interface PendingImage {
+  blobUrl: string;
+  file: File;
+  uploadUrl: string;
+  imageUrl: string;
 }
 
 const TAG_COLORS = [
@@ -34,10 +40,15 @@ export default function ArticleNewPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
+  const [pendingHeader, setPendingHeader] = useState<PendingImage | null>(null);
+  const [isFetchingHeaderUrl, setIsFetchingHeaderUrl] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const tagPickerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     Promise.all([
@@ -97,6 +108,108 @@ export default function ArticleNewPage() {
     setShowTagPicker(false);
   }
 
+  async function uploadHeaderImage(file: File) {
+    if (!file.type.startsWith("image/")) {
+      setError("画像ファイルを選択してください。");
+      return;
+    }
+    // 旧 pendingHeader の blob を解放
+    if (pendingHeader) URL.revokeObjectURL(pendingHeader.blobUrl);
+
+    const blobUrl = URL.createObjectURL(file);
+    setIsFetchingHeaderUrl(true);
+    setError("");
+    try {
+      const xsrfToken = await getCsrfToken();
+      const urlRes = await fetch(`${API_BASE_URL}/api/images/upload-url`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-XSRF-TOKEN": xsrfToken,
+        },
+        body: JSON.stringify({ file_name: file.name, media_type: file.type }),
+      });
+      if (!urlRes.ok) {
+        const data = await urlRes.json().catch(() => null);
+        setError(getApiErrorMessage(urlRes.status, data, "アップロードURLの取得に失敗しました。"));
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      const { upload_url, image_url } = await urlRes.json();
+      setPendingHeader({ blobUrl, file, uploadUrl: upload_url, imageUrl: image_url });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "アップロード中にエラーが発生しました。");
+      URL.revokeObjectURL(blobUrl);
+    } finally {
+      setIsFetchingHeaderUrl(false);
+    }
+  }
+
+  function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) uploadHeaderImage(file);
+  }
+
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) uploadHeaderImage(file);
+  }
+
+  async function handlePasteImage(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const imageItem = Array.from(e.clipboardData.items).find((item) =>
+      item.type.startsWith("image/"),
+    );
+    if (!imageItem) return;
+
+    e.preventDefault();
+
+    const file = imageItem.getAsFile();
+    const ta = textareaRef.current;
+    if (!file || !ta) return;
+
+    // blob URL を即時生成してカーソル位置に挿入（プレビューはローカル表示）
+    const blobUrl = URL.createObjectURL(file);
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    setBody(ta.value.slice(0, start) + `![画像](${blobUrl})` + ta.value.slice(end));
+
+    // pre-signed URL だけ取得して pendingImages に蓄積（S3 PUT はまだしない）
+    try {
+      const ext = file.type.split("/")[1] ?? "png";
+      const xsrfToken = await getCsrfToken();
+      const urlRes = await fetch(`${API_BASE_URL}/api/images/upload-url`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-XSRF-TOKEN": xsrfToken,
+        },
+        body: JSON.stringify({
+          file_name: `paste-${Date.now()}.${ext}`,
+          media_type: file.type,
+        }),
+      });
+      if (!urlRes.ok) {
+        const data = await urlRes.json().catch(() => null);
+        throw new Error(getApiErrorMessage(urlRes.status, data, "アップロードURLの取得に失敗しました。"));
+      }
+      const { upload_url, image_url } = await urlRes.json();
+      setPendingImages((prev) => [
+        ...prev,
+        { blobUrl, file, uploadUrl: upload_url, imageUrl: image_url },
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "画像URLの取得に失敗しました。");
+    }
+  }
+
   async function handleSubmit(status: "draft" | "published") {
     if (!categoryId || !title.trim() || !body.trim() || !summary.trim()) {
       setError("タイトル・要約・本文・カテゴリは必須です。");
@@ -105,6 +218,42 @@ export default function ArticleNewPage() {
     setIsSubmitting(true);
     setError("");
     try {
+      // body に残っている blob URL だけ S3 へ PUT
+      const used = pendingImages.filter((img) => body.includes(img.blobUrl));
+      const unused = pendingImages.filter((img) => !body.includes(img.blobUrl));
+
+      await Promise.all(
+        used.map(async (img) => {
+          const res = await fetch(img.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": img.file.type },
+            body: img.file,
+          });
+          if (!res.ok) throw new Error("画像のアップロードに失敗しました。");
+        }),
+      );
+
+      // body 内の blob URL を S3 URL に一括置換
+      let finalBody = body;
+      for (const img of used) {
+        finalBody = finalBody.replaceAll(img.blobUrl, img.imageUrl);
+      }
+
+      // 削除済み画像の blob を解放
+      unused.forEach((img) => URL.revokeObjectURL(img.blobUrl));
+
+      // ヘッダー画像を S3 へ PUT
+      let headerImageUrl: string | undefined;
+      if (pendingHeader) {
+        const headerRes = await fetch(pendingHeader.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": pendingHeader.file.type },
+          body: pendingHeader.file,
+        });
+        if (!headerRes.ok) throw new Error("ヘッダー画像のアップロードに失敗しました。");
+        headerImageUrl = pendingHeader.imageUrl;
+      }
+
       const xsrfToken = await getCsrfToken();
       const res = await fetch(`${API_BASE_URL}/api/articles`, {
         method: "POST",
@@ -118,10 +267,12 @@ export default function ArticleNewPage() {
         body: JSON.stringify({
           title,
           summary,
-          body,
+          body: finalBody,
           status,
           category_id: categoryId,
           tags: selectedTagIds,
+          ...(headerImageUrl ? { header_image_url: headerImageUrl } : {}),
+          ...(used.length > 0 ? { body_image_urls: used.map((img) => img.imageUrl) } : {}),
         }),
       });
       if (!res.ok) {
@@ -129,6 +280,8 @@ export default function ArticleNewPage() {
         setError(getApiErrorMessage(res.status, data, "投稿に失敗しました。"));
         return;
       }
+      used.forEach((img) => URL.revokeObjectURL(img.blobUrl));
+      if (pendingHeader) URL.revokeObjectURL(pendingHeader.blobUrl);
       window.location.href = "/articles";
     } catch (e) {
       setError(e instanceof Error ? e.message : "エラーが発生しました。");
@@ -141,7 +294,6 @@ export default function ArticleNewPage() {
     <div className="min-h-screen bg-[#F4F1EB] flex items-start justify-center px-6 py-11">
       <div className="w-[820px] max-w-full bg-white border border-black/10 rounded-[14px] shadow-[0_12px_40px_-12px_rgba(0,0,0,0.18)] overflow-hidden">
         <div className="px-[34px] pt-[30px] pb-[26px]">
-
           {/* Status row */}
           <div className="flex items-center gap-3 mb-5">
             <span className="inline-flex items-center gap-1.5 px-3 py-[5px] rounded-full bg-[#eef0f2] text-[#5b6068] text-xs font-semibold">
@@ -233,6 +385,69 @@ export default function ArticleNewPage() {
             className="w-full border border-black/[0.14] rounded-[10px] px-4 py-[13px] text-[22px] font-bold leading-[1.35] text-[#17181a] bg-white mb-[13px] outline-none focus:border-black/30"
           />
 
+          {/* Header image */}
+          <div className="mb-[22px]">
+            <label className="block text-xs font-semibold text-[#5b6068] mb-[7px]">
+              ヘッダー画像{" "}
+              <span className="text-[#adb2ba] font-normal">· 記事一覧のサムネイルに使われます</span>
+            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={handleFileInputChange}
+            />
+            {pendingHeader ? (
+              <div className="relative rounded-[10px] overflow-hidden border border-black/[0.12]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={pendingHeader.blobUrl}
+                  alt="ヘッダー画像プレビュー"
+                  className="w-full h-[200px] object-cover"
+                />
+                <button
+                  onClick={() => {
+                    URL.revokeObjectURL(pendingHeader.blobUrl);
+                    setPendingHeader(null);
+                  }}
+                  className="absolute top-2 right-2 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/50 text-white text-xs font-medium hover:bg-black/70 transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16"><line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="1.8"/><line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="1.8"/></svg>
+                  削除
+                </button>
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                className={`flex flex-col items-center justify-center gap-2 h-[120px] rounded-[10px] border border-dashed cursor-pointer transition-colors ${
+                  isDragging
+                    ? "border-[#1f8a54] bg-[#eef8f0]"
+                    : "border-black/20 bg-[#fafafa] hover:bg-[#f2f3f5]"
+                }`}
+              >
+                {isFetchingHeaderUrl ? (
+                  <span className="text-xs text-[#8a9099]">準備中...</span>
+                ) : (
+                  <>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                      <rect x="2" y="4" width="20" height="16" rx="3" stroke="#c2c6cc" strokeWidth="1.4"/>
+                      <circle cx="8" cy="9" r="1.8" fill="#c2c6cc"/>
+                      <path d="M3 19 L8 13 L12 17 L15.5 13.5 L21 19" stroke="#c2c6cc" strokeWidth="1.4" strokeLinejoin="round"/>
+                    </svg>
+                    <span className="text-xs text-[#8a9099]">
+                      クリックまたはドラッグ＆ドロップで画像を追加
+                    </span>
+                    <span className="text-[11px] text-[#c2c6cc]">JPEG · PNG · WebP · GIF</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Summary */}
           <div className="mb-[22px]">
             <label className="block text-xs font-semibold text-[#5b6068] mb-[7px]">
@@ -286,7 +501,10 @@ export default function ArticleNewPage() {
                   <ToolbarBtn
                     title="見出し"
                     onClick={() => insertMarkdown("## ")}
-                    style={{ fontWeight: 700, fontFamily: "'Noto Sans JP', sans-serif" }}
+                    style={{
+                      fontWeight: 700,
+                      fontFamily: "'Noto Sans JP', sans-serif",
+                    }}
                   >
                     H
                   </ToolbarBtn>
@@ -325,7 +543,11 @@ export default function ArticleNewPage() {
                   <ToolbarBtn
                     title="引用"
                     onClick={() => insertMarkdown("> ")}
-                    style={{ fontWeight: 700, fontFamily: "Georgia, serif", fontSize: 15 }}
+                    style={{
+                      fontWeight: 700,
+                      fontFamily: "Georgia, serif",
+                      fontSize: 15,
+                    }}
                   >
                     &#8220;
                   </ToolbarBtn>
@@ -440,6 +662,7 @@ export default function ArticleNewPage() {
                   ref={textareaRef}
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
+                  onPaste={handlePasteImage}
                   placeholder="Markdownで本文を入力してください..."
                   className="w-full min-h-[296px] px-5 py-[18px] text-[13px] leading-[1.9] text-[#2b2f36] bg-transparent resize-y outline-none"
                   style={{
@@ -452,7 +675,12 @@ export default function ArticleNewPage() {
             {activeTab === "preview" && (
               <div className="px-5 py-[18px] min-h-[296px] prose prose-neutral [&_ul>li::marker]:text-black max-w-none">
                 {body ? (
-                  <ReactMarkdown>{body}</ReactMarkdown>
+                  <ReactMarkdown
+                    urlTransform={(url) => url}
+                    components={{ img: MarkdownImg }}
+                  >
+                    {body}
+                  </ReactMarkdown>
                 ) : (
                   <p className="text-[#adb2ba] text-sm">
                     プレビューするコンテンツがありません。
@@ -504,11 +732,17 @@ export default function ArticleNewPage() {
               公開する
             </button>
           </div>
-
         </div>
       </div>
     </div>
   );
+}
+
+function MarkdownImg({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) {
+  if (!src || typeof src !== "string") return null;
+  // blob: URL を含む任意のスキームを表示するため next/image ではなく img を使用
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt ?? ""} className="max-w-full rounded" />;
 }
 
 function ToolbarBtn({

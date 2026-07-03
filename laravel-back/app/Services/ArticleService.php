@@ -25,6 +25,22 @@ class ArticleService
             $article->tags()->sync($data['tags']);
         }
 
+        if (!empty($data['header_image_url'])) {
+            $article->images()->create([
+                'url'  => $data['header_image_url'],
+                'type' => 'header',
+            ]);
+        }
+
+        if (!empty($data['body_image_urls'])) {
+            foreach ($data['body_image_urls'] as $url) {
+                $article->images()->create([
+                    'url'  => $url,
+                    'type' => 'body',
+                ]);
+            }
+        }
+
         return $article->load('tags');
     }
 
