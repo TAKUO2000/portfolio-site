@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TAG_COLOR } from "@/app/constants/colorsData";
 
 interface TagBoxProps {
   tag: string;
@@ -8,7 +9,10 @@ interface TagBoxProps {
 export default function TagBox({ tag, id }: TagBoxProps) {
   return (
     <Link href={`/tags/${id}`}>
-      <div className="inline-block text-xs px-3 py-1 mr-2 rounded-full border border-gray-200 bg-gray-50 text-gray-500">
+      <div
+        className={`inline-flex items-center gap-1.5 mr-2 px-[11px] py-1 rounded-full text-xs font-medium ${TAG_COLOR.bg} ${TAG_COLOR.text} ${TAG_COLOR.hoverBg} active:opacity-60 transition-colors`}
+      >
+        <span className={`w-[7px] h-[7px] rounded-full ${TAG_COLOR.dot}`} />
         {tag}
       </div>
     </Link>

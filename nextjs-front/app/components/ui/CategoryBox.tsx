@@ -1,27 +1,35 @@
 import Link from "next/link";
+import type { FC, SVGProps } from "react";
+import Code from "@/public/Code.svg";
+import Controller from "@/public/Controller.svg";
+import ThreeDots from "@/public/ThreeDots.svg";
+import Necktie from "@/public/Necktie.svg";
+import { CATEGORY_COLORS, CATEGORY_DEFAULT_COLOR } from "@/app/constants/colorsData";
 
 interface CategoryBoxProps {
   category: string;
   id: number;
 }
 
-const colorMap: Record<number, string> = {
-  1: "bg-blue-500 text-white hover:bg-blue-600 active:opacity-50 transition-colors",
-  2: "bg-yellow-400 text-white hover:bg-yellow-500 active:opacity-50 transition-colors",
+const ICON_MAP: Record<number, FC<SVGProps<SVGSVGElement>>> = {
+  1: Code, // 技術
+  2: Controller, // ライフスタイル
+  3: Necktie, // ビジネス
 };
 
-const defaultColor =
-  "bg-gray-400 text-white hover:bg-gray-500 active:opacity-50 transition-colors";
-
 export default function CategoryBox({ category, id }: CategoryBoxProps) {
-  const color = colorMap[id] ?? defaultColor;
+  const color = CATEGORY_COLORS[id] ?? CATEGORY_DEFAULT_COLOR;
+  const Icon = ICON_MAP[id] ?? ThreeDots; // その他・未知のカテゴリ
 
   return (
-    <Link href={`/categories/${id}`}>
+    <Link href={/**修正予定 */ `/dev`}>
       <div
-        className={`inline-block text-sm font-semibold uppercase px-3 py-2 mr-2 rounded-sm ${color}`}
+        className={`flex items-center gap-1.5 mr-2 px-2.75 py-1 rounded-lg  ${color.bg} ${color.hoverBg} active:opacity-60 transition-colors`}
       >
-        {category}
+        <Icon className={`w-6 h-6 ${color.icon}`} />
+        <span className={`text-xs font-semibold  ${color.text}`}>
+          {category}
+        </span>
       </div>
     </Link>
   );
