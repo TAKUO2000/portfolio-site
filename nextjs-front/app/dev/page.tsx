@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
+import TagSelect from "@/app/components/article-form/TagSelect";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -19,6 +20,7 @@ interface Tag {
 export default function DevPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -54,6 +56,14 @@ export default function DevPage() {
             <TagBox key={tag.id} tag={tag.name} id={tag.id} />
           ))}
         </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-bold mb-4">TagSelect</h2>
+        <TagSelect tags={tags} value={selectedTagIds} onChange={setSelectedTagIds} />
+        <p className="mt-3 text-xs text-gray-500">
+          selected: {JSON.stringify(selectedTagIds)}
+        </p>
       </section>
     </div>
   );
