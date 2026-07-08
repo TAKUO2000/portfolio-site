@@ -3,7 +3,6 @@
 import Plus from "@/public/Plus.svg";
 
 import { useEffect, useRef, useState } from "react";
-import { TAG_COLOR } from "@/app/constants/colorsData";
 import type { Tag } from "@/app/types/models";
 import TagBox from "../ui/TagBox";
 
@@ -78,7 +77,6 @@ export default function TagSelect({
     setSelectedTagIds([...selectedTagIds, id]);
     setShowPicker(false);
   }
-
   function removeTag(id: number) {
     setSelectedTagIds(selectedTagIds.filter((t) => t !== id));
   }
@@ -89,7 +87,6 @@ export default function TagSelect({
     setPendingTags([...pendingTags, trimmedQuery]);
     setShowPicker(false);
   }
-
   function removePendingTag(name: string) {
     setPendingTags(pendingTags.filter((t) => t !== name));
   }
@@ -100,23 +97,20 @@ export default function TagSelect({
         <TagBox
           key={tag.id}
           tag={tag.name}
-          id={tag.id}
           isLink={false}
           title="クリックで削除"
           onClick={() => removeTag(tag.id)}
         />
       ))}
       {pendingTags.map((name) => (
-        <span
+        <TagBox
           key={name}
-          onClick={() => removePendingTag(name)}
+          tag={name}
+          isLink={false}
+          isPending
           title="クリックで削除（記事保存時に新規作成されます）"
-          className={`inline-flex items-center gap-1.5 mr-2 px-2.75 py-1 rounded-full text-xs font-medium cursor-pointer border border-dashed border-black/20 ${TAG_COLOR.text} hover:bg-[#f4f5f6] transition-colors`}
-        >
-          <span className={`w-1.75 h-1.75 rounded-full ${TAG_COLOR.dot}`} />
-          {name}
-          <span className="text-[10px] text-[#adb2ba]">NEW</span>
-        </span>
+          onClick={() => removePendingTag(name)}
+        />
       ))}
 
       <div className="relative" ref={pickerRef}>
@@ -127,6 +121,7 @@ export default function TagSelect({
           <Plus className="w-3 h-3 shrink-0" />
           追加
         </span>
+        {/* ポップーオーバー */}
         {showPicker && (
           <div className="absolute top-8 left-0 bg-white border border-black/10 rounded-lg shadow-lg z-10 w-56 overflow-hidden">
             <input
@@ -140,6 +135,7 @@ export default function TagSelect({
               className="w-full px-3 py-2 text-xs border-b border-black/10 outline-none"
             />
             <div className="max-h-48 overflow-y-auto py-1">
+              {/* クエリ検索結果表示 */}
               {filteredTags.map((tag) => (
                 <button
                   key={tag.id}
@@ -149,6 +145,7 @@ export default function TagSelect({
                   {tag.name}
                 </button>
               ))}
+              {/* 新規タグ追加 */}
               {canCreateTag && (
                 <button
                   onClick={createPendingTag}
@@ -157,6 +154,7 @@ export default function TagSelect({
                   ＋ 「{trimmedQuery}」を新規タグとして追加
                 </button>
               )}
+              {/* タグが追加済みの場合（＝新規追加でもなく検索結果にもない） */}
               {filteredTags.length === 0 && !canCreateTag && (
                 <p className="px-3 py-2 text-xs text-[#adb2ba]">
                   既に登録されているタグです
