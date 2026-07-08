@@ -1,6 +1,7 @@
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import ArticleCard from "../components/ArticleCard";
+import type { Category, Tag } from "@/app/types/models";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -20,14 +21,9 @@ interface Article {
   header_image: string;
   published_at: string;
   user: { id: number; name: string }; //idは著者ページに飛ぶ際に使用予定現在は不要だけど取得してます
-  category: { id: number; name: string };
+  category: Category;
   tags: Tag[];
   like_count: number;
-}
-
-interface Tag {
-  id: number;
-  name: string;
 }
 
 interface Links {

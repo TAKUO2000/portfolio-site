@@ -5,6 +5,7 @@ import Footer from "../../components/Footer";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
 import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
+import type { Category, Tag } from "@/app/types/models";
 
 interface ShowResponse {
   data: {
@@ -13,16 +14,11 @@ interface ShowResponse {
     body: string;
     published_at: string;
     user: { id: number; name: string };
-    category: { id: number; name: string };
+    category: Category;
     tags: Tag[];
     like_count: number;
     images: ImageTypeUrl[];
   };
-}
-
-interface Tag {
-  id: number;
-  name: string;
 }
 
 interface ImageTypeUrl {
