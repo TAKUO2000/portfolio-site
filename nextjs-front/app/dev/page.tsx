@@ -6,6 +6,7 @@ import TagBox from "@/app/components/ui/TagBox";
 import TagSelect from "@/app/components/article-form/TagSelect";
 import type { Category, Tag } from "@/app/types/models";
 import CategorySelect from "../components/article-form/CategorySelect";
+import MarkdownEditor from "../components/article-form/MarkdownEditor";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -18,6 +19,8 @@ export default function DevPage() {
   const [tags, setTags] = useState<Tag[]>([]); // 登録済みのtag一覧格納用
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]); // TagSelect内で選らんだTag管理用(既にDB登録済み)
   const [pendingTags, setPendingTags] = useState<string[]>([]); // TagSelectで新しく追加されたDBに保存されていないタグ
+
+  const [body, setBody] = useState(""); // MarkdownEditorの本文管理用
 
   useEffect(() => {
     // 並列にカテゴリとタグを取得＆格納
@@ -78,6 +81,11 @@ export default function DevPage() {
           selected: {JSON.stringify(selectedTagIds)} / pending:{" "}
           {JSON.stringify(pendingTags)}
         </p>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-bold mb-4">markdownEditer</h2>
+        <MarkdownEditor body={body} setBody={setBody} />
       </section>
     </div>
   );
