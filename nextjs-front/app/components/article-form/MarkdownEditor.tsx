@@ -31,6 +31,7 @@ export default function MarkdownEditor({ body, setBody }: MarkdownEditorProps) {
 
   return (
     <div className="w-full">
+      <p className="mb-1 text-sm font-medium text-gray-700">本文</p>
       {/* タブ */}
       <div className="flex items-center gap-0.5 border-b border-black/11">
         <button

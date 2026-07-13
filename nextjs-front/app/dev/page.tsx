@@ -8,6 +8,8 @@ import type { Category, Tag } from "@/app/types/models";
 import CategorySelect from "../components/article-form/CategorySelect";
 import MarkdownEditor from "../components/article-form/MarkdownEditor";
 import NormalButton from "../components/ui/NormalButton";
+import TitleInput from "../components/article-form/TitleInput";
+import SummaryInput from "../components/article-form/SummaryInput";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -20,6 +22,9 @@ export default function DevPage() {
   const [tags, setTags] = useState<Tag[]>([]); // 登録済みのtag一覧格納用
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]); // TagSelect内で選らんだTag管理用(既にDB登録済み)
   const [pendingTags, setPendingTags] = useState<string[]>([]); // TagSelectで新しく追加されたDBに保存されていないタグ
+
+  const [title, setTitle] = useState<string>("");
+  const [summary, setSummary] = useState<string>("");
 
   const [body, setBody] = useState(""); // MarkdownEditorの本文管理用
 
@@ -118,9 +123,11 @@ export default function DevPage() {
 
           <section>
             <h2 className="text-lg font-bold mb-4">TitleInput</h2>
+            <TitleInput title={title} setTitle={setTitle} />
           </section>
           <section>
             <h2 className="text-lg font-bold mb-4">SummaryInput</h2>
+            <SummaryInput summary={summary} setSummary={setSummary} />
           </section>
 
           <section>

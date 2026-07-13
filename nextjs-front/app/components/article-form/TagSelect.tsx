@@ -92,77 +92,80 @@ export default function TagSelect({
   }
 
   return (
-    <div className="flex flex-wrap gap-1.75 items-center">
-      {selectedTags.map((tag) => (
-        <TagBox
-          key={tag.id}
-          tag={tag.name}
-          isLink={false}
-          title="クリックで削除"
-          onClick={() => removeTag(tag.id)}
-        />
-      ))}
-      {pendingTags.map((name) => (
-        <TagBox
-          key={name}
-          tag={name}
-          isLink={false}
-          isPending
-          title="クリックで削除（記事保存時に新規作成されます）"
-          onClick={() => removePendingTag(name)}
-        />
-      ))}
+    <div className="flex flex-col gap-1">
+      <p className="text-sm font-medium text-gray-700">タグ</p>
+      <div className="flex flex-wrap gap-1.75 items-center">
+        {selectedTags.map((tag) => (
+          <TagBox
+            key={tag.id}
+            tag={tag.name}
+            isLink={false}
+            title="クリックで削除"
+            onClick={() => removeTag(tag.id)}
+          />
+        ))}
+        {pendingTags.map((name) => (
+          <TagBox
+            key={name}
+            tag={name}
+            isLink={false}
+            isPending
+            title="クリックで削除（記事保存時に新規作成されます）"
+            onClick={() => removePendingTag(name)}
+          />
+        ))}
 
-      <div className="relative" ref={pickerRef}>
-        <span
-          onClick={togglePicker}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white text-xs font-medium text-[#8a9099] border border-dashed border-black/20 cursor-pointer hover:bg-[#f9f9f9] whitespace-nowrap"
-        >
-          <Plus className="w-3 h-3 shrink-0" />
-          追加
-        </span>
-        {/* ポップーオーバー */}
-        {showPicker && (
-          <div className="absolute top-8 left-0 bg-white border border-black/10 rounded-lg shadow-lg z-10 w-56 overflow-hidden">
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && canCreateTag) createPendingTag();
-              }}
-              placeholder="タグを検索"
-              className="w-full px-3 py-2 text-xs border-b border-black/10 outline-none"
-            />
-            <div className="max-h-48 overflow-y-auto py-1">
-              {/* クエリ検索結果表示 */}
-              {filteredTags.map((tag) => (
-                <button
-                  key={tag.id}
-                  onClick={() => addTag(tag.id)}
-                  className="block w-full text-left px-3 py-1.5 text-xs text-[#3a3d42] hover:bg-[#f2f3f5]"
-                >
-                  {tag.name}
-                </button>
-              ))}
-              {/* 新規タグ追加 */}
-              {canCreateTag && (
-                <button
-                  onClick={createPendingTag}
-                  className="block w-full text-left px-3 py-1.5 text-xs text-[#2c5aa0] hover:bg-[#f2f3f5]"
-                >
-                  ＋ 「{trimmedQuery}」を新規タグとして追加
-                </button>
-              )}
-              {/* タグが追加済みの場合（＝新規追加でもなく検索結果にもない） */}
-              {filteredTags.length === 0 && !canCreateTag && (
-                <p className="px-3 py-2 text-xs text-[#adb2ba]">
-                  既に登録されているタグです
-                </p>
-              )}
+        <div className="relative" ref={pickerRef}>
+          <span
+            onClick={togglePicker}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white text-xs font-medium text-[#8a9099] border border-dashed border-black/20 cursor-pointer hover:bg-[#f9f9f9] whitespace-nowrap"
+          >
+            <Plus className="w-3 h-3 shrink-0" />
+            追加
+          </span>
+          {/* ポップーオーバー */}
+          {showPicker && (
+            <div className="absolute top-8 left-0 bg-white border border-black/10 rounded-lg shadow-lg z-10 w-56 overflow-hidden">
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canCreateTag) createPendingTag();
+                }}
+                placeholder="タグを検索"
+                className="w-full px-3 py-2 text-xs border-b border-black/10 outline-none"
+              />
+              <div className="max-h-48 overflow-y-auto py-1">
+                {/* クエリ検索結果表示 */}
+                {filteredTags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={() => addTag(tag.id)}
+                    className="block w-full text-left px-3 py-1.5 text-xs text-[#3a3d42] hover:bg-[#f2f3f5]"
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+                {/* 新規タグ追加 */}
+                {canCreateTag && (
+                  <button
+                    onClick={createPendingTag}
+                    className="block w-full text-left px-3 py-1.5 text-xs text-[#2c5aa0] hover:bg-[#f2f3f5]"
+                  >
+                    ＋ 「{trimmedQuery}」を新規タグとして追加
+                  </button>
+                )}
+                {/* タグが追加済みの場合（＝新規追加でもなく検索結果にもない） */}
+                {filteredTags.length === 0 && !canCreateTag && (
+                  <p className="px-3 py-2 text-xs text-[#adb2ba]">
+                    既に登録されているタグです
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
