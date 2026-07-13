@@ -41,8 +41,8 @@ export const CATEGORY_DEFAULT_COLOR: CategoryColorTheme = {
 }; // その他・未知のカテゴリ
 
 export const TAG_COLOR: TagColorTheme = {
-  bg: "bg-[#eef0f2]",
-  text: "text-[#5b6068]",
-  dot: "bg-[#8a9099]",
-  hoverBg: "hover:bg-[#e4e6e9]",
+  bg: "bg-gray-200",
+  text: "text-black",
+  dot: "bg-gray-500",
+  hoverBg: "hover:bg-gray-300",
 };
