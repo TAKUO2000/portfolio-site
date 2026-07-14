@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
 import TagSelect from "@/app/components/article-form/TagSelect";
-import type { Category, Tag } from "@/app/types/models";
+import type { Category, PendingImage, Tag } from "@/app/types/models";
 import CategorySelect from "../components/article-form/CategorySelect";
 import MarkdownEditor from "../components/article-form/MarkdownEditor";
 import NormalButton from "../components/ui/NormalButton";
 import TitleInput from "../components/article-form/TitleInput";
 import SummaryInput from "../components/article-form/SummaryInput";
+import HeaderImageInput from "../components/article-form/HeaderImageInput";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -27,6 +28,8 @@ export default function DevPage() {
   const [summary, setSummary] = useState<string>("");
 
   const [body, setBody] = useState(""); // MarkdownEditorの本文管理用
+
+  const [pendingHeader, setPendingHeader] = useState<PendingImage | null>();
 
   useEffect(() => {
     // 並列にカテゴリとタグを取得＆格納
@@ -133,6 +136,14 @@ export default function DevPage() {
           <section>
             <h2 className="text-lg font-bold mb-4">markdownEditer</h2>
             <MarkdownEditor body={body} setBody={setBody} />
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold mb-4">HeaderImageInput</h2>
+            <HeaderImageInput
+              pendingHeader={pendingHeader}
+              setPendingHeader={setPendingHeader}
+            />
           </section>
         </div>
       </section>

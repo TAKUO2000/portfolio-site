@@ -7,3 +7,10 @@ export interface Category {
   id: number;
   name: string;
 }
+
+export interface PendingImage {
+  blobUrl: string;
+  file: File;
+  uploadUrl: string;
+  imageUrl: string;
+}
