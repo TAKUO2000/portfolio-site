@@ -16,9 +16,13 @@ import CategorySelect from "@/app/components/article-form/CategorySelect";
 import TagSelect from "@/app/components/article-form/TagSelect";
 import MarkdownEditor from "@/app/components/article-form/MarkdownEditor";
 import NormalButton from "@/app/components/ui/NormalButton";
+import type { PendingImage } from "@/app/types/models";
+import HeaderImageInput from "@/app/components/article-form/HeaderImageInput";
 
 export default function NewArticlePage() {
   const router = useRouter();
+
+  const [pendingHeader, setPendingHeader] = useState<PendingImage | null>(null);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCatgoryId, setSelectedCatgoryId] = useState<number | null>(
@@ -107,6 +111,10 @@ export default function NewArticlePage() {
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-12 bg-gray-50">
       <h1 className="text-2xl font-bold">記事投稿</h1>
 
+      <HeaderImageInput
+        pendingHeader={pendingHeader}
+        setPendingHeader={setPendingHeader}
+      />
       <div className="flex gap-2">
         <CategorySelect
           categories={categories}

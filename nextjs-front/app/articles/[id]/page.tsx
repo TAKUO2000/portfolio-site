@@ -65,8 +65,8 @@ export default async function ArticlePage({
                 src={headerImage.url}
                 alt={article.title}
                 width={1200}
-                height={630}
-                className="h-80 w-auto mb-6 rounded mx-auto block"
+                height={800}
+                className="h-80 max-w-120 object-cover object-center mb-6 mx-auto block"
                 loading="eager"
               />
             )}

@@ -11,8 +11,7 @@ import NormalButton from "../components/ui/NormalButton";
 import TitleInput from "../components/article-form/TitleInput";
 import SummaryInput from "../components/article-form/SummaryInput";
 import HeaderImageInput from "../components/article-form/HeaderImageInput";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+import { API_BASE_URL } from "../auth/authClient";
 
 export default function DevPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -29,7 +28,7 @@ export default function DevPage() {
 
   const [body, setBody] = useState(""); // MarkdownEditorの本文管理用
 
-  const [pendingHeader, setPendingHeader] = useState<PendingImage | null>();
+  const [pendingHeader, setPendingHeader] = useState<PendingImage | null>(null);
 
   useEffect(() => {
     // 並列にカテゴリとタグを取得＆格納
@@ -139,7 +138,9 @@ export default function DevPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-bold mb-4">HeaderImageInput</h2>
+            <h2 className="text-lg font-bold mb-4">
+              HeaderImageInput（認証必須）
+            </h2>
             <HeaderImageInput
               pendingHeader={pendingHeader}
               setPendingHeader={setPendingHeader}

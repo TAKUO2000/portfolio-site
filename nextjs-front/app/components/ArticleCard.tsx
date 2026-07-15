@@ -20,10 +20,10 @@ export default function ArticleCard({
   return (
     <a
       href={href}
-      className="group grid gap-5 transition-opacity hover:opacity-80 md:grid-cols-[288px_1fr] md:gap-8"
+      className="group grid grid-cols-1 gap-5 transition-opacity hover:opacity-80 md:grid-cols-[288px_1fr] md:gap-8"
     >
       <article className="contents">
-        <div className="relative aspect-16/10 w-full bg-black md:aspect-auto md:h-45.5">
+        <div className="relative aspect-3/2 w-full bg-black md:aspect-auto md:h-50 md:w-75">
           {image && (
             <Image
               src={image}

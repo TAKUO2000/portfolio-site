@@ -20,7 +20,10 @@ interface Article {
   summary: string;
   header_image: string;
   published_at: string;
-  user: { id: number; name: string }; //idは著者ページに飛ぶ際に使用予定現在は不要だけど取得してます
+  user: {
+    id: number;
+    name: string;
+  }; /** idは著者ページに飛ぶ際に使用予定現在は不要だけど取得してます*/
   category: Category;
   tags: Tag[];
   like_count: number;
@@ -67,7 +70,7 @@ export default async function ArticlesListPage({
   return (
     <>
       <Header />
-      <main className="h-auto w-5xl mx-auto px-4 py-8">
+      <main className="h-auto w-full max-w-5xl mx-auto px-4 py-8">
         {articles.map((article, index) => (
           <div key={`${article.title}-${index}`}>
             {index !== 0 && <hr className="my-8 border-gray" />}

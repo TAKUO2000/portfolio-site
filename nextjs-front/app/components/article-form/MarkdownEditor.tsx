@@ -138,7 +138,7 @@ export default function MarkdownEditor({ body, setBody }: MarkdownEditorProps) {
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Markdownで本文を入力してください..."
-              className="min-h-74 w-full resize-y bg-transparent px-5 py-4.5 font-mono text-[13px] leading-[1.9] text-[#2b2f36] outline-none"
+              className="min-h-100 w-full field-sizing-content resize-none bg-transparent px-5 py-4.5 font-mono text-[13px] leading-[1.9] text-[#2b2f36] outline-none"
             />
           </>
         ) : (
@@ -208,7 +208,14 @@ function LinkIcon() {
         stroke="#5b6068"
         strokeWidth="1.4"
       />
-      <line x1="6.2" y1="9.8" x2="9.8" y2="6.2" stroke="#5b6068" strokeWidth="1.4" />
+      <line
+        x1="6.2"
+        y1="9.8"
+        x2="9.8"
+        y2="6.2"
+        stroke="#5b6068"
+        strokeWidth="1.4"
+      />
     </svg>
   );
 }

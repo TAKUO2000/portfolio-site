@@ -101,24 +101,24 @@ export default function HeaderImageInput({
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1  ">
       <p className="text-sm font-medium text-gray-700">ヘッダー画像</p>
 
       <input
         ref={fileInputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
-        className="hidden"
+        className="hidden "
         onChange={handleFileInputChange}
       />
 
       {pendingHeader ? (
-        <div className="relative overflow-hidden rounded-lg border border-gray-300">
+        <div className="relative mx-auto max-w-120 overflow-hidden rounded-lg border border-gray-300 bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={pendingHeader.blobUrl}
             alt="ヘッダー画像プレビュー"
-            className="h-48 w-full object-cover"
+            className="h-60 max-w-120 object-cover object-center mx-auto block"
           />
           <button
             type="button"
@@ -137,10 +137,10 @@ export default function HeaderImageInput({
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`flex h-48 cursor-pointer items-center justify-center rounded-lg border border-dashed text-sm text-gray-400 transition-colors ${
+          className={`flex mx-auto h-80 w-120 cursor-pointer items-center justify-center rounded-lg border border-dashed text-sm text-gray-400 transition-colors bg-white ${
             isDragging
-              ? "border-blue-400 bg-blue-50"
-              : "border-gray-300 hover:bg-gray-50"
+              ? "border-blue-400 bg-blue-200"
+              : "border-gray-500 hover:bg-gray-200"
           }`}
         >
           {isUploading
