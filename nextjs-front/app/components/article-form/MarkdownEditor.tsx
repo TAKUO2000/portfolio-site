@@ -1,16 +1,112 @@
 "use client";
 
 import { useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import type { ClipboardEvent } from "react";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import {
+  API_BASE_URL,
+  getApiErrorMessage,
+  getCsrfToken,
+} from "@/app/auth/authClient";
+import type { PendingImage } from "@/app/types/models";
+
+// react-markdownはデフォルトでblob:スキームのURLを安全なプロトコル一覧から除外し空文字にしてしまうため、
+// 貼り付け画像のプレビュー用blob URLだけ例外的に許可する
+function previewUrlTransform(url: string) {
+  return url.startsWith("blob:") ? url : defaultUrlTransform(url);
+}
 
 interface MarkdownEditorProps {
   body: string;
   setBody: (body: string) => void;
+  pendingImage: PendingImage | null;
+  setPendingImage: (image: PendingImage | null) => void;
 }
 
-export default function MarkdownEditor({ body, setBody }: MarkdownEditorProps) {
+export default function MarkdownEditor({
+  body,
+  setBody,
+  pendingImage,
+  setPendingImage,
+}: MarkdownEditorProps) {
   const [activeTab, setActiveTab] = useState<"write" | "preview">("write");
+  const [errorMessage, setErrorMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Ctrl+V(貼り付け)で画像が来たら、貼り付け位置にblobプレビューを即挿入しつつ
+  // S3署名付きURLだけ先に取得してキャッシュしておく（実際のPUTは送信時にpage.tsx側で行う想定）
+  async function handlePasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const imageItem = Array.from(e.clipboardData.items).find((item) =>
+      item.type.startsWith("image/"),
+    );
+    if (!imageItem) return;
+
+    const file = imageItem.getAsFile();
+    const ta = textareaRef.current;
+    if (!file || !ta) return;
+
+    e.preventDefault();
+    setErrorMessage("");
+
+    if (pendingImage) URL.revokeObjectURL(pendingImage.blobUrl);
+
+    const blobUrl = URL.createObjectURL(file);
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const markdownImage = `![penddingImage](${blobUrl})`;
+    const newText = body.slice(0, start) + markdownImage + body.slice(end);
+    setBody(newText);
+    setTimeout(() => {
+      ta.focus();
+      const newCursor = start + markdownImage.length;
+      ta.setSelectionRange(newCursor, newCursor);
+    }, 0);
+
+    try {
+      const ext = file.type.split("/")[1] ?? "png";
+      const xsrfToken = await getCsrfToken();
+      const response = await fetch(`${API_BASE_URL}/api/images/upload-url`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-XSRF-TOKEN": xsrfToken,
+        },
+        body: JSON.stringify({
+          file_name: `paste-${Date.now()}.${ext}`,
+          media_type: file.type,
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setErrorMessage(
+          getApiErrorMessage(
+            response.status,
+            data,
+            "アップロードURLの取得に失敗しました。",
+          ),
+        );
+        return;
+      }
+
+      setPendingImage({
+        blobUrl,
+        file,
+        uploadUrl: data.upload_url,
+        imageUrl: data.image_url,
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "アップロード準備中にエラーが発生しました。",
+      );
+    }
+  }
 
   // ツールバーのボタン押下時、選択範囲をprefix/suffixで挟んで挿入する
   function insertMarkdown(prefix: string, suffix = "") {
@@ -137,14 +233,20 @@ export default function MarkdownEditor({ body, setBody }: MarkdownEditorProps) {
               ref={textareaRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onPaste={handlePasteImage}
               placeholder="Markdownで本文を入力してください..."
               className="min-h-100 w-full field-sizing-content resize-none bg-transparent px-5 py-4.5 font-mono text-[13px] leading-[1.9] text-[#2b2f36] outline-none"
             />
+            {errorMessage && (
+              <p className="px-5 pb-3 text-xs text-red-600">{errorMessage}</p>
+            )}
           </>
         ) : (
           <div className="prose prose-neutral min-h-74 max-w-none px-5 py-4.5 [&_ul>li::marker]:text-black">
             {body ? (
-              <ReactMarkdown>{body}</ReactMarkdown>
+              <ReactMarkdown urlTransform={previewUrlTransform}>
+                {body}
+              </ReactMarkdown>
             ) : (
               <p className="text-sm text-[#adb2ba]">
                 プレビューするコンテンツがありません。

@@ -113,12 +113,12 @@ export default function HeaderImageInput({
       />
 
       {pendingHeader ? (
-        <div className="relative mx-auto max-w-120 overflow-hidden rounded-lg border border-gray-300 bg-white">
+        <div className="relative mx-auto max-w-90 overflow-hidden rounded-lg border border-gray-300 bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={pendingHeader.blobUrl}
             alt="ヘッダー画像プレビュー"
-            className="h-60 max-w-120 object-cover object-center mx-auto block"
+            className="h-60 max-w-90 object-cover object-center mx-auto block"
           />
           <button
             type="button"
@@ -137,7 +137,7 @@ export default function HeaderImageInput({
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`flex mx-auto h-80 w-120 cursor-pointer items-center justify-center rounded-lg border border-dashed text-sm text-gray-400 transition-colors bg-white ${
+          className={`flex mx-auto h-60 w-90 cursor-pointer items-center justify-center rounded-lg border border-dashed text-sm text-gray-400 transition-colors bg-white ${
             isDragging
               ? "border-blue-400 bg-blue-200"
               : "border-gray-500 hover:bg-gray-200"

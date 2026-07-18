@@ -28,7 +28,9 @@ export default function DevPage() {
 
   const [body, setBody] = useState(""); // MarkdownEditorの本文管理用
 
-  const [pendingHeader, setPendingHeader] = useState<PendingImage | null>(null);
+  const [pendingHeaderImage, setPendingHeaderImage] =
+    useState<PendingImage | null>(null); // header画像キャッシュ用
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null); // header画像キャッシュ用
 
   useEffect(() => {
     // 並列にカテゴリとタグを取得＆格納
@@ -134,7 +136,12 @@ export default function DevPage() {
 
           <section>
             <h2 className="text-lg font-bold mb-4">markdownEditer</h2>
-            <MarkdownEditor body={body} setBody={setBody} />
+            <MarkdownEditor
+              body={body}
+              setBody={setBody}
+              pendingImage={pendingImage}
+              setPendingImage={setPendingImage}
+            />
           </section>
 
           <section>
@@ -142,8 +149,8 @@ export default function DevPage() {
               HeaderImageInput（認証必須）
             </h2>
             <HeaderImageInput
-              pendingHeader={pendingHeader}
-              setPendingHeader={setPendingHeader}
+              pendingHeader={pendingHeaderImage}
+              setPendingHeader={setPendingHeaderImage}
             />
           </section>
         </div>
