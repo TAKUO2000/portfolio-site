@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { ClipboardEvent } from "react";
+import type { ChangeEvent, ClipboardEvent } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import {
   API_BASE_URL,
@@ -32,26 +32,21 @@ export default function MarkdownEditor({
   const [activeTab, setActiveTab] = useState<"write" | "preview">("write");
   const [errorMessage, setErrorMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Ctrl+V(貼り付け)で画像が来たら、貼り付け位置にblobプレビューを即挿入しつつ
+  // 画像ファイルを貼り付け位置にblobプレビューとして即挿入しつつ、
   // S3署名付きURLだけ先に取得してキャッシュしておく（実際のPUTは送信時にpage.tsx側で行う想定）
-  async function handlePasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
-    const imageItem = Array.from(e.clipboardData.items).find((item) =>
-      item.type.startsWith("image/"),
-    );
-    if (!imageItem) return;
-
-    const file = imageItem.getAsFile();
+  async function cacheImage(file: File) {
     const ta = textareaRef.current;
-    if (!file || !ta) return;
+    if (!file.type.startsWith("image/") || !ta) return;
 
-    e.preventDefault();
     setErrorMessage("");
 
     const blobUrl = URL.createObjectURL(file);
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
-    const markdownImage = `![pendingImage](${blobUrl})`;
+    const altText = file.name.split(".")[0] || "image";
+    const markdownImage = `![${altText}](${blobUrl})`;
     const newText = body.slice(0, start) + markdownImage + body.slice(end);
     setBody(newText);
     setTimeout(() => {
@@ -107,6 +102,32 @@ export default function MarkdownEditor({
           : "アップロード準備中にエラーが発生しました。",
       );
     }
+  }
+
+  // Ctrl+V(貼り付け)で画像が来たら、標準の貼り付け動作を止めてcacheImageに渡す
+  function handlePasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const imageItem = Array.from(e.clipboardData.items).find((item) =>
+      item.type.startsWith("image/"),
+    );
+    if (!imageItem) return;
+
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    e.preventDefault();
+    cacheImage(file);
+  }
+
+  // ツールバーの画像ボタン押下時、隠しinputのファイル選択ダイアログを開く
+  function handleImageButtonClick() {
+    imageFileInputRef.current?.click();
+  }
+
+  // ファイル選択ダイアログで画像が選ばれたら、貼り付けと同じ処理をする
+  function handleImageFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 同じファイルを連続で選んでもchangeが発火するようにリセット
+    if (file) cacheImage(file);
   }
 
   // ツールバーのボタン押下時、選択範囲をprefix/suffixで挟んで挿入する
@@ -220,7 +241,7 @@ export default function MarkdownEditor({
               >
                 <ListIcon />
               </ToolbarButton>
-              <ToolbarButton title="画像">
+              <ToolbarButton title="画像" onClick={handleImageButtonClick}>
                 <ImageIcon />
               </ToolbarButton>
 
@@ -229,14 +250,24 @@ export default function MarkdownEditor({
               </span>
             </div>
 
+            <input
+              ref={imageFileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={handleImageFileChange}
+            />
+
             {/* 入力欄 */}
             <textarea
               ref={textareaRef}
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={(e) => {
+                setBody(e.target.value);
+              }}
               onPaste={handlePasteImage}
               placeholder="Markdownで本文を入力してください..."
-              className="min-h-100 w-full field-sizing-content resize-none bg-transparent px-5 py-4.5 font-mono text-[13px] leading-[1.9] text-[#2b2f36] outline-none"
+              className="min-h-100 w-full resize-none overflow-hidden bg-transparent px-5 py-4.5 font-mono text-[13px] leading-[1.9] text-[#2b2f36] outline-none [font-variant-ligatures:none] font-features-['liga'_0,'calt'_0]"
             />
             {errorMessage && (
               <p className="px-5 pb-3 text-xs text-red-600">{errorMessage}</p>
@@ -262,7 +293,7 @@ export default function MarkdownEditor({
             <ListLinesIcon />
             Markdownがサポートされています
           </span>
-          <span>画像はドラッグ＆ドロップで添付</span>
+          <span>画像はドラッグ＆ドロップもしくはctrl+Vで添付</span>
         </div>
       </div>
     </div>
