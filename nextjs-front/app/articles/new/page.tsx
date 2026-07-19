@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useReducer } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -23,6 +23,7 @@ export default function NewArticlePage() {
   const router = useRouter();
 
   const [pendingHeader, setPendingHeader] = useState<PendingImage | null>(null);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]); // 本文への貼り付け画像キャッシュ用（複数可）
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCatgoryId, setSelectedCatgoryId] = useState<number | null>(
@@ -31,7 +32,7 @@ export default function NewArticlePage() {
 
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
-  const [pendingTags, setPendingTags] = useState<string[]>([]); // ※新規タグ作成は未対応のため送信時は無視
+  const [pendingTags, setPendingTags] = useState<string[]>([]); // ※新規タグ作成はBE未対応のため送信時は無視
 
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
@@ -62,6 +63,45 @@ export default function NewArticlePage() {
 
     setIsSubmitting(true);
     try {
+      // 本文中に残っているblobプレビュー分だけS3へ実アップロードしてURLを差し替える
+      // （本文から削除された貼り付け画像はアップロードしない）
+      const usedImages = pendingImages.filter((img) =>
+        body.includes(img.blobUrl),
+      );
+
+      await Promise.all(
+        usedImages.map(async (img) => {
+          const uploadRes = await fetch(img.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": img.file.type },
+            body: img.file,
+          });
+          if (!uploadRes.ok) {
+            throw new Error("本文の画像アップロードに失敗しました。");
+          }
+        }),
+      );
+
+      let finalBody = body;
+      for (const img of usedImages) {
+        finalBody = finalBody.replaceAll(img.blobUrl, img.imageUrl);
+      }
+      const bodyImageUrls = usedImages.map((img) => img.imageUrl);
+
+      // ヘッダー画像も同様にS3へ実アップロード
+      let headerImageUrl: string | undefined;
+      if (pendingHeader) {
+        const uploadRes = await fetch(pendingHeader.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": pendingHeader.file.type },
+          body: pendingHeader.file,
+        });
+        if (!uploadRes.ok) {
+          throw new Error("ヘッダー画像のアップロードに失敗しました。");
+        }
+        headerImageUrl = pendingHeader.imageUrl;
+      }
+
       const xsrfToken = await getCsrfToken();
       const response = await fetch(`${API_BASE_URL}/api/articles`, {
         method: "POST",
@@ -76,9 +116,13 @@ export default function NewArticlePage() {
           category_id: selectedCatgoryId,
           title,
           summary,
-          body,
+          body: finalBody,
           status,
           tags: selectedTagIds,
+          ...(headerImageUrl ? { header_image_url: headerImageUrl } : {}),
+          ...(bodyImageUrls.length > 0
+            ? { body_image_urls: bodyImageUrls }
+            : {}),
         }),
       });
 
@@ -94,6 +138,9 @@ export default function NewArticlePage() {
         );
         return;
       }
+
+      pendingImages.forEach((img) => URL.revokeObjectURL(img.blobUrl));
+      if (pendingHeader) URL.revokeObjectURL(pendingHeader.blobUrl);
 
       router.push(`/articles/${responseBody.id}`);
     } catch (error) {
@@ -132,7 +179,12 @@ export default function NewArticlePage() {
 
       <TitleInput title={title} setTitle={setTitle} />
       <SummaryInput summary={summary} setSummary={setSummary} />
-      <MarkdownEditor body={body} setBody={setBody} />
+      <MarkdownEditor
+        body={body}
+        setBody={setBody}
+        pendingImages={pendingImages}
+        setPendingImages={setPendingImages}
+      />
 
       {errorMessage && (
         <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

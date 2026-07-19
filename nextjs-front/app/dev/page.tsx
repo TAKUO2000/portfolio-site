@@ -30,7 +30,7 @@ export default function DevPage() {
 
   const [pendingHeaderImage, setPendingHeaderImage] =
     useState<PendingImage | null>(null); // header画像キャッシュ用
-  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null); // header画像キャッシュ用
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]); // 本文への貼り付け画像キャッシュ用（複数可）
 
   useEffect(() => {
     // 並列にカテゴリとタグを取得＆格納
@@ -139,8 +139,8 @@ export default function DevPage() {
             <MarkdownEditor
               body={body}
               setBody={setBody}
-              pendingImage={pendingImage}
-              setPendingImage={setPendingImage}
+              pendingImages={pendingImages}
+              setPendingImages={setPendingImages}
             />
           </section>
 

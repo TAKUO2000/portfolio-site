@@ -19,15 +19,15 @@ function previewUrlTransform(url: string) {
 interface MarkdownEditorProps {
   body: string;
   setBody: (body: string) => void;
-  pendingImage: PendingImage | null;
-  setPendingImage: (image: PendingImage | null) => void;
+  pendingImages: PendingImage[];
+  setPendingImages: (images: PendingImage[]) => void;
 }
 
 export default function MarkdownEditor({
   body,
   setBody,
-  pendingImage,
-  setPendingImage,
+  pendingImages,
+  setPendingImages,
 }: MarkdownEditorProps) {
   const [activeTab, setActiveTab] = useState<"write" | "preview">("write");
   const [errorMessage, setErrorMessage] = useState("");
@@ -48,12 +48,10 @@ export default function MarkdownEditor({
     e.preventDefault();
     setErrorMessage("");
 
-    if (pendingImage) URL.revokeObjectURL(pendingImage.blobUrl);
-
     const blobUrl = URL.createObjectURL(file);
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
-    const markdownImage = `![penddingImage](${blobUrl})`;
+    const markdownImage = `![pendingImage](${blobUrl})`;
     const newText = body.slice(0, start) + markdownImage + body.slice(end);
     setBody(newText);
     setTimeout(() => {
@@ -93,12 +91,15 @@ export default function MarkdownEditor({
         return;
       }
 
-      setPendingImage({
-        blobUrl,
-        file,
-        uploadUrl: data.upload_url,
-        imageUrl: data.image_url,
-      });
+      setPendingImages([
+        ...pendingImages,
+        {
+          blobUrl,
+          file,
+          uploadUrl: data.upload_url,
+          imageUrl: data.image_url,
+        },
+      ]);
     } catch (error) {
       setErrorMessage(
         error instanceof Error
