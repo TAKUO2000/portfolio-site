@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useReducer } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
   API_BASE_URL,
-  getApiErrorMessage,
+  getApiErrorMessages,
   getCsrfToken,
 } from "@/app/auth/authClient";
 import type { Category, Tag } from "@/app/types/models";
@@ -32,14 +32,14 @@ export default function NewArticlePage() {
 
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
-  const [pendingTags, setPendingTags] = useState<string[]>([]); // ※新規タグ作成はBE未対応のため送信時は無視
+  const [pendingTags, setPendingTags] = useState<string[]>([]);
 
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [body, setBody] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorMessages, setErrorMessages] = useState<string[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -54,10 +54,17 @@ export default function NewArticlePage() {
 
   async function handleSubmit(status: "draft" | "published") {
     if (isSubmitting) return;
-    setErrorMessage("");
+    setErrorMessages([]);
 
-    if (!selectedCatgoryId) {
-      setErrorMessage("カテゴリを選択してください。");
+    const errors = validateArticleForm({
+      selectedCatgoryId,
+      title,
+      summary,
+      body,
+      pendingHeader,
+    });
+    setErrorMessages(errors);
+    if (errors.length > 0) {
       return;
     }
 
@@ -129,8 +136,8 @@ export default function NewArticlePage() {
       const responseBody = await response.json().catch(() => null);
 
       if (!response.ok) {
-        setErrorMessage(
-          getApiErrorMessage(
+        setErrorMessages(
+          getApiErrorMessages(
             response.status,
             responseBody,
             "記事の保存に失敗しました。",
@@ -144,11 +151,11 @@ export default function NewArticlePage() {
 
       router.push(`/articles/${responseBody.id}`);
     } catch (error) {
-      setErrorMessage(
+      setErrorMessages([
         error instanceof Error
           ? error.message
           : "記事の保存中にエラーが発生しました。",
-      );
+      ]);
     } finally {
       setIsSubmitting(false);
     }
@@ -186,10 +193,17 @@ export default function NewArticlePage() {
         setPendingImages={setPendingImages}
       />
 
-      {errorMessage && (
-        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {errorMessage}
-        </p>
+      {errorMessages.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {errorMessages.map((error, index) => (
+            <p
+              key={index}
+              className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            >
+              {error}
+            </p>
+          ))}
+        </div>
       )}
 
       <div className="flex justify-end gap-3">
@@ -205,4 +219,27 @@ export default function NewArticlePage() {
       </div>
     </main>
   );
+}
+
+function validateArticleForm({
+  selectedCatgoryId,
+  title,
+  summary,
+  body,
+  pendingHeader,
+}: {
+  selectedCatgoryId: number | null;
+  title: string;
+  summary: string;
+  body: string;
+  pendingHeader: PendingImage | null;
+}): string[] {
+  const errors: string[] = [];
+  if (!selectedCatgoryId) errors.push("カテゴリを選択してください。");
+  if (title === "") errors.push("タイトルを入力してください");
+  else if (title.length > 255) errors.push("タイトルは255文字以内で入力してください");
+  if (summary === "") errors.push("概要を入力してください");
+  if (body === "") errors.push("本文を入力してください");
+  if (!pendingHeader) errors.push("ヘッダー画像を選択してください。");
+  return errors;
 }

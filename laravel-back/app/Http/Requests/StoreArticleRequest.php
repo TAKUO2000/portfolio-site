@@ -21,9 +21,9 @@ class StoreArticleRequest extends FormRequest
             'status'      => ['required', 'in:draft,published'],
             'tags'             => ['nullable', 'array'],
             'tags.*'           => ['integer', 'exists:tags,id'],
-            'header_image_url' => ['nullable', 'string', 'url'],
+            'header_image_url' => ['nullable', 'string', 'url', 'max:2048'],
             'body_image_urls' => ['nullable', 'array'],
-            'body_image_urls.*' => ['string', 'url'],
+            'body_image_urls.*' => ['string', 'url', 'max:2048'],
         ];
     }
 }

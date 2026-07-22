@@ -39,11 +39,11 @@ export async function getCsrfToken(): Promise<string> {
   return xsrfToken;
 }
 
-export function getApiErrorMessage(
+export function getApiErrorMessages( // バックエンドからの複数のerrorが配列で返却
   status: number,
   response: unknown,
   fallbackMessage: string,
-): string {
+): string[] {
   if (
     response &&
     typeof response === "object" &&
@@ -52,10 +52,10 @@ export function getApiErrorMessage(
     typeof response.errors === "object"
   ) {
     const errors = response.errors as ValidationErrors;
-    const firstError = Object.values(errors)[0]?.[0];
+    const messages = Object.values(errors).flat();
 
-    if (firstError) {
-      return firstError;
+    if (messages.length > 0) {
+      return messages;
     }
   }
 
@@ -65,12 +65,22 @@ export function getApiErrorMessage(
     "message" in response &&
     typeof response.message === "string"
   ) {
-    return response.message;
+    return [response.message];
   }
 
   if (status === 419) {
-    return "セッションの確認に失敗しました。ページを再読み込みしてもう一度お試しください。";
+    return [
+      "セッションの確認に失敗しました。ページを再読み込みしてもう一度お試しください。",
+    ];
   }
 
-  return fallbackMessage;
+  return [fallbackMessage];
+}
+
+export function getApiErrorMessage(
+  status: number,
+  response: unknown,
+  fallbackMessage: string,
+): string {
+  return getApiErrorMessages(status, response, fallbackMessage)[0];
 }
