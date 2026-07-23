@@ -126,6 +126,7 @@ export default function NewArticlePage() {
           body: finalBody,
           status,
           tags: selectedTagIds,
+          ...(pendingTags.length > 0 ? { new_tags: pendingTags } : {}),
           ...(headerImageUrl ? { header_image_url: headerImageUrl } : {}),
           ...(bodyImageUrls.length > 0
             ? { body_image_urls: bodyImageUrls }

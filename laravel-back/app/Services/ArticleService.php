@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Article;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,8 +22,16 @@ class ArticleService
             'published_at' => $data['status'] === 'published' ? Carbon::now() : null,
         ]);
 
-        if (!empty($data['tags'])) {
-            $article->tags()->sync($data['tags']);
+        $tagIds = $data['tags'] ?? [];
+
+        if (!empty($data['new_tags'])) {
+            foreach ($data['new_tags'] as $name) {
+                $tagIds[] = Tag::firstOrCreate(['name' => $name])->id;
+            }
+        }
+
+        if (!empty($tagIds)) {
+            $article->tags()->sync($tagIds);
         }
 
         if (!empty($data['header_image_url'])) {
