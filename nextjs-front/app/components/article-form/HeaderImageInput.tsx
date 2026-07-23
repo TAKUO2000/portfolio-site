@@ -2,11 +2,6 @@
 
 import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
-import {
-  API_BASE_URL,
-  getApiErrorMessage,
-  getCsrfToken,
-} from "@/app/auth/authClient";
 import type { PendingImage } from "@/app/types/models";
 import {
   MAX_IMAGE_FILE_SIZE_BYTES,
@@ -24,12 +19,12 @@ export default function HeaderImageInput({
 }: HeaderImageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // 選択されたファイルをS3の署名付きURL発行APIに渡し、blobプレビューとして一旦キャッシュする
-  // 実際のS3への PUT は送信ボタン押下時（page.tsx側）で行う想定
-  async function cacheHeaderImage(file: File) {
+  // 選択されたファイルをblobプレビューとしてキャッシュする。
+  // S3署名付きURLの取得と実際のPUTは送信ボタン押下時（page.tsx側）にまとめて行う
+  // （早い段階で取得すると、フォーム入力が長引いた場合に署名付きURLの有効期限切れで失敗するため）
+  function cacheHeaderImage(file: File) {
     if (!file.type.startsWith("image/")) {
       setErrorMessage("画像ファイルを選択してください。");
       return;
@@ -45,53 +40,8 @@ export default function HeaderImageInput({
     if (pendingHeader) URL.revokeObjectURL(pendingHeader.blobUrl);
 
     const blobUrl = URL.createObjectURL(file);
-    setIsUploading(true);
     setErrorMessage("");
-
-    try {
-      const xsrfToken = await getCsrfToken();
-      const response = await fetch(`${API_BASE_URL}/api/images/upload-url`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-XSRF-TOKEN": xsrfToken,
-        },
-        body: JSON.stringify({ file_name: file.name, media_type: file.type }),
-      });
-
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setErrorMessage(
-          getApiErrorMessage(
-            response.status,
-            data,
-            "アップロードURLの取得に失敗しました。",
-          ),
-        );
-        URL.revokeObjectURL(blobUrl);
-        return;
-      }
-
-      setPendingHeader({
-        blobUrl,
-        file,
-        uploadUrl: data.upload_url,
-        imageUrl: data.image_url,
-      });
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "アップロード準備中にエラーが発生しました。",
-      );
-      URL.revokeObjectURL(blobUrl);
-    } finally {
-      setIsUploading(false);
-    }
+    setPendingHeader({ blobUrl, file });
   }
 
   function handleFileInputChange(e: ChangeEvent<HTMLInputElement>) {
@@ -154,9 +104,7 @@ export default function HeaderImageInput({
               : "border-gray-500 hover:bg-gray-200"
           }`}
         >
-          {isUploading
-            ? "アップロード準備中..."
-            : "クリックまたはドラッグ&ドロップで画像を選択"}
+          クリックまたはドラッグ&ドロップで画像を選択
         </div>
       )}
 

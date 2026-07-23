@@ -18,6 +18,4 @@ export interface Category {
 export interface PendingImage {
   blobUrl: string;
   file: File;
-  uploadUrl: string;
-  imageUrl: string;
 }

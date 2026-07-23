@@ -5,11 +5,6 @@ import type { ChangeEvent, ClipboardEvent } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
-import {
-  API_BASE_URL,
-  getApiErrorMessage,
-  getCsrfToken,
-} from "@/app/auth/authClient";
 import type { PendingImage } from "@/app/types/models";
 import { markdownSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
 import {
@@ -41,9 +36,10 @@ export default function MarkdownEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
 
-  // 画像ファイルを貼り付け位置にblobプレビューとして即挿入しつつ、
-  // S3署名付きURLだけ先に取得してキャッシュしておく（実際のPUTは送信時にpage.tsx側で行う想定）
-  async function cacheImage(file: File) {
+  // 画像ファイルを貼り付け位置にblobプレビューとして即挿入し、キャッシュしておく。
+  // S3署名付きURLの取得と実際のPUTは送信時にpage.tsx側でまとめて行う
+  // （早い段階で取得すると、フォーム入力が長引いた場合に署名付きURLの有効期限切れで失敗するため）
+  function cacheImage(file: File) {
     const ta = textareaRef.current;
     if (!file.type.startsWith("image/") || !ta) return;
 
@@ -69,53 +65,7 @@ export default function MarkdownEditor({
       ta.setSelectionRange(newCursor, newCursor);
     }, 0);
 
-    try {
-      const ext = file.type.split("/")[1] ?? "png";
-      const xsrfToken = await getCsrfToken();
-      const response = await fetch(`${API_BASE_URL}/api/images/upload-url`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-XSRF-TOKEN": xsrfToken,
-        },
-        body: JSON.stringify({
-          file_name: `paste-${Date.now()}.${ext}`,
-          media_type: file.type,
-        }),
-      });
-
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setErrorMessage(
-          getApiErrorMessage(
-            response.status,
-            data,
-            "アップロードURLの取得に失敗しました。",
-          ),
-        );
-        return;
-      }
-
-      setPendingImages([
-        ...pendingImages,
-        {
-          blobUrl,
-          file,
-          uploadUrl: data.upload_url,
-          imageUrl: data.image_url,
-        },
-      ]);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "アップロード準備中にエラーが発生しました。",
-      );
-    }
+    setPendingImages([...pendingImages, { blobUrl, file }]);
   }
 
   // Ctrl+V(貼り付け)で画像が来たら、標準の貼り付け動作を止めてcacheImageに渡す

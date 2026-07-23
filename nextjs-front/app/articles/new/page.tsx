@@ -19,6 +19,7 @@ import MarkdownEditor from "@/app/components/article-form/MarkdownEditor";
 import NormalButton from "@/app/components/ui/NormalButton";
 import type { PendingImage } from "@/app/types/models";
 import HeaderImageInput from "@/app/components/article-form/HeaderImageInput";
+import { uploadImageToS3 } from "@/app/lib/uploadImage";
 
 export default function NewArticlePage() {
   const router = useRouter();
@@ -108,43 +109,29 @@ export default function NewArticlePage() {
 
     setIsSubmitting(true);
     try {
-      // 本文中に残っているblobプレビュー分だけS3へ実アップロードしてURLを差し替える
+      // 本文中に残っているblobプレビュー分だけ、送信時点で署名付きURLを取得してS3へアップロードする
       // （本文から削除された貼り付け画像はアップロードしない）
       const usedImages = pendingImages.filter((img) =>
         body.includes(img.blobUrl),
       );
 
-      await Promise.all(
-        usedImages.map(async (img) => {
-          const uploadRes = await fetch(img.uploadUrl, {
-            method: "PUT",
-            headers: { "Content-Type": img.file.type },
-            body: img.file,
-          });
-          if (!uploadRes.ok) {
-            throw new Error("本文の画像アップロードに失敗しました。");
-          }
-        }),
+      const uploadedImages = await Promise.all(
+        usedImages.map(async (img) => ({
+          blobUrl: img.blobUrl,
+          imageUrl: await uploadImageToS3(img.file),
+        })),
       );
 
       let finalBody = body;
-      for (const img of usedImages) {
+      for (const img of uploadedImages) {
         finalBody = finalBody.replaceAll(img.blobUrl, img.imageUrl);
       }
-      const bodyImageUrls = usedImages.map((img) => img.imageUrl);
+      const bodyImageUrls = uploadedImages.map((img) => img.imageUrl);
 
-      // ヘッダー画像も同様にS3へ実アップロード
+      // ヘッダー画像も同様に送信時点でアップロード
       let headerImageUrl: string | undefined;
       if (pendingHeader) {
-        const uploadRes = await fetch(pendingHeader.uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": pendingHeader.file.type },
-          body: pendingHeader.file,
-        });
-        if (!uploadRes.ok) {
-          throw new Error("ヘッダー画像のアップロードに失敗しました。");
-        }
-        headerImageUrl = pendingHeader.imageUrl;
+        headerImageUrl = await uploadImageToS3(pendingHeader.file);
       }
 
       const xsrfToken = await getCsrfToken();
