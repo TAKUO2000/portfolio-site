@@ -1,5 +1,7 @@
 "use client";
 
+import type { User } from "@/app/types/models";
+
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -15,6 +17,26 @@ function getCookie(name: string): string | null {
   }
 
   return decodeURIComponent(cookie.split("=")[1]);
+}
+
+export async function getCurrentUser(): Promise<User | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/user`, {
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return (await response.json()) as User;
+  } catch {
+    return null;
+  }
 }
 
 export async function getCsrfToken(): Promise<string> {

@@ -3,6 +3,13 @@ export interface Tag {
   name: string;
 }
 
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: "admin" | "user";
+}
+
 export interface Category {
   id: number;
   name: string;

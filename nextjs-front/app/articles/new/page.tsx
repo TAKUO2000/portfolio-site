@@ -7,6 +7,7 @@ import {
   API_BASE_URL,
   getApiErrorMessages,
   getCsrfToken,
+  getCurrentUser,
 } from "@/app/auth/authClient";
 import type { Category, Tag } from "@/app/types/models";
 
@@ -41,7 +42,29 @@ export default function NewArticlePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
 
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
+  // ログイン済みかつroleがadminのユーザーのみアクセス可能。それ以外はトップへ戻す
   useEffect(() => {
+    let isActive = true;
+
+    getCurrentUser().then((user) => {
+      if (!isActive) return;
+      if (user?.role === "admin") {
+        setIsAuthorized(true);
+      } else {
+        router.replace("/");
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!isAuthorized) return;
+
     (async () => {
       const [resCategories, resTags] = await Promise.all([
         fetch(`${API_BASE_URL}/api/categories`).then((r) => r.json()),
@@ -50,7 +73,7 @@ export default function NewArticlePage() {
       setCategories(resCategories);
       setTags(resTags);
     })();
-  }, []);
+  }, [isAuthorized]);
 
   async function handleSubmit(status: "draft" | "published") {
     if (isSubmitting) return;
@@ -161,6 +184,8 @@ export default function NewArticlePage() {
       setIsSubmitting(false);
     }
   }
+
+  if (!isAuthorized) return null;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-12 bg-gray-50">

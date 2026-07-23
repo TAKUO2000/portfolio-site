@@ -6,13 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { API_BASE_URL, getCsrfToken } from "../auth/authClient";
-
-type User = {
-  id: number;
-  name: string;
-  email: string;
-};
+import { API_BASE_URL, getCsrfToken, getCurrentUser } from "../auth/authClient";
+import type { User } from "@/app/types/models";
 
 export default function HeaderAuthStatus() {
   const router = useRouter();
@@ -23,39 +18,11 @@ export default function HeaderAuthStatus() {
   useEffect(() => {
     let isActive = true;
 
-    async function fetchUser() {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/user`, {
-          credentials: "include",
-          headers: {
-            Accept: "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-        });
-
-        if (!isActive) {
-          return;
-        }
-
-        if (!response.ok) {
-          setUser(null);
-          return;
-        }
-
-        const currentUser = (await response.json()) as User;
-        setUser(currentUser);
-      } catch {
-        if (isActive) {
-          setUser(null);
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    fetchUser();
+    getCurrentUser().then((currentUser) => {
+      if (!isActive) return;
+      setUser(currentUser);
+      setIsLoading(false);
+    });
 
     return () => {
       isActive = false;
@@ -107,13 +74,15 @@ export default function HeaderAuthStatus() {
           ログアウト
         </button>
 
-        <Link
-          href="articles/new"
-          className="text-sm transition-opacity hover:opacity-70 bg-white text-black rounded-4xl px-3 py-1 flex items-center"
-        >
-          <Plus className="h-4 w-4 shrink-0 border bg-black text-white rounded-2xl mr-2" />
-          <span>記事投稿</span>
-        </Link>
+        {user.role === "admin" && (
+          <Link
+            href="/articles/new"
+            className="text-sm transition-opacity hover:opacity-70 bg-white text-black rounded-4xl px-3 py-1 flex items-center"
+          >
+            <Plus className="h-4 w-4 shrink-0 border bg-black text-white rounded-2xl mr-2" />
+            <span>記事投稿</span>
+          </Link>
+        )}
       </div>
     );
   }
