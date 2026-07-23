@@ -3,7 +3,7 @@
 import { tv } from "tailwind-variants";
 
 const button = tv({
-  base: "px-4 py-1.5 rounded font-medium transition-colors duration-150 cursor-pointer active:scale-95 text-sm",
+  base: "px-4 py-1.5 rounded font-medium transition-colors duration-150 cursor-pointer active:scale-95 text-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
   variants: {
     color: {
       white: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50",
@@ -20,15 +20,21 @@ interface NormalButtonProps {
   color?: "white" | "green" | "red";
   buttonLabel: string;
   onClick?: () => void;
+  disabled?: boolean;
 }
 
 export default function NormalButton({
   color,
   buttonLabel,
   onClick,
+  disabled,
 }: NormalButtonProps) {
   return (
-    <button className={button({ color })} onClick={onClick}>
+    <button
+      className={button({ color })}
+      onClick={onClick}
+      disabled={disabled}
+    >
       {buttonLabel}
     </button>
   );

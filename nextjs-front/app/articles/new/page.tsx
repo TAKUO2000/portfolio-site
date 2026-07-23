@@ -233,13 +233,16 @@ export default function NewArticlePage() {
       )}
 
       <div className="flex justify-end gap-3">
+        {/* 下書き機能は別ブランチで作るため一旦非活性 */}
         <NormalButton
           buttonLabel={isSubmitting ? "保存中..." : "下書き保存"}
+          disabled={true}
           onClick={() => handleSubmit("draft")}
         />
         <NormalButton
           color="green"
           buttonLabel={isSubmitting ? "公開中..." : "公開する"}
+          disabled={isSubmitting}
           onClick={() => handleSubmit("published")}
         />
       </div>
@@ -263,7 +266,8 @@ function validateArticleForm({
   const errors: string[] = [];
   if (!selectedCatgoryId) errors.push("カテゴリを選択してください。");
   if (title === "") errors.push("タイトルを入力してください");
-  else if (title.length > 255) errors.push("タイトルは255文字以内で入力してください");
+  else if (title.length > 255)
+    errors.push("タイトルは255文字以内で入力してください");
   if (summary === "") errors.push("概要を入力してください");
   if (body === "") errors.push("本文を入力してください");
   if (!pendingHeader) errors.push("ヘッダー画像を選択してください。");
