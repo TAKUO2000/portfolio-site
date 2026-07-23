@@ -3,12 +3,15 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import {
   API_BASE_URL,
   getApiErrorMessage,
   getCsrfToken,
 } from "@/app/auth/authClient";
 import type { PendingImage } from "@/app/types/models";
+import { markdownSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
 
 // react-markdownはデフォルトでblob:スキームのURLを安全なプロトコル一覧から除外し空文字にしてしまうため、
 // 貼り付け画像のプレビュー用blob URLだけ例外的に許可する
@@ -276,7 +279,13 @@ export default function MarkdownEditor({
         ) : (
           <div className="prose prose-neutral min-h-74 max-w-none px-5 py-4.5 [&_ul>li::marker]:text-black">
             {body ? (
-              <ReactMarkdown urlTransform={previewUrlTransform}>
+              <ReactMarkdown
+                urlTransform={previewUrlTransform}
+                rehypePlugins={[
+                  rehypeRaw,
+                  [rehypeSanitize, markdownSanitizeSchema],
+                ]}
+              >
                 {body}
               </ReactMarkdown>
             ) : (
