@@ -66,12 +66,27 @@ export default function NewArticlePage() {
     if (!isAuthorized) return;
 
     (async () => {
-      const [resCategories, resTags] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/categories`).then((r) => r.json()),
-        fetch(`${API_BASE_URL}/api/tags`).then((r) => r.json()),
-      ]);
-      setCategories(resCategories);
-      setTags(resTags);
+      try {
+        const [resCategories, resTags] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/categories`),
+          fetch(`${API_BASE_URL}/api/tags`),
+        ]);
+
+        if (!resCategories.ok || !resTags.ok) {
+          throw new Error();
+        }
+
+        const [categoriesData, tagsData] = await Promise.all([
+          resCategories.json(),
+          resTags.json(),
+        ]);
+        setCategories(categoriesData);
+        setTags(tagsData);
+      } catch {
+        setErrorMessages([
+          "カテゴリ・タグの取得に失敗しました。ページを再読み込みしてください。",
+        ]);
+      }
     })();
   }, [isAuthorized]);
 

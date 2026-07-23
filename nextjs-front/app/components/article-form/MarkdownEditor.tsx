@@ -12,6 +12,10 @@ import {
 } from "@/app/auth/authClient";
 import type { PendingImage } from "@/app/types/models";
 import { markdownSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
+import {
+  MAX_IMAGE_FILE_SIZE_BYTES,
+  MAX_IMAGE_FILE_SIZE_LABEL,
+} from "@/app/constants/upload";
 
 // react-markdownはデフォルトでblob:スキームのURLを安全なプロトコル一覧から除外し空文字にしてしまうため、
 // 貼り付け画像のプレビュー用blob URLだけ例外的に許可する
@@ -42,6 +46,13 @@ export default function MarkdownEditor({
   async function cacheImage(file: File) {
     const ta = textareaRef.current;
     if (!file.type.startsWith("image/") || !ta) return;
+
+    if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
+      setErrorMessage(
+        `画像ファイルは${MAX_IMAGE_FILE_SIZE_LABEL}以内にしてください。`,
+      );
+      return;
+    }
 
     setErrorMessage("");
 

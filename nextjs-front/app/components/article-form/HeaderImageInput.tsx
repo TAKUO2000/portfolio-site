@@ -8,6 +8,10 @@ import {
   getCsrfToken,
 } from "@/app/auth/authClient";
 import type { PendingImage } from "@/app/types/models";
+import {
+  MAX_IMAGE_FILE_SIZE_BYTES,
+  MAX_IMAGE_FILE_SIZE_LABEL,
+} from "@/app/constants/upload";
 
 interface HeaderImageInputProps {
   pendingHeader: PendingImage | null;
@@ -28,6 +32,13 @@ export default function HeaderImageInput({
   async function cacheHeaderImage(file: File) {
     if (!file.type.startsWith("image/")) {
       setErrorMessage("画像ファイルを選択してください。");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
+      setErrorMessage(
+        `画像ファイルは${MAX_IMAGE_FILE_SIZE_LABEL}以内にしてください。`,
+      );
       return;
     }
 
