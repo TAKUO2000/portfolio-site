@@ -3,14 +3,15 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-
+    branches:
+      - develop
 jobs:
   review:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-      id-token: write       # Claude GitHub Appの認証に必要
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
