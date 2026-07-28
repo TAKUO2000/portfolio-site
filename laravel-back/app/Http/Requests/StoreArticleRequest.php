@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\AllowedImageHost;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreArticleRequest extends FormRequest
@@ -23,9 +24,9 @@ class StoreArticleRequest extends FormRequest
             'tags.*'           => ['integer', 'exists:tags,id'],
             'new_tags'         => ['nullable', 'array'],
             'new_tags.*'       => ['string', 'max:255'],
-            'header_image_url' => ['nullable', 'string', 'url', 'max:2048'],
+            'header_image_url' => ['nullable', 'string', 'url', 'max:2048', new AllowedImageHost],
             'body_image_urls' => ['nullable', 'array'],
-            'body_image_urls.*' => ['string', 'url', 'max:2048'],
+            'body_image_urls.*' => ['string', 'url', 'max:2048', new AllowedImageHost],
         ];
     }
 }
