@@ -4,6 +4,7 @@ use App\Models\Category;
 use App\Models\Reaction;
 use App\Models\Tag;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
     $this->adminUser = User::factory()->create(['role' => 'admin']);
@@ -56,6 +57,132 @@ test('adminユーザーがdraftで記事を投稿できる', function () {
     ]);
 });
 
+test('new_tagsで新規タグが作成される', function () {
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title'       => '新規タグ記事',
+            'summary'     => 'テスト概要',
+            'body'        => 'テスト本文',
+            'status'      => 'published',
+            'new_tags'    => ['Vue'],
+        ]);
+
+    $response->assertStatus(201)
+        ->assertJsonFragment(['name' => 'Vue']);
+
+    $this->assertDatabaseHas('tags', ['name' => 'Vue']);
+});
+
+test('論理削除済みタグと同名のnew_tagsを送ると復活して再利用される', function () {
+    $tag = Tag::create(['name' => 'Vue']);
+    $tag->delete();
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title'       => '復活タグ記事',
+            'summary'     => 'テスト概要',
+            'body'        => 'テスト本文',
+            'status'      => 'published',
+            'new_tags'    => ['Vue'],
+        ]);
+
+    $response->assertStatus(201)
+        ->assertJsonFragment(['id' => $tag->id, 'name' => 'Vue']);
+
+    $this->assertDatabaseHas('tags', ['id' => $tag->id, 'name' => 'Vue', 'deleted_at' => null]);
+    expect(Tag::withTrashed()->where('name', 'Vue')->count())->toBe(1);
+});
+
+test('大文字小文字違いで既存タグに一致した場合は表記が更新される', function () {
+    $tag = Tag::create(['name' => 'rEact']);
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title'       => '表記統一記事',
+            'summary'     => 'テスト概要',
+            'body'        => 'テスト本文',
+            'status'      => 'published',
+            'new_tags'    => ['React'],
+        ]);
+
+    $response->assertStatus(201)
+        ->assertJsonFragment(['id' => $tag->id, 'name' => 'React']);
+
+    $this->assertDatabaseHas('tags', ['id' => $tag->id, 'name' => 'React']);
+    expect(Tag::withTrashed()->whereRaw('LOWER(name) = ?', ['react'])->count())->toBe(1);
+});
+
+test('タグ一括取得後に別プロセスが同名タグを先に作成していても一意制約違反にならず既存タグを使う（TOCTOU対策）', function () {
+    // 一括SELECTでは見つからず、Tag::create()実行の直前に別リクエストが同名タグを作成した状況を再現
+    Tag::creating(function () {
+        DB::table('tags')->insert([
+            'name'       => 'Rust',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    try {
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/articles', [
+                'category_id' => $this->category->id,
+                'title'       => '競合タグ記事',
+                'summary'     => 'テスト概要',
+                'body'        => 'テスト本文',
+                'status'      => 'published',
+                'new_tags'    => ['Rust'],
+            ]);
+    } finally {
+        Tag::flushEventListeners();
+    }
+
+    $response->assertStatus(201)
+        ->assertJsonFragment(['name' => 'Rust']);
+
+    expect(Tag::withTrashed()->where('name', 'Rust')->count())->toBe(1);
+});
+
+test('new_tagsの全角スペースは正規化され既存タグと同一視される', function () {
+    Tag::create(['name' => 'Vue']);
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title'       => '全角スペース記事',
+            'summary'     => 'テスト概要',
+            'body'        => 'テスト本文',
+            'status'      => 'published',
+            'new_tags'    => ['　Vue'], // 先頭に全角スペース
+        ]);
+
+    $response->assertStatus(201)
+        ->assertJsonFragment(['name' => 'Vue']);
+
+    expect(Tag::withTrashed()->where('name', 'Vue')->count())->toBe(1);
+});
+
+test('new_tags内で表記ゆれが重複している場合は1件にまとめられる', function () {
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title'       => '重複タグ記事',
+            'summary'     => 'テスト概要',
+            'body'        => 'テスト本文',
+            'status'      => 'published',
+            'new_tags'    => ['React', 'react', '　React', ' React '],
+        ]);
+
+    $response->assertStatus(201);
+
+    expect(Tag::withTrashed()->whereRaw('LOWER(name) = ?', ['react'])->count())->toBe(1);
+
+    $article = \App\Models\Article::where('title', '重複タグ記事')->first();
+    expect($article->tags)->toHaveCount(1);
+});
+
 test('一般ユーザーは記事を投稿できない', function () {
     $response = $this->actingAs($this->generalUser)
         ->postJson('/api/articles', [
@@ -101,6 +228,21 @@ test('存在しないcategory_idはバリデーションエラーになる', fun
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['category_id']);
+});
+
+test('new_tagsが空白のみの場合はバリデーションエラーになる', function () {
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title'       => '記事',
+            'summary'     => '概要',
+            'body'        => '本文',
+            'status'      => 'published',
+            'new_tags'    => [' ', '　', ''],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['new_tags.0', 'new_tags.1', 'new_tags.2']);
 });
 
 // index
@@ -382,7 +524,7 @@ test('未認証でも表示可能', function () {
 
     $response->assertStatus(200)
         ->assertJsonFragment(['title' => '公開記事'])
-        ->assertJsonStructure(['id', 'title', 'summary', 'body', 'status', 'user', 'category', 'tags']);
+        ->assertJsonStructure(['data' => ['id', 'title', 'body', 'published_at', 'user', 'category', 'tags', 'like_count', 'images']]);
 });
 
 test('記事が非公開の場合表示不可', function () {
