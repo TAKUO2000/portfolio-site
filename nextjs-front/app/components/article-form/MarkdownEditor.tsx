@@ -63,7 +63,10 @@ export default function MarkdownEditor({
     const blobUrl = URL.createObjectURL(file);
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
-    const altText = file.name.split(".")[0] || "image";
+    const altText = (file.name.split(".")[0] || "image").replace(
+      /[[\]()]/g,
+      "",
+    );
     const markdownImage = `![${altText}](${blobUrl})`;
     const newText = body.slice(0, start) + markdownImage + body.slice(end);
     setBody(newText);

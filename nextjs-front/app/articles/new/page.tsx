@@ -172,6 +172,11 @@ export default function NewArticlePage() {
         return;
       }
 
+      if (!responseBody?.id) {
+        setErrorMessages(["記事の保存中に予期しないエラーが発生しました。"]);
+        return;
+      }
+
       pendingImages.forEach((img) => URL.revokeObjectURL(img.blobUrl));
       if (pendingHeader) URL.revokeObjectURL(pendingHeader.blobUrl);
 
