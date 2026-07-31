@@ -12,19 +12,19 @@ use Illuminate\Support\Carbon;
 
 class ArticleImageSeeder extends Seeder
 {
-    public function run(): void
-    {
-        $user = User::first();
-        $categories = Category::pluck('id', 'name');
-        $tags = Tag::pluck('id', 'name');
+  public function run(): void
+  {
+    $user = User::first();
+    $categories = Category::pluck('id', 'name');
+    $tags = Tag::pluck('id', 'name');
 
-        $s3 = 'https://takuo-portfolio-develop-bucket-533267285352-ap-northeast-1-an.s3.ap-northeast-1.amazonaws.com';
+    $s3 = 'https://takuo-portfolio-develop-bucket-533267285352-ap-northeast-1-an.s3.ap-northeast-1.amazonaws.com';
 
-        $articles = [
-            [
-                'title'        => 'LaravelとAWSで作るサーバーレスAPI',
-                'summary'      => 'LaravelをAWS Lambda上で動かし、S3やRDSと連携するサーバーレス構成を解説します。',
-                'body'         => <<<'MD'
+    $articles = [
+      [
+        'title'        => 'LaravelとAWSで作るサーバーレスAPI',
+        'summary'      => 'LaravelをAWS Lambda上で動かし、S3やRDSと連携するサーバーレス構成を解説します。',
+        'body'         => <<<'MD'
 ## はじめに
 
 LaravelをAWS上でサーバーレス構成として動かすことで、インフラ管理コストを大幅に削減できます。
@@ -93,15 +93,15 @@ AWS_DEFAULT_REGION=ap-northeast-1
 サーバーレス構成にすることで、トラフィックが少ない個人開発では**コストをほぼゼロ**に抑えられます。
 スケールも自動で対応してくれるため、突発的なアクセス増にも強い構成です。
 MD,
-                'category'     => '技術',
-                'tags'         => ['Laravel', 'AWS'],
-                'published_at' => Carbon::now()->subDays(1),
-                'image_url'    => "{$s3}/test.png",
-            ],
-            [
-                'title'        => 'DockerでLaravel開発環境を構築する',
-                'summary'      => 'Docker ComposeでLaravel + MySQL + Nginxの開発環境をゼロから作る手順を紹介します。',
-                'body'         => <<<'MD'
+        'category'     => '技術',
+        'tags'         => ['Laravel', 'AWS'],
+        'published_at' => Carbon::now()->subDays(1),
+        'image_url'    => "{$s3}/test.png",
+      ],
+      [
+        'title'        => 'DockerでLaravel開発環境を構築する',
+        'summary'      => 'Docker ComposeでLaravel + MySQL + Nginxの開発環境をゼロから作る手順を紹介します。',
+        'body'         => <<<'MD'
 ## はじめに
 
 Dockerを使うことで、チームメンバー全員が同じ環境でLaravelを動かせます。
@@ -185,15 +185,15 @@ docker compose exec app php artisan migrate
 
 この3つをDockerで管理することで、環境構築の手順を `docker compose up -d` の1コマンドに集約できます。
 MD,
-                'category'     => '技術',
-                'tags'         => ['Laravel', 'Docker', 'PHP'],
-                'published_at' => Carbon::now()->subDays(3),
-                'image_url'    => "{$s3}/penguin.jpg",
-            ],
-            [
-                'title'        => 'Vue.jsとLaravelでSPAを作る',
-                'summary'      => 'フロントエンドにVue.js、バックエンドにLaravelを使ったSPA構成の実装例を紹介します。',
-                'body'         => <<<'MD'
+        'category'     => '技術',
+        'tags'         => ['Laravel', 'Docker', 'PHP'],
+        'published_at' => Carbon::now()->subDays(3),
+        'image_url'    => "{$s3}/penguin.jpg",
+      ],
+      [
+        'title'        => 'Vue.jsとLaravelでSPAを作る',
+        'summary'      => 'フロントエンドにVue.js、バックエンドにLaravelを使ったSPA構成の実装例を紹介します。',
+        'body'         => <<<'MD'
 ## はじめに
 
 LaravelをAPIサーバー、Vue.jsをフロントエンドとして分離したSPA構成は、
@@ -284,14 +284,14 @@ php artisan migrate
 
 分離構成はチーム開発でも効果を発揮します。
 MD,
-                'category'     => '技術',
-                'tags'         => ['Vue.js', 'Laravel', 'JavaScript'],
-                'published_at' => Carbon::now()->subDays(5),
-            ],
-            [
-                'title'        => 'エンジニアの生産性を上げる習慣',
-                'summary'      => '毎日の小さな習慣がエンジニアとしての成長を加速させます。実践している習慣を紹介します。',
-                'body'         => <<<'MD'
+        'category'     => '技術',
+        'tags'         => ['Vue.js', 'Laravel', 'JavaScript'],
+        'published_at' => Carbon::now()->subDays(5),
+      ],
+      [
+        'title'        => 'エンジニアの生産性を上げる習慣',
+        'summary'      => '毎日の小さな習慣がエンジニアとしての成長を加速させます。実践している習慣を紹介します。',
+        'body'         => <<<'MD'
 ## はじめに
 
 エンジニアとしての生産性は、ツールの習熟度よりも**日々の習慣**に左右されることが多いです。
@@ -350,14 +350,14 @@ GitHubのコントリビューションを草で埋めることを目標にす�
 
 小さな習慣の積み重ねが、半年後・1年後の大きな差につながります。
 MD,
-                'category'     => 'ライフスタイル',
-                'tags'         => [],
-                'published_at' => Carbon::now()->subDays(7),
-            ],
-            [
-                'title'        => 'フリーランスエンジニアとして独立するには',
-                'summary'      => 'フリーランスとして独立するまでの準備や注意点をまとめました。',
-                'body'         => <<<'MD'
+        'category'     => '趣味',
+        'tags'         => [],
+        'published_at' => Carbon::now()->subDays(7),
+      ],
+      [
+        'title'        => 'フリーランスエンジニアとして独立するには',
+        'summary'      => 'フリーランスとして独立するまでの準備や注意点をまとめました。',
+        'body'         => <<<'MD'
 ## はじめに
 
 フリーランスエンジニアへの転向を考えている方に向けて、
@@ -426,35 +426,35 @@ DMで直接依頼が来るケースも増えています。
 フリーランスは自由な反面、すべて自己責任です。
 準備をしっかり整えたうえで、計画的に独立することが成功の鍵です。
 MD,
-                'category'     => 'ビジネス',
-                'tags'         => [],
-                'published_at' => Carbon::now()->subDays(10),
-            ],
-        ];
+        'category'     => 'ビジネス',
+        'tags'         => [],
+        'published_at' => Carbon::now()->subDays(10),
+      ],
+    ];
 
-        foreach ($articles as $data) {
-            $article = Article::updateOrCreate(
-                ['title' => $data['title']],
-                [
-                    'user_id'      => $user->id,
-                    'category_id'  => $categories[$data['category']],
-                    'summary'      => $data['summary'],
-                    'body'         => $data['body'],
-                    'status'       => 'published',
-                    'published_at' => $data['published_at'],
-                ]
-            );
+    foreach ($articles as $data) {
+      $article = Article::updateOrCreate(
+        ['title' => $data['title']],
+        [
+          'user_id'      => $user->id,
+          'category_id'  => $categories[$data['category']],
+          'summary'      => $data['summary'],
+          'body'         => $data['body'],
+          'status'       => 'published',
+          'published_at' => $data['published_at'],
+        ]
+      );
 
-            if (!empty($data['tags'])) {
-                $tagIds = array_map(fn($name) => $tags[$name], $data['tags']);
-                $article->tags()->sync($tagIds);
-            }
+      if (!empty($data['tags'])) {
+        $tagIds = array_map(fn($name) => $tags[$name], $data['tags']);
+        $article->tags()->sync($tagIds);
+      }
 
-            $imageUrl = $data['image_url'] ?? "{$s3}/test.png";
-            ArticleImage::firstOrCreate(
-                ['article_id' => $article->id, 'type' => 'header'],
-                ['url' => $imageUrl]
-            );
-        }
+      $imageUrl = $data['image_url'] ?? "{$s3}/test.png";
+      ArticleImage::firstOrCreate(
+        ['article_id' => $article->id, 'type' => 'header'],
+        ['url' => $imageUrl]
+      );
     }
+  }
 }

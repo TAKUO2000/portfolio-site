@@ -1,10 +1,14 @@
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
 import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
+import type { Category, Tag } from "@/app/types/models";
+import { markdownSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
 
 interface ShowResponse {
   data: {
@@ -13,16 +17,11 @@ interface ShowResponse {
     body: string;
     published_at: string;
     user: { id: number; name: string };
-    category: { id: number; name: string };
+    category: Category;
     tags: Tag[];
     like_count: number;
     images: ImageTypeUrl[];
   };
-}
-
-interface Tag {
-  id: number;
-  name: string;
 }
 
 interface ImageTypeUrl {
@@ -69,8 +68,8 @@ export default async function ArticlePage({
                 src={headerImage.url}
                 alt={article.title}
                 width={1200}
-                height={630}
-                className="h-80 w-auto mb-6 rounded mx-auto block"
+                height={800}
+                className="h-80 max-w-120 object-cover object-center mb-6 mx-auto block"
                 loading="eager"
               />
             )}
@@ -85,7 +84,14 @@ export default async function ArticlePage({
             </div>
             <h1 className="text-3xl font-bold mb-6">{article.title}</h1>
             <div className="prose prose-neutral [&_ul>li::marker]:text-black max-w-none wrap-break-word">
-              <ReactMarkdown>{article.body}</ReactMarkdown>
+              <ReactMarkdown
+                rehypePlugins={[
+                  rehypeRaw,
+                  [rehypeSanitize, markdownSanitizeSchema],
+                ]}
+              >
+                {article.body}
+              </ReactMarkdown>
             </div>
           </article>
 

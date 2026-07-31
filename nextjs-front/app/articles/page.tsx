@@ -1,6 +1,7 @@
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import ArticleCard from "../components/ArticleCard";
+import type { Category, Tag } from "@/app/types/models";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -19,15 +20,13 @@ interface Article {
   summary: string;
   header_image: string;
   published_at: string;
-  user: { id: number; name: string }; //idは著者ページに飛ぶ際に使用予定現在は不要だけど取得してます
-  category: { id: number; name: string };
+  user: {
+    id: number;
+    name: string;
+  }; /** idは著者ページに飛ぶ際に使用予定現在は不要だけど取得してます*/
+  category: Category;
   tags: Tag[];
   like_count: number;
-}
-
-interface Tag {
-  id: number;
-  name: string;
 }
 
 interface Links {
@@ -71,7 +70,7 @@ export default async function ArticlesListPage({
   return (
     <>
       <Header />
-      <main className="h-auto w-5xl mx-auto px-4 py-8">
+      <main className="h-auto w-full max-w-5xl mx-auto px-4 py-8">
         {articles.map((article, index) => (
           <div key={`${article.title}-${index}`}>
             {index !== 0 && <hr className="my-8 border-gray" />}
