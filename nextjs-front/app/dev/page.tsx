@@ -15,7 +15,7 @@ import { API_BASE_URL } from "../auth/authClient";
 
 export default function DevPage() {
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCatgoryId, setSelectedCatgoryId] = useState<number | null>(
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     null,
   );
 
@@ -101,12 +101,12 @@ export default function DevPage() {
             <div className="">
               <CategorySelect
                 categories={categories}
-                selectedCatgoryId={selectedCatgoryId}
-                setSelectedCatgoryId={setSelectedCatgoryId}
+                selectedCategoryId={selectedCategoryId}
+                setSelectedCategoryId={setSelectedCategoryId}
               />
             </div>
             <p className="mt-3 text-xs text-gray-500">
-              selected: {JSON.stringify(selectedCatgoryId)}
+              selected: {JSON.stringify(selectedCategoryId)}
             </p>
           </section>
 

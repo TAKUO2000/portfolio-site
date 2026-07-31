@@ -28,7 +28,7 @@ export default function NewArticlePage() {
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]); // 本文への貼り付け画像キャッシュ用（複数可）
 
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCatgoryId, setSelectedCatgoryId] = useState<number | null>(
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     null,
   );
 
@@ -96,7 +96,7 @@ export default function NewArticlePage() {
     setErrorMessages([]);
 
     const errors = validateArticleForm({
-      selectedCatgoryId,
+      selectedCategoryId,
       title,
       summary,
       body,
@@ -145,7 +145,7 @@ export default function NewArticlePage() {
           "X-XSRF-TOKEN": xsrfToken,
         },
         body: JSON.stringify({
-          category_id: selectedCatgoryId,
+          category_id: selectedCategoryId,
           title,
           summary,
           body: finalBody,
@@ -200,8 +200,8 @@ export default function NewArticlePage() {
       <div className="flex gap-2">
         <CategorySelect
           categories={categories}
-          selectedCatgoryId={selectedCatgoryId}
-          setSelectedCatgoryId={setSelectedCatgoryId}
+          selectedCategoryId={selectedCategoryId}
+          setSelectedCategoryId={setSelectedCategoryId}
         />
         <TagSelect
           tags={tags}
@@ -253,20 +253,20 @@ export default function NewArticlePage() {
 }
 
 function validateArticleForm({
-  selectedCatgoryId,
+  selectedCategoryId,
   title,
   summary,
   body,
   pendingHeader,
 }: {
-  selectedCatgoryId: number | null;
+  selectedCategoryId: number | null;
   title: string;
   summary: string;
   body: string;
   pendingHeader: PendingImage | null;
 }): string[] {
   const errors: string[] = [];
-  if (!selectedCatgoryId) errors.push("カテゴリを選択してください。");
+  if (!selectedCategoryId) errors.push("カテゴリを選択してください。");
   if (title === "") errors.push("タイトルを入力してください");
   else if (title.length > 255)
     errors.push("タイトルは255文字以内で入力してください");

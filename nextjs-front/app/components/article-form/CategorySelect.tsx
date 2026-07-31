@@ -6,14 +6,14 @@ import type { Category } from "@/app/types/models";
 
 interface CategorySelectProps {
   categories: Category[];
-  selectedCatgoryId: number | null;
-  setSelectedCatgoryId: (id: number | null) => void;
+  selectedCategoryId: number | null;
+  setSelectedCategoryId: (id: number | null) => void;
 }
 
 export default function CategorySelect({
   categories,
-  selectedCatgoryId,
-  setSelectedCatgoryId,
+  selectedCategoryId,
+  setSelectedCategoryId,
 }: CategorySelectProps) {
   const [selectOpen, setSelectOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -33,19 +33,19 @@ export default function CategorySelect({
   }
 
   const selectedCategory = categories.find(
-    (cat) => cat.id === selectedCatgoryId,
+    (cat) => cat.id === selectedCategoryId,
   );
   const unselectedCategory = categories.filter(
-    (cat) => cat.id !== selectedCatgoryId,
+    (cat) => cat.id !== selectedCategoryId,
   );
 
   function selectCategory(id: number) {
-    setSelectedCatgoryId(id);
+    setSelectedCategoryId(id);
     setSelectOpen(false);
   }
 
   function deselectCategory() {
-    setSelectedCatgoryId(null);
+    setSelectedCategoryId(null);
   }
 
   return (
@@ -63,7 +63,7 @@ export default function CategorySelect({
         )}
 
         <div className="relative" ref={pickerRef}>
-          {!selectedCatgoryId && (
+          {!selectedCategoryId && (
             <span
               onClick={togglePicker}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white text-xs font-medium text-[#8a9099] border border-dashed border-black/20 cursor-pointer hover:bg-[#f9f9f9] whitespace-nowrap"
