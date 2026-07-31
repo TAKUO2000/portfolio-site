@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import type { PendingImage } from "@/app/types/models";
 import {
+  ALLOWED_IMAGE_TYPES,
+  ALLOWED_IMAGE_TYPES_ACCEPT,
   MAX_IMAGE_FILE_SIZE_BYTES,
   MAX_IMAGE_FILE_SIZE_LABEL,
 } from "@/app/constants/upload";
@@ -25,7 +27,11 @@ export default function HeaderImageInput({
   // S3署名付きURLの取得と実際のPUTは送信ボタン押下時（page.tsx側）にまとめて行う
   // （早い段階で取得すると、フォーム入力が長引いた場合に署名付きURLの有効期限切れで失敗するため）
   function cacheHeaderImage(file: File) {
-    if (!file.type.startsWith("image/")) {
+    if (
+      !ALLOWED_IMAGE_TYPES.includes(
+        file.type as (typeof ALLOWED_IMAGE_TYPES)[number],
+      )
+    ) {
       setErrorMessage("画像ファイルを選択してください。");
       return;
     }
@@ -68,7 +74,7 @@ export default function HeaderImageInput({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
+        accept={ALLOWED_IMAGE_TYPES_ACCEPT}
         className="hidden "
         onChange={handleFileInputChange}
       />

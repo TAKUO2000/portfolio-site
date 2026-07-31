@@ -8,6 +8,8 @@ import rehypeSanitize from "rehype-sanitize";
 import type { PendingImage } from "@/app/types/models";
 import { markdownPreviewSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
 import {
+  ALLOWED_IMAGE_TYPES,
+  ALLOWED_IMAGE_TYPES_ACCEPT,
   MAX_IMAGE_FILE_SIZE_BYTES,
   MAX_IMAGE_FILE_SIZE_LABEL,
 } from "@/app/constants/upload";
@@ -41,7 +43,13 @@ export default function MarkdownEditor({
   // （早い段階で取得すると、フォーム入力が長引いた場合に署名付きURLの有効期限切れで失敗するため）
   function cacheImage(file: File) {
     const ta = textareaRef.current;
-    if (!file.type.startsWith("image/") || !ta) return;
+    if (
+      !ALLOWED_IMAGE_TYPES.includes(
+        file.type as (typeof ALLOWED_IMAGE_TYPES)[number],
+      ) ||
+      !ta
+    )
+      return;
 
     if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
       setErrorMessage(
@@ -71,7 +79,9 @@ export default function MarkdownEditor({
   // Ctrl+V(貼り付け)で画像が来たら、標準の貼り付け動作を止めてcacheImageに渡す
   function handlePasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
     const imageItem = Array.from(e.clipboardData.items).find((item) =>
-      item.type.startsWith("image/"),
+      ALLOWED_IMAGE_TYPES.includes(
+        item.type as (typeof ALLOWED_IMAGE_TYPES)[number],
+      ),
     );
     if (!imageItem) return;
 
@@ -217,7 +227,7 @@ export default function MarkdownEditor({
             <input
               ref={imageFileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept={ALLOWED_IMAGE_TYPES_ACCEPT}
               className="hidden"
               onChange={handleImageFileChange}
             />

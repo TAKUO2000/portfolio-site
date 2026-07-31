@@ -20,7 +20,11 @@ export async function uploadImageToS3(file: File): Promise<string> {
       "X-Requested-With": "XMLHttpRequest",
       "X-XSRF-TOKEN": xsrfToken,
     },
-    body: JSON.stringify({ file_name: file.name, media_type: file.type }),
+    body: JSON.stringify({
+      file_name: file.name,
+      media_type: file.type,
+      file_size: file.size,
+    }),
   });
 
   const data = await response.json().catch(() => null);

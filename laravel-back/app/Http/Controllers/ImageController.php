@@ -26,10 +26,13 @@ class ImageController extends Controller
         ]);
 
         // 作成されたS3クライアントからPut用の命令を作成
+        // ContentLengthを署名対象に含めることで、バリデーション済みのfile_sizeと
+        // 異なるサイズのファイルをPUTしようとすると署名不一致でS3に拒否される
         $command = $s3Client->getCommand('PutObject', [
-            'Bucket'      => config('filesystems.disks.s3.bucket'),
-            'Key'         => $key,
-            'ContentType' => $request->input('media_type'),
+            'Bucket'        => config('filesystems.disks.s3.bucket'),
+            'Key'           => $key,
+            'ContentType'   => $request->input('media_type'),
+            'ContentLength' => (int) $request->input('file_size'),
         ]);
         // 認証情報を含めた送信用のURLを格納
         $presignedUrl = (string) $s3Client->createPresignedRequest($command, '+15 minutes')->getUri();
