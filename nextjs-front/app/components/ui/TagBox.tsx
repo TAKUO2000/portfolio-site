@@ -30,7 +30,7 @@ interface TagBoxProps {
 export default function TagBox({
   tag,
   id,
-  isLink = true,
+  isLink = false,
   onClick,
   title,
   isPending = false,
@@ -48,7 +48,9 @@ export default function TagBox({
   );
 
   if (isLink) {
-    return <Link href={/** 修正予定 */ `/articles/tag=${id}`}>{content}</Link>;
+    return (
+      <Link href={/** 修正予定  /articles?tag=${id}*/ "/"}>{content}</Link>
+    );
   } else {
     return content;
   }

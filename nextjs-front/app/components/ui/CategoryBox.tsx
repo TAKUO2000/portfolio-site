@@ -26,7 +26,7 @@ const ICON_MAP: Record<number, FC<SVGProps<SVGSVGElement>>> = {
 export default function CategoryBox({
   category,
   id,
-  isLink = true,
+  isLink = false,
   onClick,
   title,
 }: CategoryBoxProps) {
