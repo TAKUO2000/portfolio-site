@@ -6,7 +6,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import type { PendingImage } from "@/app/types/models";
-import { markdownSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
+import { markdownPreviewSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
 import {
   MAX_IMAGE_FILE_SIZE_BYTES,
   MAX_IMAGE_FILE_SIZE_LABEL,
@@ -244,7 +244,7 @@ export default function MarkdownEditor({
                 urlTransform={previewUrlTransform}
                 rehypePlugins={[
                   rehypeRaw,
-                  [rehypeSanitize, markdownSanitizeSchema],
+                  [rehypeSanitize, markdownPreviewSanitizeSchema],
                 ]}
               >
                 {body}
