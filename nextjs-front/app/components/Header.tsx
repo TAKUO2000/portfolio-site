@@ -16,26 +16,10 @@ export default function Header() {
           </li>
           <li>
             <Link
-              href="#"
+              href="/articles"
               className="text-sm hover:opacity-70 transition-opacity"
             >
-              投稿テキスト
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="#"
-              className="text-sm hover:opacity-70 transition-opacity"
-            >
-              投稿テキスト
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="#"
-              className="text-sm hover:opacity-70 transition-opacity"
-            >
-              投稿テキスト
+              記事
             </Link>
           </li>
         </ul>

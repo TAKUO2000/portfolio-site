@@ -55,6 +55,8 @@ return [
             'bucket' => env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
+            // ブラウザから直接アップロードする署名付きURL用（MinIOなどローカル開発時のみ設定）
+            'public_endpoint' => env('AWS_PUBLIC_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
             'report' => false,

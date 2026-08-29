@@ -3,8 +3,12 @@ import Footer from "../components/Footer";
 import ArticleCard from "../components/ArticleCard";
 import type { Category, Tag } from "@/app/types/models";
 
+// サーバーコンポーネントはコンテナ内部から実行されるため、Docker Compose環境では
+// ブラウザ向けのNEXT_PUBLIC_API_BASE_URLではなくAPI_INTERNAL_BASE_URLを優先する
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  process.env.API_INTERNAL_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://localhost:8000";
 
 type SortOrder = "latest" | "popular";
 

@@ -30,7 +30,10 @@ interface ImageTypeUrl {
   type: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+// サーバーコンポーネントはコンテナ内部から実行されるため、Docker Compose環境では
+// ブラウザ向けのNEXT_PUBLIC_API_BASE_URLではなくAPI_INTERNAL_BASE_URLを優先する
+const API_BASE_URL =
+  process.env.API_INTERNAL_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
 
 async function fetchArticles(id: string): Promise<ShowResponse> {
   const res = await fetch(`${API_BASE_URL}/api/articles/${id}`, {

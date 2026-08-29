@@ -1,0 +1,99 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    ports:
+      - "${DB_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ./laravel-back
+      dockerfile: docker/php/Dockerfile
+    restart: unless-stopped
+    working_dir: /var/www/html
+    env_file:
+      - ./laravel-back/.env
+    volumes:
+      - ./laravel-back:/var/www/html
+      - laravel_vendor:/var/www/html/vendor
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  web:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT}:80"
+    volumes:
+      - ./laravel-back:/var/www/html
+      - ./laravel-back/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    env_file:
+      - .env
+      - ./laravel-back/.env
+    entrypoint: >
+      sh -c "
+        until mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\"; do sleep 1; done &&
+        mc mb --ignore-existing \"local/$$AWS_BUCKET\" &&
+        mc anonymous set download \"local/$$AWS_BUCKET\"
+      "
+
+  next:
+    build:
+      context: ./nextjs-front
+    restart: unless-stopped
+    working_dir: /app
+    env_file:
+      - ./nextjs-front/.env
+    environment:
+      # サーバーコンポーネント(SSR)はコンテナ内部から実行されるため、ブラウザ向けの
+      # NEXT_PUBLIC_API_BASE_URL(localhost)ではなくDocker内部名で解決する
+      API_INTERNAL_BASE_URL: http://web
+      # next/imageの許可ホスト用（MinIOのブラウザ到達可能エンドポイント）
+      S3_PUBLIC_ENDPOINT: http://localhost:${MINIO_PORT}
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    volumes:
+      - ./nextjs-front:/app
+      - next_node_modules:/app/node_modules
+    depends_on:
+      - web
+
+volumes:
+  mysql_data:
+  minio_data:
+  laravel_vendor:
+  next_node_modules:

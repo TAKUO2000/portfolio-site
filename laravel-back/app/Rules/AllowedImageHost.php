@@ -18,6 +18,12 @@ class AllowedImageHost implements ValidationRule
 
     private function allowedHosts(): array
     {
+        $publicEndpoint = config('filesystems.disks.s3.public_endpoint');
+
+        if ($publicEndpoint) {
+            return [parse_url($publicEndpoint, PHP_URL_HOST)];
+        }
+
         $bucket = config('filesystems.disks.s3.bucket');
         $region = config('filesystems.disks.s3.region');
 
