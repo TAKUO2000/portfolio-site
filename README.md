@@ -88,6 +88,19 @@ cd .. && make dev   # API と フロントエンドを同時に起動
 
 ホストでテストを実行する場合は、`laravel_back_testing` データベースが必要です。Docker の MySQL を使うなら `laravel-back/.env` の接続先を `127.0.0.1:3307` に向けてください。
 
+## 画像ストレージ（MinIO / S3）
+
+画像は署名付き URL でブラウザから直接ストレージへアップロードします。ローカルは MinIO、本番は AWS S3 を使いますが、**処理は共通で設定値だけが変わります**（`app/Services/ImageStorage.php`）。
+
+| 設定 | ローカル（MinIO） | 本番（AWS S3） |
+| --- | --- | --- |
+| `AWS_ENDPOINT` | `http://minio:9000`（コンテナ内から見たMinIO） | 空 |
+| `AWS_PUBLIC_ENDPOINT` | `http://localhost:9002`（ブラウザから見たMinIO） | 空 |
+| `AWS_USE_PATH_STYLE_ENDPOINT` | `true` | `false` |
+| 発行される URL | `http://localhost:9002/<bucket>/images/xxx.png` | `https://<bucket>.s3.<region>.amazonaws.com/images/xxx.png` |
+
+ローカルの値は `docker-compose.yml` が注入するため設定は不要です。デプロイ時は上記の本番列のとおり、2つのエンドポイントを空にして実 S3 の認証情報・バケットを設定してください。テストも MinIO 構成で実行されます（`tests/Pest.php` の `useMinioStorage()`）。
+
 ## 開発時の注意
 
 - **ホストとコンテナの開発サーバーを同時に起動しないでください。** `vendor` / `node_modules` / `.next` をホストと共有しているため競合します。
