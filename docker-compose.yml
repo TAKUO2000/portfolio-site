@@ -96,6 +96,8 @@ services:
       context: ./nextjs-front
     restart: unless-stopped
     working_dir: /app
+    # node_modules/.nextをホストと共有するため、ホストと同じ所有者で実行する
+    user: "${UID:-1000}:${GID:-1000}"
     env_file:
       - ./nextjs-front/.env
     environment:
@@ -108,11 +110,9 @@ services:
       - "${FRONTEND_PORT}:3000"
     volumes:
       - ./nextjs-front:/app
-      - next_node_modules:/app/node_modules
     depends_on:
       - web
 
 volumes:
   mysql_data:
   minio_data:
-  next_node_modules:
