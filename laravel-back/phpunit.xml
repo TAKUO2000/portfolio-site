@@ -23,14 +23,23 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <!-- docker compose がMinIO用に注入するAWS_PUBLIC_ENDPOINTを打ち消し、
-             テストは常に実S3のホスト判定で動かす。
-             Laravelのenvはgetenvだけでなく$_SERVERも参照するため両方を上書きする -->
+        <!-- 本番と同じMySQLで検証するため、テストは専用データベースに接続する。
+             開発用DBを指したままだと、テストのマイグレーションで開発データが壊れる。
+             接続先(DB_HOST/PORT/USERNAME/PASSWORD)は環境の値をそのまま使う。
+             Laravelのenv()はgetenvだけでなく$_SERVERも参照するため、
+             env/serverの両方にforce="true"で指定する必要がある。 -->
+        <env name="DB_CONNECTION" value="mysql" force="true"/>
+        <server name="DB_CONNECTION" value="mysql" force="true"/>
+        <env name="DB_DATABASE" value="laravel_back_testing" force="true"/>
+        <server name="DB_DATABASE" value="laravel_back_testing" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+        <server name="DB_URL" value="" force="true"/>
+        <env name="FILESYSTEM_DISK" value="local" force="true"/>
+        <server name="FILESYSTEM_DISK" value="local" force="true"/>
+        <env name="AWS_ENDPOINT" value="" force="true"/>
+        <server name="AWS_ENDPOINT" value="" force="true"/>
         <env name="AWS_PUBLIC_ENDPOINT" value="" force="true"/>
         <server name="AWS_PUBLIC_ENDPOINT" value="" force="true"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
