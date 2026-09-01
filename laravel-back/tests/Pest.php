@@ -48,3 +48,20 @@ function something()
 {
     // ..
 }
+
+/**
+ * 画像ストレージをローカル開発と同じMinIO構成にする。
+ * 本番の実AWS S3はエンドポイントの設定値が違うだけで、通る処理は同じ。
+ */
+function useMinioStorage(): void
+{
+    config([
+        'filesystems.disks.s3.key'                     => 'minioadmin',
+        'filesystems.disks.s3.secret'                  => 'minioadmin',
+        'filesystems.disks.s3.region'                  => 'ap-northeast-1',
+        'filesystems.disks.s3.bucket'                  => 'test-bucket',
+        'filesystems.disks.s3.endpoint'                => 'http://minio:9000',
+        'filesystems.disks.s3.public_endpoint'         => 'http://localhost:9002',
+        'filesystems.disks.s3.use_path_style_endpoint' => true,
+    ]);
+}

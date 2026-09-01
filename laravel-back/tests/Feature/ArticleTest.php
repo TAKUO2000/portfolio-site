@@ -246,13 +246,10 @@ test('new_tagsが空白のみの場合はバリデーションエラーになる
         ->assertJsonValidationErrors(['new_tags.0', 'new_tags.1', 'new_tags.2']);
 });
 
-test('許可されたS3ホストのheader_image_url・body_image_urlsが記事画像として保存される', function () {
-    config([
-        'filesystems.disks.s3.bucket' => 'test-bucket',
-        'filesystems.disks.s3.region' => 'ap-northeast-1',
-    ]);
-    $headerUrl = 'https://test-bucket.s3.ap-northeast-1.amazonaws.com/images/header.png';
-    $bodyUrl = 'https://test-bucket.s3.ap-northeast-1.amazonaws.com/images/body1.png';
+test('許可されたストレージホストのheader_image_url・body_image_urlsが記事画像として保存される', function () {
+    useMinioStorage();
+    $headerUrl = 'http://localhost:9002/test-bucket/images/header.png';
+    $bodyUrl = 'http://localhost:9002/test-bucket/images/body1.png';
 
     $response = $this->actingAs($this->adminUser)
         ->postJson('/api/articles', [
@@ -281,10 +278,7 @@ test('許可されたS3ホストのheader_image_url・body_image_urlsが記事�
 });
 
 test('許可されていないホストのheader_image_urlはバリデーションエラーになる', function () {
-    config([
-        'filesystems.disks.s3.bucket' => 'test-bucket',
-        'filesystems.disks.s3.region' => 'ap-northeast-1',
-    ]);
+    useMinioStorage();
 
     $response = $this->actingAs($this->adminUser)
         ->postJson('/api/articles', [
