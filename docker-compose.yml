@@ -24,6 +24,8 @@ services:
       dockerfile: docker/php/Dockerfile
     restart: unless-stopped
     working_dir: /var/www/html
+    # vendorをホストと共有するため、ホストと同じ所有者で実行してroot所有ファイルを防ぐ
+    user: "${UID:-1000}:${GID:-1000}"
     env_file:
       - ./laravel-back/.env
     environment:
@@ -48,7 +50,6 @@ services:
       AWS_USE_PATH_STYLE_ENDPOINT: "true"
     volumes:
       - ./laravel-back:/var/www/html
-      - laravel_vendor:/var/www/html/vendor
     depends_on:
       mysql:
         condition: service_healthy
@@ -114,5 +115,4 @@ services:
 volumes:
   mysql_data:
   minio_data:
-  laravel_vendor:
   next_node_modules:
