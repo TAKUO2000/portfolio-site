@@ -15,7 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY docker/php/php.ini /usr/local/etc/php/conf.d/local.ini
 
-# ホストと同じUIDの非rootユーザで実行するため、HOMEに依存しない書き込み先を用意する
+# 任意のUIDで実行するため、イメージに存在しないユーザでもHOMEが書き込めるようにする
+# （未設定だとHOME=/になり、composerやtinker(psysh)が設定ファイルを書けずに失敗する）
+ENV HOME=/tmp
 ENV COMPOSER_HOME=/tmp/composer
 RUN mkdir -p /tmp/composer && chmod 777 /tmp/composer
 
