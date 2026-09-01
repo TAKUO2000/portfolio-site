@@ -1,4 +1,4 @@
-.PHONY: dev setup docker-up docker-down migrate test
+.PHONY: dev setup docker-up docker-build docker-down migrate test
 
 dev:
 	@trap 'kill 0' INT; \
@@ -15,7 +15,12 @@ setup:
 		fi; \
 	done
 
+# 通常の起動。イメージが無い初回はcomposeが自動でビルドする
 docker-up: setup
+	docker compose up -d
+
+# Dockerfileや依存を変えたときの再ビルド付き起動
+docker-build: setup
 	docker compose up -d --build
 
 docker-down:
