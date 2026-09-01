@@ -26,6 +26,26 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./laravel-back/.env
+    environment:
+      # laravel-back/.envはホスト直起動(make dev)向けの値なので、コンテナ間で解決できる
+      # 接続情報はここで上書きする（LaravelのDotenvは実環境変数を優先するため有効）
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # ローカル開発の画像アップロードは実S3ではなくMinIO(S3互換)へ向ける
+      FILESYSTEM_DISK: s3
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_BUCKET: ${AWS_BUCKET}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      # サーバー(コンテナ内)から見たMinIOのエンドポイント
+      AWS_ENDPOINT: http://minio:9000
+      # ブラウザから見たMinIOのエンドポイント（署名付きURL・表示URL用）
+      AWS_PUBLIC_ENDPOINT: http://localhost:${MINIO_PORT}
+      AWS_USE_PATH_STYLE_ENDPOINT: "true"
     volumes:
       - ./laravel-back:/var/www/html
       - laravel_vendor:/var/www/html/vendor
@@ -63,7 +83,6 @@ services:
       - minio
     env_file:
       - .env
-      - ./laravel-back/.env
     entrypoint: >
       sh -c "
         until mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\"; do sleep 1; done &&
