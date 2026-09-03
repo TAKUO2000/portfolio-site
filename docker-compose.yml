@@ -9,7 +9,8 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     ports:
-      - "${DB_PORT}:3306"
+      # ホストのループバックのみに公開する（省略すると0.0.0.0=全インターフェースに公開される）
+      - "127.0.0.1:${DB_PORT}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       # 初回起動時にテスト用データベースを作成する
@@ -60,7 +61,7 @@ services:
     image: nginx:stable-alpine
     restart: unless-stopped
     ports:
-      - "${BACKEND_PORT}:80"
+      - "127.0.0.1:${BACKEND_PORT}:80"
     volumes:
       - ./laravel-back:/var/www/html
       - ./laravel-back/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -75,8 +76,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
-      - "${MINIO_PORT}:9000"
-      - "${MINIO_CONSOLE_PORT}:9001"
+      - "127.0.0.1:${MINIO_PORT}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT}:9001"
     volumes:
       - minio_data:/data
 
@@ -109,7 +110,7 @@ services:
       # next/imageの許可ホスト用（MinIOのブラウザ到達可能エンドポイント）
       S3_PUBLIC_ENDPOINT: http://localhost:${MINIO_PORT}
     ports:
-      - "${FRONTEND_PORT}:3000"
+      - "127.0.0.1:${FRONTEND_PORT}:3000"
     volumes:
       - ./nextjs-front:/app
     depends_on:
