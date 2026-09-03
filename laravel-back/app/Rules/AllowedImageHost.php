@@ -8,6 +8,15 @@ use Illuminate\Contracts\Validation\ValidationRule;
 
 class AllowedImageHost implements ValidationRule
 {
+    private readonly ImageStorage $storage;
+
+    public function __construct()
+    {
+        // 配列(body_image_urls.*)では要素ごとにvalidateが呼ばれるため、
+        // ストレージの解決はルール1つにつき1回だけにする
+        $this->storage = app(ImageStorage::class);
+    }
+
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $host = parse_url((string) $value, PHP_URL_HOST);
@@ -23,6 +32,6 @@ class AllowedImageHost implements ValidationRule
      */
     private function allowedHosts(): array
     {
-        return array_filter([app(ImageStorage::class)->host()]);
+        return array_filter([$this->storage->host()]);
     }
 }

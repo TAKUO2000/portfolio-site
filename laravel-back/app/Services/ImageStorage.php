@@ -18,6 +18,8 @@ class ImageStorage
 {
     private const UPLOAD_URL_EXPIRES = '+15 minutes';
 
+    private ?S3Client $client = null;
+
     /**
      * ブラウザから直接PUTさせるための署名付きURLを発行する。
      *
@@ -59,6 +61,10 @@ class ImageStorage
 
     private function client(): S3Client
     {
+        if ($this->client !== null) {
+            return $this->client;
+        }
+
         $config = [
             'version'                 => 'latest',
             'region'                  => $this->config('region'),
@@ -76,7 +82,7 @@ class ImageStorage
             $config['endpoint'] = $endpoint;
         }
 
-        return new S3Client($config);
+        return $this->client = new S3Client($config);
     }
 
     private function config(string $key): mixed

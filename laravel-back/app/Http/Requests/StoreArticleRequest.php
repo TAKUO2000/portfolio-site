@@ -14,6 +14,9 @@ class StoreArticleRequest extends FormRequest
 
     public function rules(): array
     {
+        // ヘッダー画像と本文画像で同じルールインスタンスを使い回す
+        $allowedImageHost = new AllowedImageHost;
+
         return [
             'category_id' => ['required', 'integer', 'exists:categories,id'],
             'title'       => ['required', 'string', 'max:255'],
@@ -24,9 +27,9 @@ class StoreArticleRequest extends FormRequest
             'tags.*'           => ['integer', 'exists:tags,id'],
             'new_tags'         => ['nullable', 'array'],
             'new_tags.*'       => ['string', 'max:255', 'regex:/\S/u'],
-            'header_image_url' => ['nullable', 'string', 'url', 'max:2048', new AllowedImageHost],
+            'header_image_url' => ['nullable', 'string', 'url', 'max:2048', $allowedImageHost],
             'body_image_urls' => ['nullable', 'array'],
-            'body_image_urls.*' => ['string', 'url', 'max:2048', new AllowedImageHost],
+            'body_image_urls.*' => ['string', 'url', 'max:2048', $allowedImageHost],
         ];
     }
 }
