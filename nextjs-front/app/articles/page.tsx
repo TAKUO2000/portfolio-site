@@ -2,13 +2,7 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import ArticleCard from "../components/ArticleCard";
 import type { Category, Tag } from "@/app/types/models";
-
-// サーバーコンポーネントはコンテナ内部から実行されるため、Docker Compose環境では
-// ブラウザ向けのNEXT_PUBLIC_API_BASE_URLではなくAPI_INTERNAL_BASE_URLを優先する
-const API_BASE_URL =
-  process.env.API_INTERNAL_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "http://localhost:8000";
+import { getApiBaseUrl } from "@/app/lib/apiBaseUrl";
 
 type SortOrder = "latest" | "popular";
 
@@ -48,7 +42,7 @@ interface Meta {
 }
 
 async function fetchArticles(sort: SortOrder): Promise<IndexResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/articles?sort=${sort}`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/articles?sort=${sort}`, {
     headers: { Accept: "application/json" },
   });
 

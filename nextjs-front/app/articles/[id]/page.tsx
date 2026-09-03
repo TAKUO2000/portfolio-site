@@ -9,6 +9,7 @@ import TagBox from "@/app/components/ui/TagBox";
 import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
 import type { Category, Tag } from "@/app/types/models";
 import { markdownSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
+import { getApiBaseUrl } from "@/app/lib/apiBaseUrl";
 
 interface ShowResponse {
   data: {
@@ -30,13 +31,8 @@ interface ImageTypeUrl {
   type: string;
 }
 
-// サーバーコンポーネントはコンテナ内部から実行されるため、Docker Compose環境では
-// ブラウザ向けのNEXT_PUBLIC_API_BASE_URLではなくAPI_INTERNAL_BASE_URLを優先する
-const API_BASE_URL =
-  process.env.API_INTERNAL_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
-
 async function fetchArticles(id: string): Promise<ShowResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/articles/${id}`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/articles/${id}`, {
     headers: { Accept: "application/json" },
   });
 
