@@ -2,11 +2,21 @@
 
 namespace App\Rules;
 
+use App\Services\ImageStorage;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 
 class AllowedImageHost implements ValidationRule
 {
+    private readonly ImageStorage $storage;
+
+    public function __construct()
+    {
+        // 配列(body_image_urls.*)では要素ごとにvalidateが呼ばれるため、
+        // ストレージの解決はルール1つにつき1回だけにする
+        $this->storage = app(ImageStorage::class);
+    }
+
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $host = parse_url((string) $value, PHP_URL_HOST);
@@ -16,13 +26,12 @@ class AllowedImageHost implements ValidationRule
         }
     }
 
+    /**
+     * 表示用URLを組み立てているストレージ自身に許可ホストを問い合わせる。
+     * MinIOでも実S3でも同じ経路で導出されるため、環境ごとの分岐は不要。
+     */
     private function allowedHosts(): array
     {
-        $bucket = config('filesystems.disks.s3.bucket');
-        $region = config('filesystems.disks.s3.region');
-
-        return [
-            "{$bucket}.s3.{$region}.amazonaws.com",
-        ];
+        return array_filter([$this->storage->host()]);
     }
 }

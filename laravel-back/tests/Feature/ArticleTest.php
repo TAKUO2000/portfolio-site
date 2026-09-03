@@ -246,13 +246,10 @@ test('new_tagsが空白のみの場合はバリデーションエラーになる
         ->assertJsonValidationErrors(['new_tags.0', 'new_tags.1', 'new_tags.2']);
 });
 
-test('許可されたS3ホストのheader_image_url・body_image_urlsが記事画像として保存される', function () {
-    config([
-        'filesystems.disks.s3.bucket' => 'test-bucket',
-        'filesystems.disks.s3.region' => 'ap-northeast-1',
-    ]);
-    $headerUrl = 'https://test-bucket.s3.ap-northeast-1.amazonaws.com/images/header.png';
-    $bodyUrl = 'https://test-bucket.s3.ap-northeast-1.amazonaws.com/images/body1.png';
+test('許可されたストレージホストのheader_image_url・body_image_urlsが記事画像として保存される', function () {
+    useMinioStorage();
+    $headerUrl = 'http://localhost:9002/test-bucket/images/header.png';
+    $bodyUrl = 'http://localhost:9002/test-bucket/images/body1.png';
 
     $response = $this->actingAs($this->adminUser)
         ->postJson('/api/articles', [
@@ -281,10 +278,7 @@ test('許可されたS3ホストのheader_image_url・body_image_urlsが記事�
 });
 
 test('許可されていないホストのheader_image_urlはバリデーションエラーになる', function () {
-    config([
-        'filesystems.disks.s3.bucket' => 'test-bucket',
-        'filesystems.disks.s3.region' => 'ap-northeast-1',
-    ]);
+    useMinioStorage();
 
     $response = $this->actingAs($this->adminUser)
         ->postJson('/api/articles', [
@@ -637,4 +631,45 @@ test('そもそも記事がない場合も非表示', function () {
     $response = $this->getJson('/api/articles/1');
 
     $response->assertStatus(404);
+});
+
+test('本番相当の設定では実S3のホストのheader_image_urlが許可される', function () {
+    useProductionS3Storage();
+    $headerUrl = 'https://prod-bucket.s3.ap-northeast-1.amazonaws.com/images/header.png';
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '本番構成の画像付き記事',
+            'summary' => 'テスト概要',
+            'body' => 'テスト本文',
+            'status' => 'published',
+            'header_image_url' => $headerUrl,
+        ]);
+
+    $response->assertStatus(201);
+
+    $article = Article::where('title', '本番構成の画像付き記事')->first();
+    $this->assertDatabaseHas('article_images', [
+        'article_id' => $article->id,
+        'url' => $headerUrl,
+        'type' => 'header',
+    ]);
+});
+
+test('本番相当の設定でもMinIOのホストのheader_image_urlは拒否される', function () {
+    useProductionS3Storage();
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_url' => 'http://localhost:9002/test-bucket/images/header.png',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_url']);
 });

@@ -1,0 +1,121 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    ports:
+      # ホストのループバックのみに公開する（省略すると0.0.0.0=全インターフェースに公開される）
+      - "127.0.0.1:${DB_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 初回起動時にテスト用データベースを作成する
+      - ./laravel-back/docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ./laravel-back
+      dockerfile: docker/php/Dockerfile
+    restart: unless-stopped
+    working_dir: /var/www/html
+    # vendorをホストと共有するため、ホストと同じ所有者で実行してroot所有ファイルを防ぐ
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file:
+      - ./laravel-back/.env
+    environment:
+      # laravel-back/.envはホスト直起動(make dev)向けの値なので、コンテナ間で解決できる
+      # 接続情報はここで上書きする（LaravelのDotenvは実環境変数を優先するため有効）
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # ローカル開発の画像アップロードは実S3ではなくMinIO(S3互換)へ向ける
+      FILESYSTEM_DISK: s3
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_BUCKET: ${AWS_BUCKET}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      # サーバー(コンテナ内)から見たMinIOのエンドポイント
+      AWS_ENDPOINT: http://minio:9000
+      # ブラウザから見たMinIOのエンドポイント（署名付きURL・表示URL用）
+      AWS_PUBLIC_ENDPOINT: http://localhost:${MINIO_PORT}
+      AWS_USE_PATH_STYLE_ENDPOINT: "true"
+    volumes:
+      - ./laravel-back:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  web:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${BACKEND_PORT}:80"
+    volumes:
+      - ./laravel-back:/var/www/html
+      - ./laravel-back/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:${MINIO_PORT}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    env_file:
+      - .env
+    entrypoint: >
+      sh -c "
+        until mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\"; do sleep 1; done &&
+        mc mb --ignore-existing \"local/$$AWS_BUCKET\" &&
+        mc anonymous set download \"local/$$AWS_BUCKET\"
+      "
+
+  next:
+    build:
+      context: ./nextjs-front
+    restart: unless-stopped
+    working_dir: /app
+    # node_modules/.nextをホストと共有するため、ホストと同じ所有者で実行する
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file:
+      - ./nextjs-front/.env
+    environment:
+      # サーバーコンポーネント(SSR)はコンテナ内部から実行されるため、ブラウザ向けの
+      # NEXT_PUBLIC_API_BASE_URL(localhost)ではなくDocker内部名で解決する
+      API_INTERNAL_BASE_URL: http://web
+      # next/imageの許可ホスト用（MinIOのブラウザ到達可能エンドポイント）
+      S3_PUBLIC_ENDPOINT: http://localhost:${MINIO_PORT}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT}:3000"
+    volumes:
+      - ./nextjs-front:/app
+    depends_on:
+      - web
+
+volumes:
+  mysql_data:
+  minio_data:
