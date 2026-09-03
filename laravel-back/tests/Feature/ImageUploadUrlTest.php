@@ -47,6 +47,29 @@ test('一般ユーザーはアップロードURLを取得できない', function
     $response->assertForbidden();
 });
 
+test('本番相当の設定では実S3の仮想ホストスタイルのURLが返る', function () {
+    useProductionS3Storage();
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/images/upload-url', [
+            'file_name'  => 'photo.png',
+            'media_type' => 'image/png',
+            'file_size'  => 1024,
+        ]);
+
+    $response->assertStatus(200);
+
+    $uploadUrl = $response->json('upload_url');
+    $imageUrl = $response->json('image_url');
+    $expectedHost = 'https://prod-bucket.s3.ap-northeast-1.amazonaws.com';
+
+    // エンドポイント未設定時はSDKがバケット名をホストに含めたURLを組み立てる
+    expect($uploadUrl)->toStartWith($expectedHost . '/images/');
+    expect($imageUrl)->toStartWith($expectedHost . '/images/');
+    expect($uploadUrl)->toContain('X-Amz-Signature=');
+    expect(parse_url($uploadUrl, PHP_URL_PATH))->toBe(parse_url($imageUrl, PHP_URL_PATH));
+});
+
 test('許可されていないmedia_typeはバリデーションエラーになる', function () {
     $response = $this->actingAs($this->adminUser)
         ->postJson('/api/images/upload-url', [

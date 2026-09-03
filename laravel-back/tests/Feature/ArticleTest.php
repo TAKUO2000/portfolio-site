@@ -632,3 +632,44 @@ test('そもそも記事がない場合も非表示', function () {
 
     $response->assertStatus(404);
 });
+
+test('本番相当の設定では実S3のホストのheader_image_urlが許可される', function () {
+    useProductionS3Storage();
+    $headerUrl = 'https://prod-bucket.s3.ap-northeast-1.amazonaws.com/images/header.png';
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '本番構成の画像付き記事',
+            'summary' => 'テスト概要',
+            'body' => 'テスト本文',
+            'status' => 'published',
+            'header_image_url' => $headerUrl,
+        ]);
+
+    $response->assertStatus(201);
+
+    $article = Article::where('title', '本番構成の画像付き記事')->first();
+    $this->assertDatabaseHas('article_images', [
+        'article_id' => $article->id,
+        'url' => $headerUrl,
+        'type' => 'header',
+    ]);
+});
+
+test('本番相当の設定でもMinIOのホストのheader_image_urlは拒否される', function () {
+    useProductionS3Storage();
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_url' => 'http://localhost:9002/test-bucket/images/header.png',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_url']);
+});
