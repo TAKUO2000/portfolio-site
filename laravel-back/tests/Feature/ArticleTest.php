@@ -633,6 +633,384 @@ test('そもそも記事がない場合も非表示', function () {
     $response->assertStatus(404);
 });
 
+// 記事更新update
+test('自分の投稿記事を更新できる', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '更新前タイトル',
+        'summary' => '更新前概要',
+        'body' => '更新前本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '更新後タイトル',
+            'summary' => '更新後概要',
+            'body' => '更新後本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['title' => '更新後タイトル'])
+        ->assertJsonStructure([
+            'data' => [
+                'id',
+                'title',
+                'summary',
+                'body',
+                'status',
+                'published_at',
+                'category' => ['id', 'name'],
+                'tags',
+                'header_image_url',
+                'body_image_urls',
+            ],
+        ]);
+
+    $this->assertDatabaseHas('articles', [
+        'id' => $article->id,
+        'title' => '更新後タイトル',
+        'body' => '更新後本文',
+    ]);
+});
+
+test('draft記事も本人であれば更新できる', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '下書き記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'draft',
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '下書きのまま更新',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'draft',
+        ]);
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['status' => 'draft']);
+
+    $this->assertDatabaseHas('articles', [
+        'id' => $article->id,
+        'title' => '下書きのまま更新',
+        'published_at' => null,
+    ]);
+});
+
+test('draftからpublishedへの更新でpublished_atが設定される', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '公開する記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'draft',
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '公開する記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(200);
+    expect($article->fresh()->published_at)->not->toBeNull();
+});
+
+test('公開済み記事を更新してもpublished_atは初回公開日のまま維持される', function () {
+    $publishedAt = now()->subDays(3);
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '公開済み記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => $publishedAt,
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '公開済み記事を編集',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(200);
+    expect($article->fresh()->published_at->timestamp)->toBe($publishedAt->timestamp);
+});
+
+test('更新時にリクエストへ含めなかったタグは外れる', function () {
+    $tags = Tag::all();
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => 'タグ付き記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+    $article->tags()->sync($tags->pluck('id')->toArray());
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => 'タグ付き記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+            'tags' => [$tags->first()->id],
+        ]);
+
+    $response->assertStatus(200);
+    expect($article->fresh()->tags->pluck('id')->toArray())->toBe([$tags->first()->id]);
+});
+
+test('更新時にtagsを空で送ると全てのタグが外れる', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => 'タグ付き記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+    $article->tags()->sync(Tag::pluck('id')->toArray());
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => 'タグ付き記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(200);
+    expect($article->fresh()->tags)->toHaveCount(0);
+});
+
+test('更新時のnew_tagsで新規タグが作成され記事に紐づく', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => 'タグ追加記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => 'タグ追加記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+            'new_tags' => ['Svelte'],
+        ]);
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['name' => 'Svelte']);
+
+    $this->assertDatabaseHas('tags', ['name' => 'Svelte']);
+    expect($article->fresh()->tags->pluck('name')->toArray())->toBe(['Svelte']);
+});
+
+test('更新時に画像が差し替えられ、旧画像は論理削除される', function () {
+    useMinioStorage();
+    $oldUrl = 'http://localhost:9002/test-bucket/images/old-header.png';
+    $newUrl = 'http://localhost:9002/test-bucket/images/new-header.png';
+
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '画像差し替え記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+    $oldImage = $article->images()->create(['url' => $oldUrl, 'type' => 'header']);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '画像差し替え記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_url' => $newUrl,
+        ]);
+
+    $response->assertStatus(200)
+        ->assertJsonFragment(['header_image_url' => $newUrl]);
+
+    $this->assertSoftDeleted('article_images', ['id' => $oldImage->id]);
+    $this->assertDatabaseHas('article_images', [
+        'article_id' => $article->id,
+        'url' => $newUrl,
+        'type' => 'header',
+        'deleted_at' => null,
+    ]);
+});
+
+test('他ユーザの記事は更新できない', function () {
+    $article = $this->subAdminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => 'subAdminUserが作った記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '乗っ取りタイトル',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(403);
+    $this->assertDatabaseHas('articles', ['id' => $article->id, 'title' => 'subAdminUserが作った記事']);
+});
+
+test('存在しない記事の更新は404になる', function () {
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/9999', [
+            'category_id' => $this->category->id,
+            'title' => '記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(404);
+});
+
+test('論理削除済み記事の更新は404になる', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '削除済み記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+    $article->delete();
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '復活させたいタイトル',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(404);
+});
+
+test('一般ユーザーは記事を更新できない', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '更新されない記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->generalUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '更新後タイトル',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(403);
+    $this->assertDatabaseHas('articles', ['id' => $article->id, 'title' => '更新されない記事']);
+});
+
+test('未認証ユーザーは記事を更新できない', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '更新されない記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->putJson('/api/articles/'.$article->id, [
+        'category_id' => $this->category->id,
+        'title' => '更新後タイトル',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+    ]);
+
+    $response->assertStatus(401);
+    $this->assertDatabaseHas('articles', ['id' => $article->id, 'title' => '更新されない記事']);
+});
+
+test('更新時に必須項目が欠けている場合はバリデーションエラーになる', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, []);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['category_id', 'title', 'summary', 'body', 'status']);
+});
+
+test('更新時も許可されていないホストのheader_image_urlは拒否される', function () {
+    useMinioStorage();
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_url' => 'https://evil.example.com/x.png',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_url']);
+});
+
 test('本番相当の設定では実S3のホストのheader_image_urlが許可される', function () {
     useProductionS3Storage();
     $headerUrl = 'https://prod-bucket.s3.ap-northeast-1.amazonaws.com/images/header.png';

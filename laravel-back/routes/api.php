@@ -14,7 +14,8 @@ Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::prefix('articles')->group(function () {
         Route::post('/', [ArticleController::class, 'store']);
-        Route::delete('/{id}', [ArticleController::class, 'delete']);
+        Route::put('/{article}', [ArticleController::class, 'update']);
+        Route::delete('/{id}', [ArticleController::class, 'destroy']);
     });
     Route::post('/images/upload-url', [ImageController::class, 'getUploadUrl']);
 });
