@@ -33,7 +33,7 @@ make docker-up  # 起動（初回は composer install / npm install で約2分�
 
 - `APP_KEY` の生成
 - マイグレーション
-- 画像用バケット（`portfolio-images`）の作成と公開設定
+- 画像用バケット（`portfolio-images`）の作成と公開設定、`tmp/` の自動削除ルール設定
 
 停止は `make docker-down` です。DB と MinIO のデータは volume に残るため、完全に消すには `docker compose down -v` を実行します。
 
@@ -106,6 +106,42 @@ cd .. && make dev   # API と フロントエンドを同時に起動
 | 発行される URL | `http://localhost:9002/<bucket>/images/xxx.png` | `https://<bucket>.s3.<region>.amazonaws.com/images/xxx.png` |
 
 ローカルの値は `docker-compose.yml` が注入するため設定は不要です。デプロイ時は上記の本番列のとおり、2つのエンドポイントを空にして実 S3 の認証情報・バケットを設定してください。テストも MinIO 構成で実行されます（`tests/Pest.php` の `useMinioStorage()`）。
+
+仕組みの詳細は [docs/image-management.md](docs/image-management.md) にまとめています。
+
+### 画像の置き場所とライフサイクル
+
+DB（`article_images.object_key`）が持つのは**オブジェクトキーだけ**で、表示用 URL は実行時に組み立てます（`ArticleImage::url`）。エンドポイントやバケットを変更しても既存レコードに手を入れずに済みます。
+
+オブジェクトは用途で 2 つのプレフィックスに分かれます。
+
+| プレフィックス | 中身 | 消え方 |
+| --- | --- | --- |
+| `tmp/` | アップロード直後の一時置き場 | ストレージのライフサイクルルールで 1 日後に自動削除 |
+| `images/` | 記事に添付された本置き場 | `images:prune` が未参照のものを削除 |
+
+記事を保存した時点で `tmp/` から `images/` へ移し、本文中の参照も書き換えます。記事を保存せずにブラウザを閉じた分は `tmp/` に残り、そのまま自動削除されます。
+
+### 未使用画像の削除
+
+どの記事からも参照されなくなった画像は、次のコマンドで削除します（スケジューラに登録済みで、毎日 4:00 に自動実行されます）。
+
+```bash
+docker compose exec app php artisan images:prune --dry-run  # 対象の確認のみ
+docker compose exec app php artisan images:prune            # 実際に削除
+```
+
+猶予期間は `config/images.php` で調整できます。
+
+| 設定 | 既定値 | 意味 |
+| --- | --- | --- |
+| `IMAGE_DELETED_ARTICLE_RETENTION_DAYS` | 30 | 論理削除された記事の画像を残す日数。この期間内に記事を復元すれば画像も元通りになる |
+| `IMAGE_ORPHAN_GRACE_HOURS` | 24 | アップロード直後のオブジェクトを削除対象外にする時間。保存処理中のものを消さないための安全域 |
+
+本番では以下が別途必要です。
+
+- スケジューラの起動（`php artisan schedule:work`、または cron から `schedule:run` を毎分実行）
+- S3 バケットに `tmp/` プレフィックスの有効期限 1 日のライフサイクルルールを設定（未設定でも `images:prune` が回収しますが、実行間隔のぶん滞留します）
 
 ## 開発時の注意
 
