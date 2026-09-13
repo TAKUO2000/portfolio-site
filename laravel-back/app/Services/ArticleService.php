@@ -287,8 +287,8 @@ class ArticleService
         return $query->withCount(['reactions as like_count']);
     }
 
-    public function delete(int $id): void
+    public function delete(Article $article): void
     {
-        Article::findOrFail($id)->delete();
+        $article->delete();
     }
 }
