@@ -10,28 +10,21 @@ beforeEach(function () {
     $this->storage = fakeImageStorage();
     $this->user = User::factory()->create(['role' => 'admin']);
     $this->category = Category::create(['name' => 'テスト']);
+
+    // 指定したキーの画像を持つ記事を作る。グローバル関数にすると他のテストファイルと
+    // 名前が衝突しうるため、このファイル限りのクロージャとして持たせている
+    $this->articleWithImage = function (string $key): Article {
+        $article = Article::factory()->for($this->user)->for($this->category)->create();
+
+        $article->images()->create(['object_key' => $key, 'type' => 'header']);
+
+        return $article;
+    };
 });
-
-/** 指定したキーの画像を持つ記事を作る */
-function articleWithImage(string $key): Article
-{
-    $article = test()->user->articles()->create([
-        'category_id'  => test()->category->id,
-        'title'        => '記事',
-        'summary'      => '概要',
-        'body'         => '本文',
-        'status'       => 'published',
-        'published_at' => now(),
-    ]);
-
-    $article->images()->create(['object_key' => $key, 'type' => 'header']);
-
-    return $article;
-}
 
 test('記事から参照されている画像は削除されない', function () {
     $key = 'images/11111111-1111-4111-8111-111111111111.png';
-    articleWithImage($key);
+    ($this->articleWithImage)($key);
     $this->storage->put($key, Carbon::now()->subDays(30));
 
     $this->artisan('images:prune')->assertExitCode(0);
@@ -42,7 +35,7 @@ test('記事から参照されている画像は削除されない', function ()
 test('どの記事からも参照されていない本置き場の画像は削除される', function () {
     $usedKey = 'images/11111111-1111-4111-8111-111111111111.png';
     $unusedKey = 'images/22222222-2222-4222-8222-222222222222.png';
-    articleWithImage($usedKey);
+    ($this->articleWithImage)($usedKey);
     $this->storage->put($usedKey, Carbon::now()->subDays(30));
     $this->storage->put($unusedKey, Carbon::now()->subDays(30));
 
@@ -75,7 +68,7 @@ test('記事に添付されずに一時置き場へ残った画像は削除さ�
 
 test('論理削除された記事の画像は猶予期間内なら削除されない', function () {
     $key = 'images/11111111-1111-4111-8111-111111111111.png';
-    $article = articleWithImage($key);
+    $article = ($this->articleWithImage)($key);
     $this->storage->put($key, Carbon::now()->subDays(60));
 
     Carbon::setTestNow(Carbon::now()->subDays(29));
@@ -89,7 +82,7 @@ test('論理削除された記事の画像は猶予期間内なら削除され�
 
 test('論理削除された記事の画像は猶予期間を過ぎると削除される', function () {
     $key = 'images/11111111-1111-4111-8111-111111111111.png';
-    $article = articleWithImage($key);
+    $article = ($this->articleWithImage)($key);
     $this->storage->put($key, Carbon::now()->subDays(60));
 
     Carbon::setTestNow(Carbon::now()->subDays(31));
