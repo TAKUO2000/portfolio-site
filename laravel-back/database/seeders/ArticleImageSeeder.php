@@ -20,7 +20,7 @@ class ArticleImageSeeder extends Seeder
     $tags = Tag::pluck('id', 'name');
 
     // 画像はURLではなくキーで持つため、初期データの画像も実際にストレージへ置く
-    $headerKey = $this->putPlaceholderImage();
+    $headerKeys = $this->putSeedImages();
 
     $articles = [
       [
@@ -432,7 +432,7 @@ MD,
       ],
     ];
 
-    foreach ($articles as $data) {
+    foreach ($articles as $index => $data) {
       $article = Article::updateOrCreate(
         ['title' => $data['title']],
         [
@@ -450,37 +450,39 @@ MD,
         $article->tags()->sync($tagIds);
       }
 
-      ArticleImage::firstOrCreate(
-        ['article_id' => $article->id, 'type' => 'header'],
-        ['object_key' => $headerKey]
-      );
+      if ($headerKeys !== []) {
+        // 記事ごとに見分けがつくよう順に割り当て、枚数が足りなければ先頭に戻る
+        ArticleImage::updateOrCreate(
+          ['article_id' => $article->id, 'type' => 'header'],
+          ['object_key' => $headerKeys[$index % count($headerKeys)]]
+        );
+      }
     }
   }
 
   /**
-   * 初期データ用のヘッダー画像をストレージに置き、そのキーを返す。
+   * 初期データ用の画像をストレージに置き、そのキーの一覧を返す。
    *
-   * 記事からはキーで参照するため、実体が無いと表示が壊れる。外部のURLを借りてくると
-   * 同じ問題が起きるので、単色の画像をその場で生成して自分のストレージに置いている。
+   * 記事からはキーで参照するため、ストレージに実体が無いと表示が壊れる。外部のURLを
+   * 借りてくると相手の都合で消えて同じ問題が起きるので、画像をリポジトリに置き、
+   * 無ければ自分のストレージへアップロードしてから使う。
+   *
+   * @return list<string>
    */
-  private function putPlaceholderImage(): string
+  private function putSeedImages(): array
   {
-    $key = 'images/seed-header.png';
+    $keys = [];
 
-    if (Storage::disk('s3')->exists($key)) {
-      return $key;
+    foreach (glob(__DIR__ . '/images/*.jpg') as $path) {
+      $key = 'images/seed-' . basename($path);
+
+      if (!Storage::disk('s3')->exists($key)) {
+        Storage::disk('s3')->put($key, file_get_contents($path));
+      }
+
+      $keys[] = $key;
     }
 
-    $image = imagecreatetruecolor(1200, 630);
-    imagefill($image, 0, 0, imagecolorallocate($image, 0x33, 0x41, 0x55));
-
-    ob_start();
-    imagepng($image);
-    $png = ob_get_clean();
-    imagedestroy($image);
-
-    Storage::disk('s3')->put($key, $png);
-
-    return $key;
+    return $keys;
   }
 }
