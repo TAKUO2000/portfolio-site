@@ -46,20 +46,13 @@ class ArticleService
         $images = $this->publishImages($article, $data);
 
         return DB::transaction(function () use ($article, $data, $images) {
-            // 一度公開した記事の公開日時は維持する。下書きに戻して再公開しても初回公開日のまま
-            $publishedAt = $article->published_at;
-
-            if ($data['status'] === 'published' && $publishedAt === null) {
-                $publishedAt = Carbon::now();
-            }
-
             $article->update([
                 'category_id'  => $data['category_id'],
                 'title'        => $data['title'],
                 'summary'      => $data['summary'],
                 'body'         => $images['body'],
                 'status'       => $data['status'],
-                'published_at' => $publishedAt,
+                'published_at' => $this->publishedAtFor($article, $data['status']),
             ]);
 
             // syncなので、リクエストに含まれないタグは外れる
@@ -240,6 +233,58 @@ class ArticleService
                 $article->images()->create($attributes);
             }
         }
+    }
+
+    /**
+     * 管理画面用に、そのユーザーが書いた記事を下書きも含めて返す。
+     *
+     * 読者向けのindexとは別にしているのは、公開記事だけを返す絞り込みが前提にあり、
+     * そこに「自分の記事なら下書きも見せる」を混ぜると条件が絡み合うため。
+     */
+    public function mine(User $user, array $data): LengthAwarePaginator
+    {
+        $query = $user->articles()->with(['category', 'headerImage']);
+
+        if (!empty($data['status'])) {
+            $query->where('status', $data['status']);
+        }
+
+        if (!empty($data['keyword'])) {
+            $query->where('title', 'like', '%' . $data['keyword'] . '%');
+        }
+
+        // 管理画面では書きかけを見つけたいので、公開日ではなく最終更新が新しい順
+        return $query->orderByDesc('updated_at')->paginate($data['per_page'] ?? 15);
+    }
+
+    /**
+     * 記事のステータスだけを差し替える。
+     *
+     * 更新APIは全置換なので、一覧から下書き⇔公開を切り替えるだけでも本文やヘッダー画像を
+     * 送る必要がある。一覧はそれらを持たないため、別の操作として切り出している。
+     */
+    public function updateStatus(Article $article, string $status): Article
+    {
+        $article->update([
+            'status'       => $status,
+            'published_at' => $this->publishedAtFor($article, $status),
+        ]);
+
+        return $article->load(['category', 'headerImage']);
+    }
+
+    /**
+     * 一度公開した記事の公開日時は維持する。
+     * 下書きに戻して再公開しても初回公開日のままになる（編集のたびに一覧の並び順が
+     * 変わらないようにするため）
+     */
+    private function publishedAtFor(Article $article, string $status): ?Carbon
+    {
+        if ($status === 'published' && $article->published_at === null) {
+            return Carbon::now();
+        }
+
+        return $article->published_at;
     }
 
     public function index(array $data): LengthAwarePaginator
