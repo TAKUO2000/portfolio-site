@@ -123,14 +123,14 @@ export default function NewArticlePage() {
       );
 
       // 本文中のblob URLをアップロード先のURLに差し替える。
-      // このURLは一時置き場のものだが、記事保存時にサーバー側で本置き場のURLへ書き換わる
+      // このURLは一時置き場のものだが、記事保存時にサーバーが本文から拾って
+      // 本置き場へ移し、本文のURLも書き換える（本文が画像参照の唯一の正）
       let finalBody = body;
       for (const img of uploadedImages) {
         finalBody = finalBody.replaceAll(img.blobUrl, img.imageUrl);
       }
-      const bodyImageKeys = uploadedImages.map((img) => img.objectKey);
-
-      // ヘッダー画像も同様に送信時点でアップロード
+      // ヘッダー画像も同様に送信時点でアップロード。
+      // 必須項目なのでvalidateArticleFormを通っていれば必ず選択されている
       let headerImageKey: string | undefined;
       if (pendingHeader) {
         headerImageKey = (await uploadImageToS3(pendingHeader.file)).objectKey;
@@ -154,10 +154,7 @@ export default function NewArticlePage() {
           status,
           tags: selectedTagIds,
           ...(pendingTags.length > 0 ? { new_tags: pendingTags } : {}),
-          ...(headerImageKey ? { header_image_key: headerImageKey } : {}),
-          ...(bodyImageKeys.length > 0
-            ? { body_image_keys: bodyImageKeys }
-            : {}),
+          header_image_key: headerImageKey,
         }),
       });
 

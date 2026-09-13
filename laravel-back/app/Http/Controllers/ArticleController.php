@@ -6,8 +6,11 @@ use App\Http\Requests\DeleteArticleRequest;
 use App\Http\Requests\IndexArticleRequest;
 use App\Http\Requests\ShowArticleRequest;
 use App\Http\Requests\StoreArticleRequest;
+use App\Http\Requests\UpdateArticleRequest;
 use App\Http\Resources\ArticleDetailResource;
+use App\Http\Resources\ArticleEditResource;
 use App\Http\Resources\ArticleResource;
+use App\Models\Article;
 use App\Services\ArticleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -38,7 +41,17 @@ class ArticleController extends Controller
         return new ArticleDetailResource($article);
     }
 
-    public function delete(DeleteArticleRequest $request): JsonResponse
+    public function update(UpdateArticleRequest $request, Article $article): ArticleEditResource
+    {
+        $updated = $this->articleService->update(
+            $article,
+            $request->validated()
+        );
+
+        return new ArticleEditResource($updated);
+    }
+
+    public function destroy(DeleteArticleRequest $request): JsonResponse
     {
         $this->articleService->delete($request->validated()['id']);
 

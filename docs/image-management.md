@@ -107,7 +107,7 @@ protected function url(): Attribute
 ### これで得られたこと
 
 - **環境・ドメイン変更に強い**: エンドポイントやバケットを変えても DB に手を入れなくてよい
-- **バリデーションが単純になった**: ホストの許可リスト（`AllowedImageHost`）が不要になり、「アプリが発行したキーの形式か」という正規表現1本（`PendingImageKey`）で済む
+- **バリデーションが単純になった**: ホストの許可リスト（`AllowedImageHost`）が不要になり、「アプリが発行したキーの形式か」という正規表現1本（`ArticleImageKey`）で済む
 - **突き合わせが可能になった**: ストレージのキー集合と DB のキー集合をそのまま比較できる ← 未使用画像の削除が成り立つ土台
 
 ---
@@ -191,40 +191,64 @@ const usedImages = pendingImages.filter((img) => body.includes(img.blobUrl));
 {
   "title": "...",
   "body": "本文 ![](http://localhost:9002/portfolio-images/tmp/xxx.png)",
-  "header_image_key": "tmp/yyy.png",
-  "body_image_keys": ["tmp/xxx.png"]
+  "header_image_key": "tmp/yyy.png"
 }
 ```
 
-キーは `PendingImageKey` ルールで形式を検証します。
+**本文画像の一覧は送りません。** サーバーが保存しようとしている本文から抽出します（後述）。
+
+`header_image_key` は**必須**です。画像なしの記事は存在しない前提なので、省略も `null` も 422 で弾きます。更新時にフロントが送り忘れてヘッダー画像が黙って外れる、という事故を防ぐためでもあります。
+
+キーは `ArticleImageKey` ルールで形式を検証します。
 
 ```php
-// app/Rules/PendingImageKey.php
-private const PATTERN = '/^tmp\/[0-9a-f]{8}-...-[0-9a-f]{12}\.(jpg|png|webp|gif)$/';
+// app/Rules/ArticleImageKey.php
+public const PATTERN = '(?:tmp\/{uuid}|images\/[0-9A-Za-z_-]+)\.(?:jpg|png|webp|gif)';
 ```
 
-`tmp/` で始まる形しか受け付けないため、`images/` 配下のキーを直接指定して**他の記事の画像を横取りすることはできません**。`../` のようなパス操作も弾かれます。
+`images/` 配下のキーも形式としては通りますが（更新時にヘッダー画像を据え置く場合に必要）、**その記事が既に参照しているキーかどうかをサービス層が照合します**。他の記事の画像を指定しても弾かれます。`../` のようなパス操作は形式の時点で弾かれます。
 
 ### ④ サーバー側の処理
 
 ```php
 // app/Services/ArticleService.php
-$headerKey = isset($data['header_image_key'])
-    ? $this->publishImage($data['header_image_key'])
-    : null;
+preg_match_all('#' . ArticleImageKey::PATTERN . '#', $body, $matches);
 
-foreach (array_unique($data['body_image_keys'] ?? []) as $tmpKey) {
-    $key = $this->publishImage($tmpKey);
-    $body = str_replace($tmpKey, $key, $body);   // 本文中の参照も書き換える
-    $bodyKeys[] = $key;
+foreach (array_unique($matches[0]) as $key) {
+    $published = $this->publishKey($key, $ownedKeys, null);
+
+    if ($published === null) {
+        continue;   // この記事のものでないキーは参照として扱わない
+    }
+
+    $body = str_replace($key, $published, $body);   // 本文中の参照も書き換える
+    $bodyKeys[] = $published;
 }
 ```
 
-`publishImage()` が `tmp/xxx.png` → `images/xxx.png` へ移動し、移動後のキーを返します。S3 にはリネームが無いため、実装はコピー＋削除です。
+`publishKey()` は `tmp/xxx.png` を `images/xxx.png` へ移動して新しいキーを返します。S3 にはリネームが無いため、実装はコピー＋削除です。
+
+`images/` のキーは、**その記事が既に参照している場合だけ**引き継ぎます。そうでないものは本文の見た目を変えずに無視します（記事内のコードブロックにキーらしき文字列を書いても保存が失敗しないように）。
 
 **本文の書き換えが必要な理由**: 本文には貼り付け時点の一時置き場のURLが埋まっています。移動しただけでは本文中の参照が `tmp/` を指したままになり、1日後にライフサイクルルールで消えて画像が壊れます。キー部分は URL の中の `tmp/xxx.png` という部分文字列なので、`str_replace` でホストに依存せず置換できます。
 
 同じ画像が本文に複数回貼られている場合、移動は `array_unique` で一度だけ行います（2回目は移動元が既に無く失敗するため）。
+
+### 更新時（`PUT /api/articles/{id}`）
+
+本文には、前回の保存で本置き場へ移された `images/` のキーが既に入っています。作成時と同じ処理で扱えるよう、キーの解決は2通りに分かれます。
+
+| 本文中のキー | 扱い |
+| --- | --- |
+| `tmp/xxx.png` | 本置き場へ移し、本文の参照を書き換える（新しく貼られた画像） |
+| `images/xxx.png` でこの記事が参照済み | そのまま引き継ぐ |
+| `images/xxx.png` でこの記事のものでない | 参照として登録しない。本文はそのまま |
+
+最後の行が重要です。他の記事の画像キーを本文に書いても自分の記事には紐付きません。かといってエラーにもしないのは、記事本文にキーらしき文字列（このドキュメントのような解説記事）を書けなくなるのを避けるためです。
+
+ヘッダー画像は本文外の明示的な項目なので、この記事のものでないキーを指定した場合は 422 で弾きます。省略や `null` も同様に 422 です（据え置く場合は、GETで返ってきた `images/` のキーをそのまま送り返します）。
+
+参照が外れた画像の行は論理削除され、ストレージ上の実体は `images:prune` が回収します。
 
 ### 失敗したときどうなるか
 
@@ -347,7 +371,7 @@ ArticleImage::withTrashed()
 | `app/Services/ImageStorage.php` | ストレージへのアクセス全般（署名付きURL、表示用URL、移動、列挙、削除） |
 | `app/Http/Controllers/ImageController.php` | 署名付きURLの発行 |
 | `app/Http/Requests/GetImageUploadUrlRequest.php` | メディアタイプ・サイズの検証と拡張子の決定 |
-| `app/Rules/PendingImageKey.php` | 記事に添付するキーの形式検証 |
+| `app/Rules/ArticleImageKey.php` | 記事に添付するキーの形式検証 |
 | `app/Services/ArticleService.php` | `tmp/` → `images/` の移動、本文の書き換え、レコード作成 |
 | `app/Models/ArticleImage.php` | キーから表示用URLを組み立てるアクセサ |
 | `app/Console/Commands/PruneUnusedImages.php` | 未使用画像の削除 |
@@ -375,24 +399,6 @@ expect($storage->keys())->toBe([...]);                    // 残ったキーを�
 ---
 
 ## 既知の制約・今後の課題
-
-### 記事更新API（未実装）
-
-現状 API は記事の作成と削除のみです。更新を実装するときは、本文から画像を1つ消した場合に `article_images` をどう同期するかを決める必要があります。
-
-推奨は**本文を唯一の正とする**方式です。`body_image_keys` をフロントから受け取るのをやめ、サーバー側で本文からキーを抽出して `article_images` を同期します。`article_images` は「本文から導出されたインデックス」という位置づけになり、本文と DB がズレる余地が消えます。
-
-現状フロントが `body_image_keys` を送っているのは作成時のみで、ズレは起きにくいものの、真実の所在が2箇所にある状態ではあります。
-
-### ArticleResource のハードコードURL
-
-`app/Http/Resources/ArticleResource.php` のヘッダー画像フォールバックに、旧開発用バケットの URL が直接書かれています。
-
-```php
-'header_image' => $this->headerImage?->url ?? 'https://takuo-portfolio-develop-bucket-....s3....amazonaws.com/test.png',
-```
-
-今回の改修対象外ですが、同じ理由（環境依存のURLをコードに埋める）でいずれ壊れます。
 
 ### ストレージ側の削除失敗
 

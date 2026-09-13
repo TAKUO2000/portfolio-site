@@ -13,7 +13,7 @@ class ArticleResource extends JsonResource
             'id'           => $this->id,
             'title'        => $this->title,
             'summary'      => $this->summary,
-            'header_image' => $this->headerImage?->url ?? 'https://takuo-portfolio-develop-bucket-533267285352-ap-northeast-1-an.s3.ap-northeast-1.amazonaws.com/test.png',
+            'header_image' => $this->headerImage?->url,
             'published_at' => $this->published_at,
             'user'         => ['id' => $this->user->id, 'name' => $this->user->name],
             'category'     => ['id' => $this->category->id, 'name' => $this->category->name],

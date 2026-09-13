@@ -14,7 +14,7 @@ class GetImageUploadUrlRequest extends FormRequest
      * 許可するメディアタイプと、キーに付ける拡張子の対応。
      *
      * 拡張子をアップロード元のファイル名からではなくメディアタイプから決めることで、
-     * キーの形式が常に一定になり、添付時のバリデーション(PendingImageKey)で
+     * キーの形式が常に一定になり、添付時のバリデーション(ArticleImageKey)で
      * 形式チェックだけを見れば済むようにしている。
      */
     public const EXTENSIONS_BY_MEDIA_TYPE = [
