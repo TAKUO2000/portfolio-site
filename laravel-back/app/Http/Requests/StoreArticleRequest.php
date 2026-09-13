@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests;
 
-use App\Rules\AllowedImageHost;
+use App\Rules\PendingImageKey;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreArticleRequest extends FormRequest
@@ -15,7 +15,7 @@ class StoreArticleRequest extends FormRequest
     public function rules(): array
     {
         // ヘッダー画像と本文画像で同じルールインスタンスを使い回す
-        $allowedImageHost = new AllowedImageHost;
+        $pendingImageKey = new PendingImageKey;
 
         return [
             'category_id' => ['required', 'integer', 'exists:categories,id'],
@@ -27,9 +27,9 @@ class StoreArticleRequest extends FormRequest
             'tags.*'           => ['integer', 'exists:tags,id'],
             'new_tags'         => ['nullable', 'array'],
             'new_tags.*'       => ['string', 'max:255', 'regex:/\S/u'],
-            'header_image_url' => ['nullable', 'string', 'url', 'max:2048', $allowedImageHost],
-            'body_image_urls' => ['nullable', 'array'],
-            'body_image_urls.*' => ['string', 'url', 'max:2048', $allowedImageHost],
+            'header_image_key' => ['nullable', 'string', $pendingImageKey],
+            'body_image_keys' => ['nullable', 'array'],
+            'body_image_keys.*' => ['string', $pendingImageKey],
         ];
     }
 }

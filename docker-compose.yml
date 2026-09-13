@@ -81,6 +81,8 @@ services:
     volumes:
       - minio_data:/data
 
+  # バケットの作成・公開設定と、一時置き場(tmp/)の自動削除ルールを毎回入れ直す。
+  # mcイメージにgrepが無く「既にあるか」を調べられないため、一度消してから追加する
   minio-init:
     image: minio/mc
     depends_on:
@@ -91,7 +93,9 @@ services:
       sh -c "
         until mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\"; do sleep 1; done &&
         mc mb --ignore-existing \"local/$$AWS_BUCKET\" &&
-        mc anonymous set download \"local/$$AWS_BUCKET\"
+        mc anonymous set download \"local/$$AWS_BUCKET\" &&
+        mc ilm rule remove --all --force \"local/$$AWS_BUCKET\" > /dev/null 2>&1;
+        mc ilm rule add --expire-days 1 --prefix 'tmp/' \"local/$$AWS_BUCKET\"
       "
 
   next:
