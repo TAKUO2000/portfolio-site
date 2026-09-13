@@ -149,7 +149,7 @@ class ArticleService
      * images:pruneが削除してしまうため。
      *
      * @param  Article|null  $article  更新時のみ。既にこの記事が参照しているキーの判定に使う
-     * @return array{header_key: string|null, body: string, body_keys: list<string>}
+     * @return array{header_key: string, body: string, body_keys: list<string>}
      */
     private function publishImages(?Article $article, array $data): array
     {
@@ -157,9 +157,14 @@ class ArticleService
             ? []
             : $article->images()->pluck('object_key')->flip()->all();
 
-        $headerKey = isset($data['header_image_key'])
-            ? $this->publishKey($data['header_image_key'], $ownedKeys, 'header_image_key')
-            : null;
+        // ヘッダー画像は本文外の明示的な項目なので、解決できなければ黙って捨てずに弾く
+        $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys);
+
+        if ($headerKey === null) {
+            throw ValidationException::withMessages([
+                'header_image_key' => 'この記事の画像ではありません。',
+            ]);
+        }
 
         $body = $data['body'];
         $bodyKeys = [];
@@ -168,11 +173,11 @@ class ArticleService
 
         // 同じ画像が複数回貼られていても移動は一度だけ（二度目は移動元が無く失敗するため）
         foreach (array_unique($matches[0]) as $key) {
-            $published = $this->publishKey($key, $ownedKeys, null);
+            $published = $this->publishKey($key, $ownedKeys);
 
             if ($published === null) {
-                // この記事のものでないキーは参照として扱わない。本文中の見た目は変えないので、
-                // 記事の書き方（コードブロック内の例示など）を壊さずに済む
+                // 本文は自由記述なので、この記事のものでないキーはエラーにせず参照として扱わない。
+                // 見た目も変えないため、記事の書き方（コードブロック内の例示など）を壊さずに済む
                 continue;
             }
 
@@ -190,9 +195,10 @@ class ArticleService
      * - 本置き場のキー   : 既にこの記事が参照している場合だけ引き継ぐ。そうしないと
      *                      他の記事の画像を指定するだけで自分の記事に紐付けられてしまう
      *
-     * @param  string|null  $attribute  バリデーションエラーにする属性名。nullなら例外ではなくnullを返す
+     * 解決できなかった場合にエラーにするかは呼び出し側で決める。ヘッダー画像と本文とで
+     * 扱いが違うため、その判断をここに持たせない
      */
-    private function publishKey(string $key, array $ownedKeys, ?string $attribute): ?string
+    private function publishKey(string $key, array $ownedKeys): ?string
     {
         if (str_starts_with($key, ImageStorage::TMP_PREFIX)) {
             $published = ImageStorage::IMAGE_PREFIX . substr($key, strlen(ImageStorage::TMP_PREFIX));
@@ -202,17 +208,7 @@ class ArticleService
             return $published;
         }
 
-        if (isset($ownedKeys[$key])) {
-            return $key;
-        }
-
-        if ($attribute === null) {
-            return null;
-        }
-
-        throw ValidationException::withMessages([
-            $attribute => 'この記事の画像ではありません。',
-        ]);
+        return isset($ownedKeys[$key]) ? $key : null;
     }
 
     /**
@@ -221,13 +217,9 @@ class ArticleService
      *
      * @param  list<string>  $bodyKeys
      */
-    private function syncImages(Article $article, ?string $headerKey, array $bodyKeys): void
+    private function syncImages(Article $article, string $headerKey, array $bodyKeys): void
     {
-        $wanted = [];
-
-        if ($headerKey !== null) {
-            $wanted["header|{$headerKey}"] = ['type' => 'header', 'object_key' => $headerKey];
-        }
+        $wanted = ["header|{$headerKey}" => ['type' => 'header', 'object_key' => $headerKey]];
 
         foreach ($bodyKeys as $key) {
             $wanted["body|{$key}"] = ['type' => 'body', 'object_key' => $key];
