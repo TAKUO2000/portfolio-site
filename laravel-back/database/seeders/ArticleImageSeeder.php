@@ -9,6 +9,7 @@ use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 class ArticleImageSeeder extends Seeder
 {
@@ -18,7 +19,8 @@ class ArticleImageSeeder extends Seeder
     $categories = Category::pluck('id', 'name');
     $tags = Tag::pluck('id', 'name');
 
-    $s3 = 'https://takuo-portfolio-develop-bucket-533267285352-ap-northeast-1-an.s3.ap-northeast-1.amazonaws.com';
+    // 画像はURLではなくキーで持つため、初期データの画像も実際にストレージへ置く
+    $headerKey = $this->putPlaceholderImage();
 
     $articles = [
       [
@@ -96,7 +98,6 @@ MD,
         'category'     => '技術',
         'tags'         => ['Laravel', 'AWS'],
         'published_at' => Carbon::now()->subDays(1),
-        'image_url'    => "{$s3}/test.png",
       ],
       [
         'title'        => 'DockerでLaravel開発環境を構築する',
@@ -188,7 +189,6 @@ MD,
         'category'     => '技術',
         'tags'         => ['Laravel', 'Docker', 'PHP'],
         'published_at' => Carbon::now()->subDays(3),
-        'image_url'    => "{$s3}/penguin.jpg",
       ],
       [
         'title'        => 'Vue.jsとLaravelでSPAを作る',
@@ -450,11 +450,37 @@ MD,
         $article->tags()->sync($tagIds);
       }
 
-      $imageUrl = $data['image_url'] ?? "{$s3}/test.png";
       ArticleImage::firstOrCreate(
         ['article_id' => $article->id, 'type' => 'header'],
-        ['url' => $imageUrl]
+        ['object_key' => $headerKey]
       );
     }
+  }
+
+  /**
+   * 初期データ用のヘッダー画像をストレージに置き、そのキーを返す。
+   *
+   * 記事からはキーで参照するため、実体が無いと表示が壊れる。外部のURLを借りてくると
+   * 同じ問題が起きるので、単色の画像をその場で生成して自分のストレージに置いている。
+   */
+  private function putPlaceholderImage(): string
+  {
+    $key = 'images/seed-header.png';
+
+    if (Storage::disk('s3')->exists($key)) {
+      return $key;
+    }
+
+    $image = imagecreatetruecolor(1200, 630);
+    imagefill($image, 0, 0, imagecolorallocate($image, 0x33, 0x41, 0x55));
+
+    ob_start();
+    imagepng($image);
+    $png = ob_get_clean();
+    imagedestroy($image);
+
+    Storage::disk('s3')->put($key, $png);
+
+    return $key;
   }
 }

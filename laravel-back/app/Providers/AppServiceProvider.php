@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\ImageStorage;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\ServiceProvider;
 
@@ -12,7 +13,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // 画像1件ごとに表示用URLを組み立てるため、内部のS3Clientを使い回せるようにする
+        $this->app->singleton(ImageStorage::class);
     }
 
     /**

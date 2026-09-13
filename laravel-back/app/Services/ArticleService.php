@@ -13,14 +13,31 @@ use Illuminate\Support\Facades\DB;
 
 class ArticleService
 {
+    public function __construct(private readonly ImageStorage $imageStorage) {}
+
     public function store(User $user, array $data): Article
     {
-        return DB::transaction(function () use ($user, $data) {
+        // 添付された画像を一時置き場から本置き場へ移し、本文中の参照も新しいキーに合わせる
+        $headerKey = isset($data['header_image_key'])
+            ? $this->publishImage($data['header_image_key'])
+            : null;
+
+        $bodyKeys = [];
+        $body = $data['body'];
+
+        // 同じ画像が複数回貼られていても移動は一度だけ（二度目は移動元が無く失敗するため）
+        foreach (array_unique($data['body_image_keys'] ?? []) as $tmpKey) {
+            $key = $this->publishImage($tmpKey);
+            $body = str_replace($tmpKey, $key, $body);
+            $bodyKeys[] = $key;
+        }
+
+        return DB::transaction(function () use ($user, $data, $body, $headerKey, $bodyKeys) {
             $article = $user->articles()->create([
                 'category_id'  => $data['category_id'],
                 'title'        => $data['title'],
                 'summary'      => $data['summary'],
-                'body'         => $data['body'],
+                'body'         => $body,
                 'status'       => $data['status'],
                 'published_at' => $data['status'] === 'published' ? Carbon::now() : null,
             ]);
@@ -89,24 +106,38 @@ class ArticleService
                 $article->tags()->sync($tagIds);
             }
 
-            if (!empty($data['header_image_url'])) {
+            if ($headerKey !== null) {
                 $article->images()->create([
-                    'url'  => $data['header_image_url'],
-                    'type' => 'header',
+                    'object_key' => $headerKey,
+                    'type'       => 'header',
                 ]);
             }
 
-            if (!empty($data['body_image_urls'])) {
-                foreach ($data['body_image_urls'] as $url) {
-                    $article->images()->create([
-                        'url'  => $url,
-                        'type' => 'body',
-                    ]);
-                }
+            foreach ($bodyKeys as $key) {
+                $article->images()->create([
+                    'object_key' => $key,
+                    'type'       => 'body',
+                ]);
             }
 
             return $article->load('tags');
         });
+    }
+
+    /**
+     * 一時置き場のキーを本置き場へ移し、移動後のキーを返す。
+     *
+     * 移動に失敗した場合は例外が伝播して記事自体が保存されない。逆に記事の保存に
+     * 失敗した場合は本置き場に参照されないオブジェクトが残るが、それはPruneUnusedImagesが
+     * 後から回収する。
+     */
+    private function publishImage(string $tmpKey): string
+    {
+        $key = ImageStorage::IMAGE_PREFIX . substr($tmpKey, strlen(ImageStorage::TMP_PREFIX));
+
+        $this->imageStorage->move($tmpKey, $key);
+
+        return $key;
     }
 
     public function index(array $data): LengthAwarePaginator
