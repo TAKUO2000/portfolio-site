@@ -654,6 +654,49 @@ test('未認証ユーザーは記事を削除できない', function () {
     $this->assertDatabaseHas('articles', ['id' => $article->id]);
 });
 
+test('存在しない記事の削除は404になる', function () {
+    // authorize()内でfindしていた頃は、exists検証に到達せず403を返していた
+    $response = $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/999999');
+
+    $response->assertStatus(404);
+});
+
+test('論理削除済み記事の削除は404になる', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '削除済み記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+    $article->delete();
+
+    $response = $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/'.$article->id);
+
+    $response->assertStatus(404);
+});
+
+test('一般ユーザーは記事を削除できない', function () {
+    $article = $this->generalUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '一般ユーザーの記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    // 書き手本人であっても、投稿できるロールでなければミドルウェアで弾かれる
+    $response = $this->actingAs($this->generalUser)
+        ->deleteJson('/api/articles/'.$article->id);
+
+    $response->assertStatus(403);
+    $this->assertDatabaseHas('articles', ['id' => $article->id]);
+});
+
 // 記事表示show（記事ページ）
 test('未認証でも表示可能', function () {
     $article = $this->adminUser->articles()->create([

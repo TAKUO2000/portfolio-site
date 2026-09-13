@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\DeleteArticleRequest;
 use App\Http\Requests\IndexArticleRequest;
 use App\Http\Requests\ShowArticleRequest;
 use App\Http\Requests\StoreArticleRequest;
@@ -14,6 +13,7 @@ use App\Models\Article;
 use App\Services\ArticleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Gate;
 
 class ArticleController extends Controller
 {
@@ -51,9 +51,12 @@ class ArticleController extends Controller
         return new ArticleEditResource($updated);
     }
 
-    public function destroy(DeleteArticleRequest $request): JsonResponse
+    public function destroy(Article $article): JsonResponse
     {
-        $this->articleService->delete($request->validated()['id']);
+        // 記事の存在チェックはルートモデルバインディングが担う（未存在・論理削除済みは404）
+        Gate::authorize('delete', $article);
+
+        $this->articleService->delete($article);
 
         return response()->json(null, 204);
     }

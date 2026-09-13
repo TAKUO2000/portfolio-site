@@ -13,9 +13,9 @@ class UpdateArticleRequest extends FormRequest
     public function authorize(): bool
     {
         // 記事の存在チェックはルートモデルバインディングが担う（未存在・論理削除済みは404）。
-        // ここでは所有者かどうかだけを見る（不一致は403）
+        // 所有者かどうかの判定はArticlePolicyに集約している（不一致は403）
         $article = $this->route('article');
 
-        return $article instanceof Article && $article->user_id === $this->user()->id;
+        return $article instanceof Article && $this->user()->can('update', $article);
     }
 }
