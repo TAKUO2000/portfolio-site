@@ -14,24 +14,11 @@ beforeEach(function () {
     $this->category = Category::create(['name' => 'テスト']);
 });
 
-/** 記事を1件作る。statusとtitleだけ指定できれば十分 */
-function makeArticle(User $user, string $title, string $status = 'published', ?string $publishedAt = null): Article
-{
-    return $user->articles()->create([
-        'category_id'  => test()->category->id,
-        'title'        => $title,
-        'summary'      => '概要',
-        'body'         => '本文',
-        'status'       => $status,
-        'published_at' => $status === 'published' ? ($publishedAt ?? now()) : null,
-    ]);
-}
-
 // ---------------------------------------------------------------- 一覧 GET /articles/mine
 
 test('自分の記事を下書きも含めて取得できる', function () {
-    makeArticle($this->adminUser, '公開記事');
-    makeArticle($this->adminUser, '下書き記事', 'draft');
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '公開記事']);
+    Article::factory()->for($this->adminUser)->for($this->category)->draft()->create(['title' => '下書き記事']);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
 
@@ -40,8 +27,8 @@ test('自分の記事を下書きも含めて取得できる', function () {
 });
 
 test('他ユーザーの記事は一覧に含まれない', function () {
-    makeArticle($this->adminUser, '自分の記事');
-    makeArticle($this->subAdminUser, '他人の記事');
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '自分の記事']);
+    Article::factory()->for($this->subAdminUser)->for($this->category)->create(['title' => '他人の記事']);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
 
@@ -49,8 +36,8 @@ test('他ユーザーの記事は一覧に含まれない', function () {
 });
 
 test('論理削除した記事は一覧から消える', function () {
-    $article = makeArticle($this->adminUser, '削除する記事');
-    makeArticle($this->adminUser, '残る記事');
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '削除する記事']);
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '残る記事']);
 
     $article->delete();
 
@@ -60,8 +47,8 @@ test('論理削除した記事は一覧から消える', function () {
 });
 
 test('一覧は最終更新が新しい順に並ぶ', function () {
-    $old = makeArticle($this->adminUser, '古い記事');
-    $new = makeArticle($this->adminUser, '新しい記事');
+    $old = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '古い記事']);
+    $new = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '新しい記事']);
 
     // 書きかけを見つけやすいよう、公開日ではなく更新日で並べている
     $old->forceFill(['updated_at' => now()->subDays(3)])->saveQuietly();
@@ -73,8 +60,8 @@ test('一覧は最終更新が新しい順に並ぶ', function () {
 });
 
 test('statusで絞り込める', function () {
-    makeArticle($this->adminUser, '公開記事');
-    makeArticle($this->adminUser, '下書き記事', 'draft');
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '公開記事']);
+    Article::factory()->for($this->adminUser)->for($this->category)->draft()->create(['title' => '下書き記事']);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine?status=draft');
 
@@ -82,8 +69,8 @@ test('statusで絞り込める', function () {
 });
 
 test('keywordでタイトルを絞り込める', function () {
-    makeArticle($this->adminUser, 'Laravelの記事');
-    makeArticle($this->adminUser, 'Vueの記事');
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => 'Laravelの記事']);
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => 'Vueの記事']);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine?keyword=Laravel');
 
@@ -91,7 +78,7 @@ test('keywordでタイトルを絞り込める', function () {
 });
 
 test('一覧は本文を返さない', function () {
-    makeArticle($this->adminUser, '記事');
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '記事']);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
 
@@ -110,7 +97,7 @@ test('未認証ユーザーは一覧を取得できない', function () {
 });
 
 test('mineは公開側の記事詳細ルートに飲み込まれない', function () {
-    makeArticle($this->adminUser, '記事');
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '記事']);
 
     // /articles/{id} と形が重なるため、数値に限定して取り違えを防いでいる
     $this->actingAs($this->adminUser)->getJson('/api/articles/mine')->assertStatus(200);
@@ -120,7 +107,7 @@ test('mineは公開側の記事詳細ルートに飲み込まれない', functio
 // ---------------------------------------------------------------- 単体 GET /articles/{article}/edit
 
 test('下書き記事も編集用に取得できる', function () {
-    $article = makeArticle($this->adminUser, '下書き記事', 'draft');
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->draft()->create(['title' => '下書き記事']);
 
     $response = $this->actingAs($this->adminUser)->getJson("/api/articles/{$article->id}/edit");
 
@@ -136,7 +123,7 @@ test('下書き記事も編集用に取得できる', function () {
 });
 
 test('編集用取得では他ユーザーの記事は403になる', function () {
-    $article = makeArticle($this->subAdminUser, '他人の記事');
+    $article = Article::factory()->for($this->subAdminUser)->for($this->category)->create(['title' => '他人の記事']);
 
     $this->actingAs($this->adminUser)
         ->getJson("/api/articles/{$article->id}/edit")
@@ -148,7 +135,7 @@ test('存在しない記事の編集用取得は404になる', function () {
 });
 
 test('論理削除済み記事の編集用取得は404になる', function () {
-    $article = makeArticle($this->adminUser, '削除済み記事');
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '削除済み記事']);
     $article->delete();
 
     $this->actingAs($this->adminUser)
@@ -157,7 +144,7 @@ test('論理削除済み記事の編集用取得は404になる', function () {
 });
 
 test('一般ユーザーは編集用取得ができない', function () {
-    $article = makeArticle($this->generalUser, '一般ユーザーの記事');
+    $article = Article::factory()->for($this->generalUser)->for($this->category)->create(['title' => '一般ユーザーの記事']);
 
     $this->actingAs($this->generalUser)
         ->getJson("/api/articles/{$article->id}/edit")
@@ -167,7 +154,7 @@ test('一般ユーザーは編集用取得ができない', function () {
 // ---------------------------------------------------------------- ステータス変更 PATCH /articles/{article}/status
 
 test('公開記事を下書きに戻せる', function () {
-    $article = makeArticle($this->adminUser, '公開記事');
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '公開記事']);
 
     $response = $this->actingAs($this->adminUser)
         ->patchJson("/api/articles/{$article->id}/status", ['status' => 'draft']);
@@ -177,7 +164,7 @@ test('公開記事を下書きに戻せる', function () {
 });
 
 test('下書きを公開するとpublished_atが入る', function () {
-    $article = makeArticle($this->adminUser, '下書き記事', 'draft');
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->draft()->create(['title' => '下書き記事']);
 
     $this->actingAs($this->adminUser)
         ->patchJson("/api/articles/{$article->id}/status", ['status' => 'published'])
@@ -188,7 +175,7 @@ test('下書きを公開するとpublished_atが入る', function () {
 
 test('下書きに戻して再公開してもpublished_atは初回公開日のまま', function () {
     $firstPublishedAt = now()->subDays(5);
-    $article = makeArticle($this->adminUser, '公開記事', 'published', $firstPublishedAt);
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->published($firstPublishedAt)->create(['title' => '公開記事']);
 
     // 更新APIと同じ扱い（編集のたびに一覧の並び順が変わらないようにするため）
     $this->actingAs($this->adminUser)
@@ -200,7 +187,7 @@ test('下書きに戻して再公開してもpublished_atは初回公開日の�
 });
 
 test('本文やタイトルを送らなくてもステータスだけ変えられる', function () {
-    $article = makeArticle($this->adminUser, '元のタイトル');
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '元のタイトル']);
 
     $this->actingAs($this->adminUser)
         ->patchJson("/api/articles/{$article->id}/status", ['status' => 'draft'])
@@ -208,11 +195,11 @@ test('本文やタイトルを送らなくてもステータスだけ変えら�
 
     // 一覧画面は本文やヘッダー画像キーを持たないため、statusだけで通る必要がある
     expect($article->fresh()->title)->toBe('元のタイトル');
-    expect($article->fresh()->body)->toBe('本文');
+    expect($article->fresh()->body)->toBe($article->body);
 });
 
 test('許可されていないstatusはバリデーションエラーになる', function () {
-    $article = makeArticle($this->adminUser, '記事');
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '記事']);
 
     $this->actingAs($this->adminUser)
         ->patchJson("/api/articles/{$article->id}/status", ['status' => 'archived'])
@@ -221,7 +208,7 @@ test('許可されていないstatusはバリデーションエラーになる',
 });
 
 test('他ユーザーの記事のステータスは変更できない', function () {
-    $article = makeArticle($this->subAdminUser, '他人の記事');
+    $article = Article::factory()->for($this->subAdminUser)->for($this->category)->create(['title' => '他人の記事']);
 
     $this->actingAs($this->adminUser)
         ->patchJson("/api/articles/{$article->id}/status", ['status' => 'draft'])
@@ -237,7 +224,7 @@ test('存在しない記事のステータス変更は404になる', function ()
 });
 
 test('未認証ユーザーはステータスを変更できない', function () {
-    $article = makeArticle($this->adminUser, '記事');
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '記事']);
 
     $this->patchJson("/api/articles/{$article->id}/status", ['status' => 'draft'])
         ->assertStatus(401);
