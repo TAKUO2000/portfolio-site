@@ -31,7 +31,7 @@ class UpdateArticleRequest extends FormRequest
             'new_tags.*'       => ['string', 'max:255', 'regex:/\S/u'],
             // 本文画像は本文から抽出するため受け取らない（本文が唯一の正）。
             // ヘッダーは据え置く場合に本置き場のキーがそのまま返ってくる
-            'header_image_key' => ['nullable', 'string', new ArticleImageKey],
+            'header_image_key' => ['required', 'string', new ArticleImageKey],
         ];
     }
 }

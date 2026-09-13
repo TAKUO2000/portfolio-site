@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\ImageStorage;
+use Illuminate\Support\Str;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\FakeImageStorage;
 use Tests\TestCase;
@@ -96,4 +97,21 @@ function fakeImageStorage(): FakeImageStorage
     app()->instance(ImageStorage::class, $storage);
 
     return $storage;
+}
+
+/**
+ * ストレージにアップロード済みの一時キーを1つ用意して返す。
+ * ヘッダー画像は必須なので、記事の作成・更新テストの大半で必要になる。
+ */
+function pendingImageKey(): string
+{
+    $key = App\Services\ImageStorage::TMP_PREFIX . Str::uuid() . '.png';
+
+    $storage = app(ImageStorage::class);
+
+    if ($storage instanceof FakeImageStorage) {
+        $storage->put($key);
+    }
+
+    return $key;
 }

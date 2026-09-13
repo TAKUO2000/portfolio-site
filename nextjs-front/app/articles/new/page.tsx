@@ -129,7 +129,8 @@ export default function NewArticlePage() {
       for (const img of uploadedImages) {
         finalBody = finalBody.replaceAll(img.blobUrl, img.imageUrl);
       }
-      // ヘッダー画像も同様に送信時点でアップロード
+      // ヘッダー画像も同様に送信時点でアップロード。
+      // 必須項目なのでvalidateArticleFormを通っていれば必ず選択されている
       let headerImageKey: string | undefined;
       if (pendingHeader) {
         headerImageKey = (await uploadImageToS3(pendingHeader.file)).objectKey;
@@ -153,7 +154,7 @@ export default function NewArticlePage() {
           status,
           tags: selectedTagIds,
           ...(pendingTags.length > 0 ? { new_tags: pendingTags } : {}),
-          ...(headerImageKey ? { header_image_key: headerImageKey } : {}),
+          header_image_key: headerImageKey,
         }),
       });
 

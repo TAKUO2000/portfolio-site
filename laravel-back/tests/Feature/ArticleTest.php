@@ -8,6 +8,10 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
+    // ヘッダー画像が必須なので、記事を作成・更新するテストは必ずストレージを触る
+    useMinioStorage();
+    $this->storage = fakeImageStorage();
+
     $this->adminUser = User::factory()->create(['role' => 'admin']);
     $this->subAdminUser = User::factory()->create(['role' => 'admin']);
     $this->generalUser = User::factory()->create(['role' => 'user']);
@@ -27,6 +31,7 @@ test('adminユーザーが記事を投稿できる', function () {
             'body' => 'テスト本文',
             'status' => 'published',
             'tags' => Tag::pluck('id')->toArray(),
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(201)
@@ -47,6 +52,7 @@ test('adminユーザーがdraftで記事を投稿できる', function () {
             'summary' => 'テスト概要',
             'body' => 'テスト本文',
             'status' => 'draft',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(201)
@@ -67,6 +73,7 @@ test('new_tagsで新規タグが作成される', function () {
             'body' => 'テスト本文',
             'status' => 'published',
             'new_tags' => ['Vue'],
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(201)
@@ -87,6 +94,7 @@ test('論理削除済みタグと同名のnew_tagsを送ると復活して再利
             'body' => 'テスト本文',
             'status' => 'published',
             'new_tags' => ['Vue'],
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(201)
@@ -107,6 +115,7 @@ test('大文字小文字違いで既存タグに一致した場合は表記が�
             'body' => 'テスト本文',
             'status' => 'published',
             'new_tags' => ['React'],
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(201)
@@ -135,6 +144,7 @@ test('タグ一括取得後に別プロセスが同名タグを先に作成し�
                 'body' => 'テスト本文',
                 'status' => 'published',
                 'new_tags' => ['Rust'],
+                'header_image_key' => pendingImageKey(),
             ]);
     } finally {
         Tag::flushEventListeners();
@@ -157,6 +167,7 @@ test('new_tagsの全角スペースは正規化され既存タグと同一視さ
             'body' => 'テスト本文',
             'status' => 'published',
             'new_tags' => ['　Vue'], // 先頭に全角スペース
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(201)
@@ -174,6 +185,7 @@ test('new_tags内で表記ゆれが重複している場合は1件にまとめ�
             'body' => 'テスト本文',
             'status' => 'published',
             'new_tags' => ['React', 'react', '　React', ' React '],
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(201);
@@ -192,6 +204,7 @@ test('一般ユーザーは記事を投稿できない', function () {
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(403);
@@ -204,6 +217,7 @@ test('未認証ユーザーは記事を投稿できない', function () {
         'summary' => '概要',
         'body' => '本文',
         'status' => 'published',
+        'header_image_key' => pendingImageKey(),
     ]);
 
     $response->assertStatus(401);
@@ -225,6 +239,7 @@ test('存在しないcategory_idはバリデーションエラーになる', fun
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(422)
@@ -240,6 +255,7 @@ test('new_tagsが空白のみの場合はバリデーションエラーになる
             'body' => '本文',
             'status' => 'published',
             'new_tags' => [' ', '　', ''],
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(422)
@@ -304,12 +320,13 @@ test('同じ本文画像が複数回貼られていても一度だけ移動し�
             'summary' => 'テスト概要',
             'body' => "![](/{$bodyKey}) と ![](/{$bodyKey})",
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(201);
 
     $article = Article::where('title', '同じ画像を2回貼った記事')->first();
-    expect($article->images)->toHaveCount(1);
+    expect($article->images->where('type', 'body'))->toHaveCount(1);
     expect($article->body)->not->toContain('tmp/');
 });
 
@@ -342,6 +359,7 @@ test('本文に他の記事の画像キーを書いても自分の記事の画�
             'summary' => '概要',
             'body' => "本文 ![](http://localhost:9002/test-bucket/{$otherKey})",
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     // 本文の見た目は変えない（コードブロック内の例示などを壊さないため）が、
@@ -349,7 +367,7 @@ test('本文に他の記事の画像キーを書いても自分の記事の画�
     $response->assertStatus(201);
 
     $article = Article::where('title', '他人の画像を書いた記事')->first();
-    expect($article->images)->toHaveCount(0);
+    expect($article->images->where('type', 'body'))->toHaveCount(0);
     expect($article->body)->toContain($otherKey);
 });
 
@@ -709,6 +727,7 @@ test('自分の投稿記事を更新できる', function () {
             'summary' => '更新後概要',
             'body' => '更新後本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(200)
@@ -751,6 +770,7 @@ test('draft記事も本人であれば更新できる', function () {
             'summary' => '概要',
             'body' => '本文',
             'status' => 'draft',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(200)
@@ -779,6 +799,7 @@ test('draftからpublishedへの更新でpublished_atが設定される', functi
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(200);
@@ -803,6 +824,7 @@ test('公開済み記事を更新してもpublished_atは初回公開日のま�
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(200);
@@ -829,6 +851,7 @@ test('更新時にリクエストへ含めなかったタグは外れる', funct
             'body' => '本文',
             'status' => 'published',
             'tags' => [$tags->first()->id],
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(200);
@@ -853,6 +876,7 @@ test('更新時にtagsを空で送ると全てのタグが外れる', function (
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(200);
@@ -877,6 +901,7 @@ test('更新時のnew_tagsで新規タグが作成され記事に紐づく', fun
             'body' => '本文',
             'status' => 'published',
             'new_tags' => ['Svelte'],
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(200)
@@ -993,9 +1018,10 @@ test('更新で本文から画像を消すと参照が外れる', function () {
             // 片方だけ残した本文を送る
             'body' => "![](http://localhost:9002/test-bucket/{$kept})",
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ])->assertStatus(200);
 
-    expect($article->images()->pluck('object_key')->all())->toBe([$kept]);
+    expect($article->images()->where('type', 'body')->pluck('object_key')->all())->toBe([$kept]);
     $this->assertSoftDeleted('article_images', ['object_key' => $removed]);
 });
 
@@ -1022,13 +1048,97 @@ test('更新で本文に画像を足すと一時置き場から移されて参�
             'summary' => '概要',
             'body' => "本文 ![](http://localhost:9002/test-bucket/{$tmpKey})",
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ])->assertStatus(200);
 
-    expect($article->images()->pluck('object_key')->all())->toBe([$key]);
+    expect($article->images()->where('type', 'body')->pluck('object_key')->all())->toBe([$key]);
     // 本文中の参照も本置き場に書き換わる
     expect($article->fresh()->body)->toContain($key);
     expect($article->fresh()->body)->not->toContain('tmp/');
-    expect($storage->keys())->toBe([$key]);
+    expect($storage->keys())->toContain($key);
+});
+
+test('更新時にheader_image_keyを省略するとバリデーションエラーになる', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+    $image = $article->images()->create([
+        'object_key' => 'images/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png',
+        'type' => 'header',
+    ]);
+
+    // フロントの送り忘れでヘッダー画像が黙って外れないよう、必須にしている
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    $this->assertDatabaseHas('article_images', ['id' => $image->id, 'deleted_at' => null]);
+});
+
+test('header_image_keyにnullを指定するとバリデーションエラーになる', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    // ヘッダー画像の削除は認めない（画像なしの記事は存在しない前提）
+    $response = $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => null,
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+});
+
+test('publishedからdraftへ戻してもpublished_atは維持される', function () {
+    $publishedAt = now()->subDays(3);
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '公開済み記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => $publishedAt,
+    ]);
+
+    $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '下書きに戻した記事',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'draft',
+            'header_image_key' => pendingImageKey(),
+        ])->assertStatus(200);
+
+    $article->refresh();
+
+    // 再公開したときに初回公開日へ戻せるよう、下書きに戻しても消さない
+    expect($article->status)->toBe('draft');
+    expect($article->published_at->timestamp)->toBe($publishedAt->timestamp);
 });
 
 test('他ユーザの記事は更新できない', function () {
@@ -1048,6 +1158,7 @@ test('他ユーザの記事は更新できない', function () {
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(403);
@@ -1062,6 +1173,7 @@ test('存在しない記事の更新は404になる', function () {
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(404);
@@ -1085,6 +1197,7 @@ test('論理削除済み記事の更新は404になる', function () {
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(404);
@@ -1107,6 +1220,7 @@ test('一般ユーザーは記事を更新できない', function () {
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
+            'header_image_key' => pendingImageKey(),
         ]);
 
     $response->assertStatus(403);
@@ -1129,6 +1243,7 @@ test('未認証ユーザーは記事を更新できない', function () {
         'summary' => '概要',
         'body' => '本文',
         'status' => 'published',
+        'header_image_key' => pendingImageKey(),
     ]);
 
     $response->assertStatus(401);

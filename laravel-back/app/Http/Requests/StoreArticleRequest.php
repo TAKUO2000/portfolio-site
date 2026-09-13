@@ -25,7 +25,7 @@ class StoreArticleRequest extends FormRequest
             'new_tags'         => ['nullable', 'array'],
             'new_tags.*'       => ['string', 'max:255', 'regex:/\S/u'],
             // 本文画像は本文から抽出するため受け取らない（本文が唯一の正）
-            'header_image_key' => ['nullable', 'string', new ArticleImageKey],
+            'header_image_key' => ['required', 'string', new ArticleImageKey],
         ];
     }
 }
