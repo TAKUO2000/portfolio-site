@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use Aws\S3\S3Client;
+use DateTimeInterface;
+use Generator;
 
 /**
  * 画像の保存先ストレージ（S3互換）へのアクセスをまとめたクラス。
@@ -13,12 +15,28 @@ use Aws\S3\S3Client;
  * - AWS_ENDPOINT        : サーバー(コンテナ内)から見たエンドポイント
  * - AWS_PUBLIC_ENDPOINT : ブラウザから見たエンドポイント（署名付きURL・表示URL用）
  * どちらも未設定なら実AWS S3のエンドポイントがSDKによって使われる。
+ *
+ * オブジェクトは用途で2つのプレフィックスに分かれる。
+ * - tmp/    : アップロード直後の一時置き場。記事が保存されなかった分はここに残り、
+ *             ストレージ側のライフサイクルルールで自動削除される
+ * - images/ : 記事に紐付いた本置き場。参照されなくなった分はPruneUnusedImagesが削除する
  */
 class ImageStorage
 {
+    public const TMP_PREFIX = 'tmp/';
+
+    public const IMAGE_PREFIX = 'images/';
+
     private const UPLOAD_URL_EXPIRES = '+15 minutes';
 
-    private ?S3Client $client = null;
+    /** DeleteObjectsが一度に受け付ける上限 */
+    private const DELETE_CHUNK_SIZE = 1000;
+
+    /** 署名付きURL・表示用URLの組み立てに使う、ブラウザ視点のクライアント */
+    private ?S3Client $publicClient = null;
+
+    /** コピー・列挙・削除など、サーバーから実際にAPIを叩くためのクライアント */
+    private ?S3Client $serverClient = null;
 
     /**
      * ブラウザから直接PUTさせるための署名付きURLを発行する。
@@ -28,7 +46,7 @@ class ImageStorage
      */
     public function uploadUrl(string $key, string $mediaType, int $size): string
     {
-        $client = $this->client();
+        $client = $this->publicClient();
 
         $command = $client->getCommand('PutObject', [
             'Bucket'        => $this->config('bucket'),
@@ -48,23 +66,89 @@ class ImageStorage
      */
     public function objectUrl(string $key): string
     {
-        return $this->client()->getObjectUrl($this->config('bucket'), $key);
+        return $this->publicClient()->getObjectUrl($this->config('bucket'), $key);
     }
 
     /**
-     * 画像URLとして許可するホスト。表示用URLと同じ組み立て方から導出する。
+     * 一時置き場のオブジェクトを本置き場へ移す。
+     * S3にはリネームが無いため、コピーしてから元を消す。
      */
-    public function host(): ?string
+    public function move(string $from, string $to): void
     {
-        return parse_url($this->objectUrl('probe'), PHP_URL_HOST) ?: null;
+        $bucket = $this->config('bucket');
+
+        $this->serverClient()->copyObject([
+            'Bucket'     => $bucket,
+            'Key'        => $to,
+            'CopySource' => rawurlencode($bucket . '/' . $from),
+        ]);
+
+        $this->serverClient()->deleteObject(['Bucket' => $bucket, 'Key' => $from]);
     }
 
-    private function client(): S3Client
+    /**
+     * 指定プレフィックス配下のオブジェクトを、キーと最終更新日時の組で列挙する。
+     *
+     * 件数が増えても memory を食い潰さないよう、ページャの結果をそのまま逐次返す。
+     *
+     * @return Generator<string, DateTimeInterface> キー => 最終更新日時
+     */
+    public function each(string $prefix): Generator
     {
-        if ($this->client !== null) {
-            return $this->client;
-        }
+        $pages = $this->serverClient()->getPaginator('ListObjectsV2', [
+            'Bucket' => $this->config('bucket'),
+            'Prefix' => $prefix,
+        ]);
 
+        foreach ($pages as $page) {
+            foreach ($page['Contents'] ?? [] as $object) {
+                yield $object['Key'] => $object['LastModified'];
+            }
+        }
+    }
+
+    /**
+     * 複数オブジェクトをまとめて削除する。
+     *
+     * @param  list<string>  $keys
+     */
+    public function delete(array $keys): void
+    {
+        foreach (array_chunk($keys, self::DELETE_CHUNK_SIZE) as $chunk) {
+            $this->serverClient()->deleteObjects([
+                'Bucket' => $this->config('bucket'),
+                'Delete' => [
+                    'Objects' => array_map(fn (string $key) => ['Key' => $key], $chunk),
+                ],
+            ]);
+        }
+    }
+
+    /**
+     * ブラウザが到達できるエンドポイントを向いたクライアント。
+     * ここで組み立てたURLはそのままブラウザに渡るため、AWS_PUBLIC_ENDPOINTを優先する。
+     */
+    private function publicClient(): S3Client
+    {
+        return $this->publicClient ??= $this->makeClient(
+            $this->config('public_endpoint') ?: $this->config('endpoint')
+        );
+    }
+
+    /**
+     * サーバー（コンテナ内）から到達できるエンドポイントを向いたクライアント。
+     * ローカル開発ではブラウザ向けのlocalhostではコンテナ間通信ができないため、
+     * AWS_ENDPOINTを優先する。
+     */
+    private function serverClient(): S3Client
+    {
+        return $this->serverClient ??= $this->makeClient(
+            $this->config('endpoint') ?: $this->config('public_endpoint')
+        );
+    }
+
+    private function makeClient(?string $endpoint): S3Client
+    {
         $config = [
             'version'                 => 'latest',
             'region'                  => $this->config('region'),
@@ -76,13 +160,11 @@ class ImageStorage
         ];
 
         // 未設定の場合はSDKが実AWS S3のエンドポイントを組み立てる
-        $endpoint = $this->config('public_endpoint') ?: $this->config('endpoint');
-
         if ($endpoint) {
             $config['endpoint'] = $endpoint;
         }
 
-        return $this->client = new S3Client($config);
+        return new S3Client($config);
     }
 
     private function config(string $key): mixed

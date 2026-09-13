@@ -22,10 +22,10 @@ class ArticleEditResource extends JsonResource
             'published_at' => $this->published_at,
             'category'     => ['id' => $this->category->id, 'name' => $this->category->name],
             'tags'         => $this->tags->map(fn($tag) => ['id' => $tag->id, 'name' => $tag->name]),
-            // リクエストのheader_image_url / body_image_urlsと対になる形で返す。
-            // ロード済みのimagesから振り分けるので追加クエリは発生しない
+            // ヘッダー画像はリクエストのheader_image_keyと対になるキーと、表示用URLの両方を返す。
+            // 本文画像はbodyにURLが含まれているため別途返さない
+            'header_image_key' => $this->images->firstWhere('type', 'header')?->object_key,
             'header_image_url' => $this->images->firstWhere('type', 'header')?->url,
-            'body_image_urls'  => $this->images->where('type', 'body')->pluck('url')->values(),
         ];
     }
 }

@@ -118,20 +118,21 @@ export default function NewArticlePage() {
       const uploadedImages = await Promise.all(
         usedImages.map(async (img) => ({
           blobUrl: img.blobUrl,
-          imageUrl: await uploadImageToS3(img.file),
+          ...(await uploadImageToS3(img.file)),
         })),
       );
 
+      // 本文中のblob URLをアップロード先のURLに差し替える。
+      // このURLは一時置き場のものだが、記事保存時にサーバーが本文から拾って
+      // 本置き場へ移し、本文のURLも書き換える（本文が画像参照の唯一の正）
       let finalBody = body;
       for (const img of uploadedImages) {
         finalBody = finalBody.replaceAll(img.blobUrl, img.imageUrl);
       }
-      const bodyImageUrls = uploadedImages.map((img) => img.imageUrl);
-
       // ヘッダー画像も同様に送信時点でアップロード
-      let headerImageUrl: string | undefined;
+      let headerImageKey: string | undefined;
       if (pendingHeader) {
-        headerImageUrl = await uploadImageToS3(pendingHeader.file);
+        headerImageKey = (await uploadImageToS3(pendingHeader.file)).objectKey;
       }
 
       const xsrfToken = await getCsrfToken();
@@ -152,10 +153,7 @@ export default function NewArticlePage() {
           status,
           tags: selectedTagIds,
           ...(pendingTags.length > 0 ? { new_tags: pendingTags } : {}),
-          ...(headerImageUrl ? { header_image_url: headerImageUrl } : {}),
-          ...(bodyImageUrls.length > 0
-            ? { body_image_urls: bodyImageUrls }
-            : {}),
+          ...(headerImageKey ? { header_image_key: headerImageKey } : {}),
         }),
       });
 

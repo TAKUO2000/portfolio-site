@@ -1,6 +1,8 @@
 <?php
 
+use App\Services\ImageStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\FakeImageStorage;
 use Tests\TestCase;
 
 /*
@@ -81,4 +83,17 @@ function useProductionS3Storage(): void
         'filesystems.disks.s3.public_endpoint'         => null,
         'filesystems.disks.s3.use_path_style_endpoint' => false,
     ]);
+}
+
+/**
+ * 画像ストレージをメモリ上のフェイクに差し替える。
+ * 返したインスタンスにオブジェクトを置いたり、残っているキーを確認したりできる。
+ */
+function fakeImageStorage(): FakeImageStorage
+{
+    $storage = new FakeImageStorage;
+
+    app()->instance(ImageStorage::class, $storage);
+
+    return $storage;
 }

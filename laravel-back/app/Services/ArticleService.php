@@ -3,30 +3,39 @@
 namespace App\Services;
 
 use App\Models\Article;
+use App\Models\ArticleImage;
 use App\Models\Tag;
 use App\Models\User;
+use App\Rules\ArticleImageKey;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ArticleService
 {
+    public function __construct(private readonly ImageStorage $imageStorage) {}
+
     public function store(User $user, array $data): Article
     {
-        return DB::transaction(function () use ($user, $data) {
+        // 画像の移動はトランザクションの外。ストレージはロールバックできないため、
+        // DB側が失敗して残ったオブジェクトはimages:pruneに回収させる
+        $images = $this->publishImages(null, $data);
+
+        return DB::transaction(function () use ($user, $data, $images) {
             $article = $user->articles()->create([
                 'category_id'  => $data['category_id'],
                 'title'        => $data['title'],
                 'summary'      => $data['summary'],
-                'body'         => $data['body'],
+                'body'         => $images['body'],
                 'status'       => $data['status'],
                 'published_at' => $data['status'] === 'published' ? Carbon::now() : null,
             ]);
 
             $article->tags()->sync($this->resolveTagIds($data));
-            $this->syncImages($article, $data);
+            $this->syncImages($article, $images['header_key'], $images['body_keys']);
 
             return $article->load('tags');
         });
@@ -34,7 +43,9 @@ class ArticleService
 
     public function update(Article $article, array $data): Article
     {
-        return DB::transaction(function () use ($article, $data) {
+        $images = $this->publishImages($article, $data);
+
+        return DB::transaction(function () use ($article, $data, $images) {
             // 一度公開した記事の公開日時は維持する。下書きに戻して再公開しても初回公開日のまま
             $publishedAt = $article->published_at;
 
@@ -46,14 +57,14 @@ class ArticleService
                 'category_id'  => $data['category_id'],
                 'title'        => $data['title'],
                 'summary'      => $data['summary'],
-                'body'         => $data['body'],
+                'body'         => $images['body'],
                 'status'       => $data['status'],
                 'published_at' => $publishedAt,
             ]);
 
             // syncなので、リクエストに含まれないタグは外れる
             $article->tags()->sync($this->resolveTagIds($data));
-            $this->syncImages($article, $data);
+            $this->syncImages($article, $images['header_key'], $images['body_keys']);
 
             // ArticleEditResourceが参照するリレーションを揃えてから返す
             return $article->load(['category', 'tags', 'images']);
@@ -131,26 +142,110 @@ class ArticleService
     }
 
     /**
-     * 記事の画像をリクエストの内容で置き換える。
-     * 既存行は論理削除してから作り直すので、リクエストに含まれない画像は外れる
+     * 添付された画像を一時置き場から本置き場へ移し、本文中の参照も新しいキーに合わせる。
+     *
+     * 本文画像の一覧はクライアントから受け取らず、保存しようとしている本文から抽出する。
+     * 本文と一覧を別々に受け取ると両者がズレる余地が生まれ、本文がまだ参照している画像を
+     * images:pruneが削除してしまうため。
+     *
+     * @param  Article|null  $article  更新時のみ。既にこの記事が参照しているキーの判定に使う
+     * @return array{header_key: string|null, body: string, body_keys: list<string>}
      */
-    private function syncImages(Article $article, array $data): void
+    private function publishImages(?Article $article, array $data): array
     {
-        $article->images()->delete();
+        $ownedKeys = $article === null
+            ? []
+            : $article->images()->pluck('object_key')->flip()->all();
 
-        if (!empty($data['header_image_url'])) {
-            $article->images()->create([
-                'url'  => $data['header_image_url'],
-                'type' => 'header',
-            ]);
+        $headerKey = isset($data['header_image_key'])
+            ? $this->publishKey($data['header_image_key'], $ownedKeys, 'header_image_key')
+            : null;
+
+        $body = $data['body'];
+        $bodyKeys = [];
+
+        preg_match_all('#' . ArticleImageKey::PATTERN . '#', $body, $matches);
+
+        // 同じ画像が複数回貼られていても移動は一度だけ（二度目は移動元が無く失敗するため）
+        foreach (array_unique($matches[0]) as $key) {
+            $published = $this->publishKey($key, $ownedKeys, null);
+
+            if ($published === null) {
+                // この記事のものでないキーは参照として扱わない。本文中の見た目は変えないので、
+                // 記事の書き方（コードブロック内の例示など）を壊さずに済む
+                continue;
+            }
+
+            $body = str_replace($key, $published, $body);
+            $bodyKeys[] = $published;
         }
 
-        if (!empty($data['body_image_urls'])) {
-            foreach ($data['body_image_urls'] as $url) {
-                $article->images()->create([
-                    'url'  => $url,
-                    'type' => 'body',
-                ]);
+        return ['header_key' => $headerKey, 'body' => $body, 'body_keys' => $bodyKeys];
+    }
+
+    /**
+     * キーを本置き場のものに解決する。
+     *
+     * - 一時置き場のキー : 本置き場へ移して新しいキーを返す
+     * - 本置き場のキー   : 既にこの記事が参照している場合だけ引き継ぐ。そうしないと
+     *                      他の記事の画像を指定するだけで自分の記事に紐付けられてしまう
+     *
+     * @param  string|null  $attribute  バリデーションエラーにする属性名。nullなら例外ではなくnullを返す
+     */
+    private function publishKey(string $key, array $ownedKeys, ?string $attribute): ?string
+    {
+        if (str_starts_with($key, ImageStorage::TMP_PREFIX)) {
+            $published = ImageStorage::IMAGE_PREFIX . substr($key, strlen(ImageStorage::TMP_PREFIX));
+
+            $this->imageStorage->move($key, $published);
+
+            return $published;
+        }
+
+        if (isset($ownedKeys[$key])) {
+            return $key;
+        }
+
+        if ($attribute === null) {
+            return null;
+        }
+
+        throw ValidationException::withMessages([
+            $attribute => 'この記事の画像ではありません。',
+        ]);
+    }
+
+    /**
+     * 記事の画像をリクエストの内容に合わせる。
+     * 参照されなくなった行は論理削除する（ストレージ上の実体はimages:pruneが回収する）
+     *
+     * @param  list<string>  $bodyKeys
+     */
+    private function syncImages(Article $article, ?string $headerKey, array $bodyKeys): void
+    {
+        $wanted = [];
+
+        if ($headerKey !== null) {
+            $wanted["header|{$headerKey}"] = ['type' => 'header', 'object_key' => $headerKey];
+        }
+
+        foreach ($bodyKeys as $key) {
+            $wanted["body|{$key}"] = ['type' => 'body', 'object_key' => $key];
+        }
+
+        $current = $article->images()->get()->keyBy(
+            fn (ArticleImage $image) => "{$image->type}|{$image->object_key}"
+        );
+
+        foreach ($current as $identity => $image) {
+            if (!isset($wanted[$identity])) {
+                $image->delete();
+            }
+        }
+
+        foreach ($wanted as $identity => $attributes) {
+            if (!$current->has($identity)) {
+                $article->images()->create($attributes);
             }
         }
     }

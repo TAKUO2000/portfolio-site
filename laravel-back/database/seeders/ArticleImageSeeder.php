@@ -9,6 +9,7 @@ use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 class ArticleImageSeeder extends Seeder
 {
@@ -18,7 +19,8 @@ class ArticleImageSeeder extends Seeder
     $categories = Category::pluck('id', 'name');
     $tags = Tag::pluck('id', 'name');
 
-    $s3 = 'https://takuo-portfolio-develop-bucket-533267285352-ap-northeast-1-an.s3.ap-northeast-1.amazonaws.com';
+    // 画像はURLではなくキーで持つため、初期データの画像も実際にストレージへ置く
+    $headerKeys = $this->putSeedImages();
 
     $articles = [
       [
@@ -96,7 +98,6 @@ MD,
         'category'     => '技術',
         'tags'         => ['Laravel', 'AWS'],
         'published_at' => Carbon::now()->subDays(1),
-        'image_url'    => "{$s3}/test.png",
       ],
       [
         'title'        => 'DockerでLaravel開発環境を構築する',
@@ -188,7 +189,6 @@ MD,
         'category'     => '技術',
         'tags'         => ['Laravel', 'Docker', 'PHP'],
         'published_at' => Carbon::now()->subDays(3),
-        'image_url'    => "{$s3}/penguin.jpg",
       ],
       [
         'title'        => 'Vue.jsとLaravelでSPAを作る',
@@ -432,7 +432,7 @@ MD,
       ],
     ];
 
-    foreach ($articles as $data) {
+    foreach ($articles as $index => $data) {
       $article = Article::updateOrCreate(
         ['title' => $data['title']],
         [
@@ -450,11 +450,39 @@ MD,
         $article->tags()->sync($tagIds);
       }
 
-      $imageUrl = $data['image_url'] ?? "{$s3}/test.png";
-      ArticleImage::firstOrCreate(
-        ['article_id' => $article->id, 'type' => 'header'],
-        ['url' => $imageUrl]
-      );
+      if ($headerKeys !== []) {
+        // 記事ごとに見分けがつくよう順に割り当て、枚数が足りなければ先頭に戻る
+        ArticleImage::updateOrCreate(
+          ['article_id' => $article->id, 'type' => 'header'],
+          ['object_key' => $headerKeys[$index % count($headerKeys)]]
+        );
+      }
     }
+  }
+
+  /**
+   * 初期データ用の画像をストレージに置き、そのキーの一覧を返す。
+   *
+   * 記事からはキーで参照するため、ストレージに実体が無いと表示が壊れる。外部のURLを
+   * 借りてくると相手の都合で消えて同じ問題が起きるので、画像をリポジトリに置き、
+   * 無ければ自分のストレージへアップロードしてから使う。
+   *
+   * @return list<string>
+   */
+  private function putSeedImages(): array
+  {
+    $keys = [];
+
+    foreach (glob(__DIR__ . '/images/*.jpg') as $path) {
+      $key = 'images/seed-' . basename($path);
+
+      if (!Storage::disk('s3')->exists($key)) {
+        Storage::disk('s3')->put($key, file_get_contents($path));
+      }
+
+      $keys[] = $key;
+    }
+
+    return $keys;
   }
 }

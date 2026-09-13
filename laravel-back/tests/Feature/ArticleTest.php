@@ -246,38 +246,74 @@ test('new_tagsが空白のみの場合はバリデーションエラーになる
         ->assertJsonValidationErrors(['new_tags.0', 'new_tags.1', 'new_tags.2']);
 });
 
-test('許可されたストレージホストのheader_image_url・body_image_urlsが記事画像として保存される', function () {
+test('header_image_keyと本文中の画像が記事画像として保存される', function () {
     useMinioStorage();
-    $headerUrl = 'http://localhost:9002/test-bucket/images/header.png';
-    $bodyUrl = 'http://localhost:9002/test-bucket/images/body1.png';
+    $storage = fakeImageStorage();
+    $headerKey = 'tmp/11111111-1111-4111-8111-111111111111.png';
+    $bodyKey = 'tmp/22222222-2222-4222-8222-222222222222.png';
+    $storage->put($headerKey)->put($bodyKey);
 
     $response = $this->actingAs($this->adminUser)
         ->postJson('/api/articles', [
             'category_id' => $this->category->id,
             'title' => '画像付き記事',
             'summary' => 'テスト概要',
-            'body' => 'テスト本文',
+            'body' => "テスト本文 ![](http://localhost:9002/test-bucket/{$bodyKey})",
             'status' => 'published',
-            'header_image_url' => $headerUrl,
-            'body_image_urls' => [$bodyUrl],
+            'header_image_key' => $headerKey,
         ]);
 
     $response->assertStatus(201);
 
     $article = Article::where('title', '画像付き記事')->first();
+
+    // 一時置き場から本置き場へ移されたキーが保存される
     $this->assertDatabaseHas('article_images', [
         'article_id' => $article->id,
-        'url' => $headerUrl,
+        'object_key' => 'images/11111111-1111-4111-8111-111111111111.png',
         'type' => 'header',
     ]);
     $this->assertDatabaseHas('article_images', [
         'article_id' => $article->id,
-        'url' => $bodyUrl,
+        'object_key' => 'images/22222222-2222-4222-8222-222222222222.png',
         'type' => 'body',
+    ]);
+
+    // 本文中の参照も本置き場のURLに書き換わる
+    expect($article->body)->toBe(
+        'テスト本文 ![](http://localhost:9002/test-bucket/images/22222222-2222-4222-8222-222222222222.png)'
+    );
+
+    // ストレージ側も一時置き場には残らない
+    expect($storage->keys())->toBe([
+        'images/11111111-1111-4111-8111-111111111111.png',
+        'images/22222222-2222-4222-8222-222222222222.png',
     ]);
 });
 
-test('許可されていないホストのheader_image_urlはバリデーションエラーになる', function () {
+test('同じ本文画像が複数回貼られていても一度だけ移動して保存される', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $bodyKey = 'tmp/33333333-3333-4333-8333-333333333333.png';
+    $storage->put($bodyKey);
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '同じ画像を2回貼った記事',
+            'summary' => 'テスト概要',
+            'body' => "![](/{$bodyKey}) と ![](/{$bodyKey})",
+            'status' => 'published',
+        ]);
+
+    $response->assertStatus(201);
+
+    $article = Article::where('title', '同じ画像を2回貼った記事')->first();
+    expect($article->images)->toHaveCount(1);
+    expect($article->body)->not->toContain('tmp/');
+});
+
+test('アプリが発行した形式でないheader_image_keyはバリデーションエラーになる', function () {
     useMinioStorage();
 
     $response = $this->actingAs($this->adminUser)
@@ -287,18 +323,39 @@ test('許可されていないホストのheader_image_urlはバリデーショ�
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
-            'header_image_url' => 'https://evil.example.com/x.png',
+            'header_image_key' => '../images/secret.png',
         ]);
 
     $response->assertStatus(422)
-        ->assertJsonValidationErrors(['header_image_url']);
+        ->assertJsonValidationErrors(['header_image_key']);
 });
 
-test('許可されていないホストのbody_image_urlsはバリデーションエラーになる', function () {
-    config([
-        'filesystems.disks.s3.bucket' => 'test-bucket',
-        'filesystems.disks.s3.region' => 'ap-northeast-1',
-    ]);
+test('本文に他の記事の画像キーを書いても自分の記事の画像にはならない', function () {
+    useMinioStorage();
+    fakeImageStorage();
+    $otherKey = 'images/44444444-4444-4444-8444-444444444444.png';
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '他人の画像を書いた記事',
+            'summary' => '概要',
+            'body' => "本文 ![](http://localhost:9002/test-bucket/{$otherKey})",
+            'status' => 'published',
+        ]);
+
+    // 本文の見た目は変えない（コードブロック内の例示などを壊さないため）が、
+    // この記事の画像としては登録しないので images:prune の保護対象にもならない
+    $response->assertStatus(201);
+
+    $article = Article::where('title', '他人の画像を書いた記事')->first();
+    expect($article->images)->toHaveCount(0);
+    expect($article->body)->toContain($otherKey);
+});
+
+test('本置き場のキーを直接指定するheader_image_keyは拒否される', function () {
+    useMinioStorage();
+    fakeImageStorage();
 
     $response = $this->actingAs($this->adminUser)
         ->postJson('/api/articles', [
@@ -307,11 +364,12 @@ test('許可されていないホストのbody_image_urlsはバリデーショ�
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
-            'body_image_urls' => ['https://evil.example.com/x.png'],
+            // 他人の記事が使っている本置き場のキーを横取りできないこと
+            'header_image_key' => 'images/44444444-4444-4444-8444-444444444444.png',
         ]);
 
     $response->assertStatus(422)
-        ->assertJsonValidationErrors(['body_image_urls.0']);
+        ->assertJsonValidationErrors(['header_image_key']);
 });
 
 // index
@@ -342,7 +400,7 @@ test('記事一覧のレスポンス構造が正しい', function () {
         'status' => 'published',
         'published_at' => now(),
     ]);
-    $article->headerImage()->create(['url' => 'https://example.com/image.png', 'type' => 'header']);
+    $article->headerImage()->create(['object_key' => 'images/66666666-6666-4666-8666-666666666666.png', 'type' => 'header']);
     $article->tags()->sync([$tag->id]);
 
     $response = $this->getJson('/api/articles');
@@ -665,8 +723,8 @@ test('自分の投稿記事を更新できる', function () {
                 'published_at',
                 'category' => ['id', 'name'],
                 'tags',
+                'header_image_key',
                 'header_image_url',
-                'body_image_urls',
             ],
         ]);
 
@@ -828,10 +886,13 @@ test('更新時のnew_tagsで新規タグが作成され記事に紐づく', fun
     expect($article->fresh()->tags->pluck('name')->toArray())->toBe(['Svelte']);
 });
 
-test('更新時に画像が差し替えられ、旧画像は論理削除される', function () {
+test('更新時にヘッダー画像が差し替えられ、旧画像は論理削除される', function () {
     useMinioStorage();
-    $oldUrl = 'http://localhost:9002/test-bucket/images/old-header.png';
-    $newUrl = 'http://localhost:9002/test-bucket/images/new-header.png';
+    $storage = fakeImageStorage();
+    $oldKey = 'images/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png';
+    $newTmpKey = 'tmp/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.png';
+    $newKey = 'images/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.png';
+    $storage->put($oldKey)->put($newTmpKey);
 
     $article = $this->adminUser->articles()->create([
         'category_id' => $this->category->id,
@@ -841,7 +902,7 @@ test('更新時に画像が差し替えられ、旧画像は論理削除され�
         'status' => 'published',
         'published_at' => now(),
     ]);
-    $oldImage = $article->images()->create(['url' => $oldUrl, 'type' => 'header']);
+    $oldImage = $article->images()->create(['object_key' => $oldKey, 'type' => 'header']);
 
     $response = $this->actingAs($this->adminUser)
         ->putJson('/api/articles/'.$article->id, [
@@ -850,19 +911,124 @@ test('更新時に画像が差し替えられ、旧画像は論理削除され�
             'summary' => '概要',
             'body' => '本文',
             'status' => 'published',
-            'header_image_url' => $newUrl,
+            'header_image_key' => $newTmpKey,
         ]);
 
     $response->assertStatus(200)
-        ->assertJsonFragment(['header_image_url' => $newUrl]);
+        ->assertJsonFragment(['header_image_key' => $newKey]);
 
     $this->assertSoftDeleted('article_images', ['id' => $oldImage->id]);
     $this->assertDatabaseHas('article_images', [
         'article_id' => $article->id,
-        'url' => $newUrl,
+        'object_key' => $newKey,
         'type' => 'header',
         'deleted_at' => null,
     ]);
+
+    // 旧画像の実体は消さない（参照が外れた分は images:prune が回収する）
+    expect($storage->keys())->toBe([$oldKey, $newKey]);
+});
+
+test('更新時にヘッダー画像を据え置くと同じキーのまま行も増えない', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $headerKey = 'images/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png';
+    $storage->put($headerKey);
+
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '据え置き記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+    $image = $article->images()->create(['object_key' => $headerKey, 'type' => 'header']);
+
+    $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '据え置き記事（更新後）',
+            'summary' => '概要',
+            'body' => '本文',
+            'status' => 'published',
+            // 変更しない場合はGETで返ってきた本置き場のキーがそのまま送られてくる
+            'header_image_key' => $headerKey,
+        ]);
+
+    expect($article->images()->count())->toBe(1);
+    expect($article->images()->first()->id)->toBe($image->id);
+});
+
+test('更新で本文から画像を消すと参照が外れる', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $keptTmp = 'tmp/cccccccc-cccc-4ccc-8ccc-cccccccccccc.png';
+    $removedTmp = 'tmp/dddddddd-dddd-4ddd-8ddd-dddddddddddd.png';
+    $kept = 'images/cccccccc-cccc-4ccc-8ccc-cccccccccccc.png';
+    $removed = 'images/dddddddd-dddd-4ddd-8ddd-dddddddddddd.png';
+    $storage->put($keptTmp)->put($removedTmp);
+
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '本文画像の記事',
+        'summary' => '概要',
+        'body' => "![](/{$keptTmp}) ![](/{$removedTmp})",
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+    $article->images()->createMany([
+        ['object_key' => $kept, 'type' => 'body'],
+        ['object_key' => $removed, 'type' => 'body'],
+    ]);
+    // 作成時の移動を再現しておく
+    $storage->move($keptTmp, $kept);
+    $storage->move($removedTmp, $removed);
+
+    $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '本文画像の記事',
+            'summary' => '概要',
+            // 片方だけ残した本文を送る
+            'body' => "![](http://localhost:9002/test-bucket/{$kept})",
+            'status' => 'published',
+        ])->assertStatus(200);
+
+    expect($article->images()->pluck('object_key')->all())->toBe([$kept]);
+    $this->assertSoftDeleted('article_images', ['object_key' => $removed]);
+});
+
+test('更新で本文に画像を足すと一時置き場から移されて参照が増える', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $tmpKey = 'tmp/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee.png';
+    $key = 'images/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee.png';
+    $storage->put($tmpKey);
+
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => '画像を足す記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$article->id, [
+            'category_id' => $this->category->id,
+            'title' => '画像を足す記事',
+            'summary' => '概要',
+            'body' => "本文 ![](http://localhost:9002/test-bucket/{$tmpKey})",
+            'status' => 'published',
+        ])->assertStatus(200);
+
+    expect($article->images()->pluck('object_key')->all())->toBe([$key]);
+    // 本文中の参照も本置き場に書き換わる
+    expect($article->fresh()->body)->toContain($key);
+    expect($article->fresh()->body)->not->toContain('tmp/');
+    expect($storage->keys())->toBe([$key]);
 });
 
 test('他ユーザの記事は更新できない', function () {
@@ -986,68 +1152,33 @@ test('更新時に必須項目が欠けている場合はバリデーション�
         ->assertJsonValidationErrors(['category_id', 'title', 'summary', 'body', 'status']);
 });
 
-test('更新時も許可されていないホストのheader_image_urlは拒否される', function () {
+test('保存済みのキーは実行時の設定に従った表示用URLになる', function () {
     useMinioStorage();
-    $article = $this->adminUser->articles()->create([
-        'category_id' => $this->category->id,
-        'title' => '記事',
-        'summary' => '概要',
-        'body' => '本文',
-        'status' => 'published',
-        'published_at' => now(),
-    ]);
+    $storage = fakeImageStorage();
+    $tmpKey = 'tmp/55555555-5555-4555-8555-555555555555.png';
+    $storage->put($tmpKey);
 
-    $response = $this->actingAs($this->adminUser)
-        ->putJson('/api/articles/'.$article->id, [
-            'category_id' => $this->category->id,
-            'title' => '記事',
-            'summary' => '概要',
-            'body' => '本文',
-            'status' => 'published',
-            'header_image_url' => 'https://evil.example.com/x.png',
-        ]);
-
-    $response->assertStatus(422)
-        ->assertJsonValidationErrors(['header_image_url']);
-});
-
-test('本番相当の設定では実S3のホストのheader_image_urlが許可される', function () {
-    useProductionS3Storage();
-    $headerUrl = 'https://prod-bucket.s3.ap-northeast-1.amazonaws.com/images/header.png';
-
-    $response = $this->actingAs($this->adminUser)
+    $this->actingAs($this->adminUser)
         ->postJson('/api/articles', [
             'category_id' => $this->category->id,
-            'title' => '本番構成の画像付き記事',
+            'title' => '画像付き記事',
             'summary' => 'テスト概要',
             'body' => 'テスト本文',
             'status' => 'published',
-            'header_image_url' => $headerUrl,
-        ]);
+            'header_image_key' => $tmpKey,
+        ])->assertStatus(201);
 
-    $response->assertStatus(201);
+    $article = Article::where('title', '画像付き記事')->first();
+    $key = 'images/55555555-5555-4555-8555-555555555555.png';
 
-    $article = Article::where('title', '本番構成の画像付き記事')->first();
-    $this->assertDatabaseHas('article_images', [
-        'article_id' => $article->id,
-        'url' => $headerUrl,
-        'type' => 'header',
-    ]);
-});
+    // DBはキーだけを持つので、同じレコードでも設定を変えればURLが切り替わる
+    expect($this->getJson("/api/articles/{$article->id}")->json('data.images.0.url'))
+        ->toBe("http://localhost:9002/test-bucket/{$key}");
 
-test('本番相当の設定でもMinIOのホストのheader_image_urlは拒否される', function () {
+    // 本番相当の設定に差し替える（クライアントはインスタンス内で使い回されるため作り直す）
     useProductionS3Storage();
+    fakeImageStorage();
 
-    $response = $this->actingAs($this->adminUser)
-        ->postJson('/api/articles', [
-            'category_id' => $this->category->id,
-            'title' => '記事',
-            'summary' => '概要',
-            'body' => '本文',
-            'status' => 'published',
-            'header_image_url' => 'http://localhost:9002/test-bucket/images/header.png',
-        ]);
-
-    $response->assertStatus(422)
-        ->assertJsonValidationErrors(['header_image_url']);
+    expect($this->getJson("/api/articles/{$article->id}")->json('data.images.0.url'))
+        ->toBe("https://prod-bucket.s3.ap-northeast-1.amazonaws.com/{$key}");
 });

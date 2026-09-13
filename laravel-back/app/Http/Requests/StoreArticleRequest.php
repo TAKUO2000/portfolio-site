@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests;
 
-use App\Rules\AllowedImageHost;
+use App\Rules\ArticleImageKey;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreArticleRequest extends FormRequest
@@ -14,9 +14,6 @@ class StoreArticleRequest extends FormRequest
 
     public function rules(): array
     {
-        // ヘッダー画像と本文画像で同じルールインスタンスを使い回す
-        $allowedImageHost = new AllowedImageHost;
-
         return [
             'category_id' => ['required', 'integer', 'exists:categories,id'],
             'title'       => ['required', 'string', 'max:255'],
@@ -27,9 +24,8 @@ class StoreArticleRequest extends FormRequest
             'tags.*'           => ['integer', 'exists:tags,id'],
             'new_tags'         => ['nullable', 'array'],
             'new_tags.*'       => ['string', 'max:255', 'regex:/\S/u'],
-            'header_image_url' => ['nullable', 'string', 'url', 'max:2048', $allowedImageHost],
-            'body_image_urls' => ['nullable', 'array'],
-            'body_image_urls.*' => ['string', 'url', 'max:2048', $allowedImageHost],
+            // 本文画像は本文から抽出するため受け取らない（本文が唯一の正）
+            'header_image_key' => ['nullable', 'string', new ArticleImageKey],
         ];
     }
 }
