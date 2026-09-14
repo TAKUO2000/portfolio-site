@@ -4,10 +4,18 @@ import Header from "./components/Header";
 import Hero from "./components/Hero";
 import LatestArticle from "./components/LatestArticle";
 import PopularArticles from "./components/PopularArticles";
-import { DUMMY_POPULAR_ARTICLES } from "./constants/dummyData";
+import { fetchArticles } from "./lib/articles";
 import { SITE_DATA } from "./constants/siteData";
 
-export default function Home() {
+/** Topページの人気記事に並べる件数 */
+const POPULAR_ARTICLES_COUNT = 3;
+
+export default async function Home() {
+  const [latest, popular] = await Promise.all([
+    fetchArticles({ sort: "latest", perPage: 1 }),
+    fetchArticles({ sort: "popular", perPage: POPULAR_ARTICLES_COUNT }),
+  ]);
+
   return (
     <>
       <Header />
@@ -15,14 +23,14 @@ export default function Home() {
         <Hero />
         <LatestArticle
           id="latest-article"
-          article={DUMMY_POPULAR_ARTICLES[0]}
+          article={latest.data[0] ?? null}
           title={SITE_DATA.latestArticle.title}
           moreButtonHref={SITE_DATA.latestArticle.moreButtonHref}
         />
         <PopularArticles
           id="popular-articles"
           title={SITE_DATA.popularArticles.title}
-          articles={DUMMY_POPULAR_ARTICLES}
+          articles={popular.data}
           moreButtonHref={SITE_DATA.popularArticles.moreButtonHref}
         />
         <AboutSite
