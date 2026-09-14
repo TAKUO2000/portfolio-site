@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Article;
 use App\Models\ArticleImage;
+use App\Models\Reaction;
 use App\Models\Tag;
 use App\Models\User;
 use App\Rules\ArticleImageKey;
@@ -329,7 +330,10 @@ class ArticleService
 
     private function withLikeCount(Builder $query): Builder
     {
-        return $query->withCount(['reactions as like_count']);
+        // reactionsにはbadやbookmarkも入るため、likeだけを数える
+        return $query->withCount([
+            'reactions as like_count' => fn(Builder $q) => $q->where('type', Reaction::TYPE_LIKE),
+        ]);
     }
 
     public function delete(Article $article): void
