@@ -5,11 +5,12 @@ import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
 import TagSelect from "@/app/components/article-form/TagSelect";
 import {
-  ArticleCard,
   SmallArticleCard,
   TextArticleCard,
   VerticalArticleCard,
 } from "@/app/components/ArticleCard";
+import LatestArticle from "@/app/components/LatestArticle";
+import PopularArticles from "@/app/components/PopularArticles";
 import type {
   ArticleSummary,
   Category,
@@ -97,34 +98,28 @@ export default function DevPage() {
             />
           </ComponentSectionDev>
 
+          {/* Topページのカードはセクション単位なので、そのまま埋め込んで確認する */}
           <ComponentSectionDev
-            title="ArticleCard"
+            title="LatestArticle（Topページ / 最新記事）"
             className="flex flex-col"
             collapsible
           >
-            {sampleArticle ? (
-              <ArticleCard
-                title={sampleArticle.title}
-                author={sampleArticle.user.name}
-                summary={sampleArticle.summary}
-                image={sampleArticle.header_image}
-                href={`/articles/${sampleArticle.id}`}
-              />
-            ) : (
-              <p className="text-xs text-gray-500">
-                記事が1件もないため表示できません。シーダーを流してください。
-              </p>
-            )}
+            <LatestArticle
+              title="Latest Article"
+              article={sampleArticle}
+              moreButtonHref="#"
+            />
+          </ComponentSectionDev>
 
-            <hr className="my-8 border-gray-300" />
-
-            {/* ヘッダー画像が無い記事の見え方も確認する */}
-            <ArticleCard
-              title="ヘッダー画像なしの記事"
-              author="著者名"
-              summary="header_imageがnullのときは黒いプレースホルダーが出ます。"
-              image={null}
-              href="#"
+          <ComponentSectionDev
+            title="PopularArticles（Topページ / 人気記事）"
+            className="flex flex-col"
+            collapsible
+          >
+            <PopularArticles
+              title="Popular Articles"
+              articles={sampleArticles}
+              moreButtonHref="#"
             />
           </ComponentSectionDev>
 
@@ -141,6 +136,7 @@ export default function DevPage() {
                 image={article.header_image}
                 href={`/articles/${article.id}`}
                 publishedAt={article.published_at}
+                likeCount={article.like_count}
               />
             ))}
             <SmallArticleCard
@@ -167,6 +163,7 @@ export default function DevPage() {
                 category={article.category}
                 tags={article.tags}
                 publishedAt={article.published_at}
+                likeCount={article.like_count}
               />
             ))}
           </ComponentSectionDev>
@@ -184,6 +181,7 @@ export default function DevPage() {
                 summary={article.summary}
                 href={`/articles/${article.id}`}
                 publishedAt={article.published_at}
+                likeCount={article.like_count}
               />
             ))}
             {/* 概要文を省いた詰めた表示 */}
