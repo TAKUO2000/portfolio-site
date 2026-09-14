@@ -99,12 +99,12 @@ export default function LatestArticle({
       </div>
 
       <div className="mt-12 flex justify-center">
-        <a
+        <Link
           href={moreButtonHref}
           className="bg-black px-14 py-4 text-sm font-bold text-white transition-opacity hover:opacity-80"
         >
           最近の投稿
-        </a>
+        </Link>
       </div>
     </section>
   );
