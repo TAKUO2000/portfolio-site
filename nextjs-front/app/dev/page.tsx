@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
 import TagSelect from "@/app/components/article-form/TagSelect";
-import ArticleCard from "@/app/components/ArticleCard";
-import SmallArticleCard from "@/app/components/SmallArticleCard";
-import VerticalArticleCard from "@/app/components/VerticalArticleCard";
-import TextArticleCard from "@/app/components/TextArticleCard";
+import {
+  ArticleCard,
+  SmallArticleCard,
+  TextArticleCard,
+  VerticalArticleCard,
+} from "@/app/components/ArticleCard";
 import type {
   ArticleSummary,
   Category,
@@ -163,6 +165,7 @@ export default function DevPage() {
                 image={article.header_image}
                 href={`/articles/${article.id}`}
                 category={article.category}
+                tags={article.tags}
                 publishedAt={article.published_at}
               />
             ))}
