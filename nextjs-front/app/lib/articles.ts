@@ -31,7 +31,7 @@ export async function fetchArticles({
   });
 
   if (!res.ok) {
-    throw new Error("記事一覧の取得に失敗しました。");
+    throw new Error(`記事一覧の取得に失敗しました。(status: ${res.status})`);
   }
 
   return res.json();

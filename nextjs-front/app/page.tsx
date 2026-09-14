@@ -11,10 +11,17 @@ import { SITE_DATA } from "./constants/siteData";
 const POPULAR_ARTICLES_COUNT = 3;
 
 export default async function Home() {
-  const [latest, popular] = await Promise.all([
+  // 記事の取得に失敗してもHeroやAboutSiteまで巻き添えにしないよう、
+  // 「記事0件」の表示へフォールバックする
+  const [latest, popular] = await Promise.allSettled([
     fetchArticles({ sort: "latest", perPage: 1 }),
     fetchArticles({ sort: "popular", perPage: POPULAR_ARTICLES_COUNT }),
   ]);
+
+  const latestArticle =
+    latest.status === "fulfilled" ? (latest.value.data[0] ?? null) : null;
+  const popularArticles =
+    popular.status === "fulfilled" ? popular.value.data : [];
 
   return (
     <>
@@ -23,14 +30,14 @@ export default async function Home() {
         <Hero />
         <LatestArticle
           id="latest-article"
-          article={latest.data[0] ?? null}
+          article={latestArticle}
           title={SITE_DATA.latestArticle.title}
           moreButtonHref={SITE_DATA.latestArticle.moreButtonHref}
         />
         <PopularArticles
           id="popular-articles"
           title={SITE_DATA.popularArticles.title}
-          articles={popular.data}
+          articles={popularArticles}
           moreButtonHref={SITE_DATA.popularArticles.moreButtonHref}
         />
         <AboutSite
