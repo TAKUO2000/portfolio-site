@@ -35,6 +35,7 @@ export default async function ArticlesListPage({
               category={article.category}
               tags={article.tags}
               publishedAt={article.published_at}
+              likeCount={article.like_count}
               priority={index < 3}
             />
           ))}

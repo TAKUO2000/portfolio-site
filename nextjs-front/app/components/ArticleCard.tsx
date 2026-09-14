@@ -18,6 +18,7 @@ interface ArticleCardBaseProps {
   author: string;
   href: string;
   publishedAt?: string;
+  likeCount?: number;
 }
 
 interface ArticleThumbnailProps {
@@ -57,75 +58,29 @@ function ArticleThumbnail({
   );
 }
 
-/** 著者と投稿日の行。投稿日を出さないカードもあるので、空の要素は詰めて繋ぐ */
+/** 著者と投稿日といいね数の行。出さない項目もあるので、空の要素は詰めて繋ぐ */
 function ArticleMeta({
   author,
   publishedAt,
+  likeCount,
   className = "",
 }: {
   author?: string;
   publishedAt?: string;
+  likeCount?: number;
   className?: string;
 }) {
-  const parts = [author, publishedAt && formatPublishedDate(publishedAt)];
+  const parts = [
+    author,
+    publishedAt && formatPublishedDate(publishedAt),
+    likeCount !== undefined && `♡ ${likeCount}`,
+  ];
   const text = parts.filter(Boolean).join(" ・ ");
 
   if (!text) return null;
 
   return (
     <p className={`truncate text-xs text-gray-500 ${className}`}>{text}</p>
-  );
-}
-
-interface ArticleCardProps extends ArticleCardBaseProps {
-  summary: string;
-  image: string | null;
-  priority?: boolean;
-}
-
-/**
- * 横並びの標準カード。
- * 1カラムの記事一覧など、幅を広く取れる場所で使う。
- */
-export function ArticleCard({
-  title,
-  author,
-  summary,
-  image,
-  href,
-  publishedAt,
-  priority = false,
-}: ArticleCardProps) {
-  return (
-    <Link
-      href={href}
-      className="group grid grid-cols-1 gap-5 transition-opacity hover:opacity-80 md:grid-cols-[288px_1fr] md:gap-8"
-    >
-      <article className="contents">
-        <ArticleThumbnail
-          image={image}
-          alt={title}
-          className="aspect-3/2 w-full md:aspect-auto md:h-50 md:w-75"
-          sizes="(min-width: 768px) 288px, 100vw"
-          priority={priority}
-        />
-
-        <div className="min-w-0 pt-0 md:pt-1">
-          <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-start md:justify-between md:gap-8">
-            <h3 className="text-2xl font-bold leading-tight md:text-3xl">
-              {title}
-            </h3>
-            <p className="shrink-0 text-base text-gray-500 md:pt-2 md:text-lg">
-              {author}
-            </p>
-          </div>
-          <p className="line-clamp-4 text-base leading-tight text-black md:line-clamp-5">
-            {summary}
-          </p>
-          <ArticleMeta publishedAt={publishedAt} className="mt-3" />
-        </div>
-      </article>
-    </Link>
   );
 }
 
@@ -143,6 +98,7 @@ export function SmallArticleCard({
   image,
   href,
   publishedAt,
+  likeCount,
 }: SmallArticleCardProps) {
   return (
     <Link
@@ -164,6 +120,7 @@ export function SmallArticleCard({
           <ArticleMeta
             author={author}
             publishedAt={publishedAt}
+            likeCount={likeCount}
             className="mt-1"
           />
         </div>
@@ -193,13 +150,14 @@ export function VerticalArticleCard({
   category,
   tags,
   publishedAt,
+  likeCount,
   priority = false,
 }: VerticalArticleCardProps) {
   return (
     // 画像は角丸で切り抜いてカード上端まで出すため、余白はテキスト側だけに付ける
     <Link
       href={href}
-      className="group flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md"
+      className="group relative z-0 flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:z-10 hover:scale-[1.02] hover:shadow-[0_12px_32px_rgba(0,0,0,0.25)]"
     >
       <article className="contents">
         <ArticleThumbnail
@@ -232,17 +190,32 @@ export function VerticalArticleCard({
               <span className="text-xs text-gray-500">+{tags.length - 3}</span>
             )}
           </div>
-          <h3 className="line-clamp-2 min-h-[2lh] text-lg font-bold leading-snug decoration-2 underline-offset-4 group-hover:underline">
+          <h3 className="line-clamp-2 min-h-[2lh] text-lg font-bold leading-snug">
             {title}
           </h3>
           <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-snug text-gray-700">
             {summary}
           </p>
-          <ArticleMeta
-            author={author}
-            publishedAt={publishedAt}
-            className="mt-2.5"
-          />
+          {/* Topページのカードと同じく、ホバーでラベルが開く */}
+          <div className="mt-2.5 flex items-center justify-between gap-2">
+            <ArticleMeta
+              author={author}
+              publishedAt={publishedAt}
+              likeCount={likeCount}
+              className="min-w-0"
+            />
+            <span
+              aria-hidden
+              className="flex shrink-0 items-center gap-1 text-xs text-gray-500 transition-colors group-hover:text-foreground"
+            >
+              <span className="max-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 group-hover:max-w-20">
+                記事を読む
+              </span>
+              <span className="transition-transform duration-200 group-hover:translate-x-0.5">
+                →
+              </span>
+            </span>
+          </div>
         </div>
       </article>
     </Link>
@@ -263,6 +236,7 @@ export function TextArticleCard({
   href,
   summary,
   publishedAt,
+  likeCount,
 }: TextArticleCardProps) {
   return (
     <Link
@@ -281,6 +255,7 @@ export function TextArticleCard({
         <ArticleMeta
           author={author}
           publishedAt={publishedAt}
+          likeCount={likeCount}
           className="mt-2"
         />
       </article>
