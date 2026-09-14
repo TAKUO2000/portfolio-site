@@ -1,58 +1,8 @@
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import ArticleCard from "../components/ArticleCard";
-import type { Category, Tag } from "@/app/types/models";
-import { getApiBaseUrl } from "@/app/lib/apiBaseUrl";
-
-type SortOrder = "latest" | "popular";
-
-interface IndexResponse {
-  data: Article[];
-  links: Links;
-  meta: Meta;
-}
-
-interface Article {
-  id: number;
-  title: string;
-  summary: string;
-  header_image: string;
-  published_at: string;
-  user: {
-    id: number;
-    name: string;
-  }; /** idは著者ページに飛ぶ際に使用予定現在は不要だけど取得してます*/
-  category: Category;
-  tags: Tag[];
-  like_count: number;
-}
-
-interface Links {
-  first: string;
-  last: string;
-  prev: string | null;
-  next: string | null;
-}
-
-interface Meta {
-  current_page: number;
-  last_page: number;
-  per_page: number;
-  total: number;
-}
-
-async function fetchArticles(sort: SortOrder): Promise<IndexResponse> {
-  const res = await fetch(`${getApiBaseUrl()}/api/articles?sort=${sort}`, {
-    headers: { Accept: "application/json" },
-  });
-
-  if (!res.ok) {
-    console.log("記事一覧の取得に失敗しました。");
-    throw new Error("記事一覧の取得に失敗しました。");
-  }
-
-  return res.json();
-}
+import ArticleSortSwitch from "../components/ArticleSortSwitch";
+import { VerticalArticleCard } from "../components/ArticleCard";
+import { fetchArticles, toSortOrder } from "@/app/lib/articles";
 
 export default async function ArticlesListPage({
   searchParams,
@@ -60,28 +10,36 @@ export default async function ArticlesListPage({
   searchParams: Promise<{ sort?: string }>;
 }) {
   const { sort } = await searchParams;
-  const validSort: SortOrder = sort === "popular" ? "popular" : "latest";
+  const currentSort = toSortOrder(sort);
 
-  const articles = (await fetchArticles(validSort)).data;
-  console.log(articles);
+  const articles = (await fetchArticles({ sort: currentSort })).data;
 
   return (
     <>
       <Header />
       <main className="h-auto w-full max-w-5xl mx-auto px-4 py-8">
-        {articles.map((article, index) => (
-          <div key={`${article.title}-${index}`}>
-            {index !== 0 && <hr className="my-8 border-gray" />}
-            <ArticleCard
+        <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-3xl font-bold">記事一覧ページ</h1>
+          <ArticleSortSwitch current={currentSort} />
+        </div>
+
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {articles.map((article, index) => (
+            <VerticalArticleCard
+              key={article.id}
               title={article.title}
               author={article.user.name}
               summary={article.summary}
               image={article.header_image}
-              href={`articles/${article.id}`}
-              priority={index === 0}
+              href={`/articles/${article.id}`}
+              category={article.category}
+              tags={article.tags}
+              publishedAt={article.published_at}
+              likeCount={article.like_count}
+              priority={index < 3}
             />
-          </div>
-        ))}
+          ))}
+        </div>
       </main>
       <Footer />
     </>
