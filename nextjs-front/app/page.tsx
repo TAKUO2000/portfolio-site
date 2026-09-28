@@ -18,6 +18,14 @@ export default async function Home() {
     fetchArticles({ sort: "popular", perPage: POPULAR_ARTICLES_COUNT }),
   ]);
 
+  // 表示は0件で済ませるが、障害の原因が追えなくならないよう理由は残す
+  if (latest.status === "rejected") {
+    console.error("最新記事の取得に失敗しました。", latest.reason);
+  }
+  if (popular.status === "rejected") {
+    console.error("人気記事の取得に失敗しました。", popular.reason);
+  }
+
   const latestArticle =
     latest.status === "fulfilled" ? (latest.value.data[0] ?? null) : null;
   const popularArticles =
