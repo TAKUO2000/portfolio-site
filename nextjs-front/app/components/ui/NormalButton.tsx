@@ -17,14 +17,29 @@ const button = tv({
   },
 });
 
-interface NormalButtonProps {
+interface NormalButtonBaseProps {
   color?: "white" | "green" | "red";
   buttonLabel: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  /** 押すと遷移するだけのボタンはこちら。リンクとして描画する */
-  href?: string;
 }
+
+/**
+ * hrefありはLink、hrefなしはbuttonとして描画するため、
+ * それぞれで意味を持たないpropsは型レベルで渡せないようにしている。
+ */
+type NormalButtonProps = NormalButtonBaseProps &
+  (
+    | {
+        /** 押すと遷移するだけのボタンはこちら。リンクとして描画する */
+        href: string;
+        onClick?: never;
+        disabled?: never;
+      }
+    | {
+        href?: never;
+        onClick?: () => void;
+        disabled?: boolean;
+      }
+  );
 
 export default function NormalButton({
   color,
