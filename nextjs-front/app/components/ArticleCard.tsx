@@ -58,8 +58,12 @@ function ArticleThumbnail({
   );
 }
 
-/** 著者と投稿日といいね数の行。出さない項目もあるので、空の要素は詰めて繋ぐ */
-function ArticleMeta({
+/**
+ * 著者と投稿日といいね数の行。出さない項目もあるので、空の要素は詰めて繋ぐ。
+ *
+ * カード以外（Topの最新記事・人気記事）でも同じ並びを使うためexportしている。
+ */
+export function ArticleMeta({
   author,
   publishedAt,
   likeCount,

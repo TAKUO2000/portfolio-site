@@ -1,8 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ArticleMeta } from "@/app/components/ArticleCard";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
-import { formatPublishedDate } from "@/app/lib/formatDate";
 import type { ArticleSummary } from "@/app/types/models";
 
 interface PopularArticlesProps {
@@ -64,11 +64,12 @@ export default function PopularArticles({
                             <TagBox key={tag.id} tag={tag.name} id={tag.id} />
                           ))}
                         </div>
-                        <p className="shrink-0 whitespace-nowrap text-xs text-gray-500">
-                          {article.user.name} ・{" "}
-                          {formatPublishedDate(article.published_at)} ・ ♡{" "}
-                          {article.like_count}
-                        </p>
+                        <ArticleMeta
+                          author={article.user.name}
+                          publishedAt={article.published_at}
+                          likeCount={article.like_count}
+                          className="shrink-0"
+                        />
                       </div>
 
                       <h3 className="text-xl font-bold leading-tight md:text-2xl">
