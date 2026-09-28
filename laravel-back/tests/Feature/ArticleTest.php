@@ -603,6 +603,28 @@ test('sort=popularでreaction数降順になる', function () {
     expect($titles->first())->toBe('reaction多い記事');
 });
 
+test('like_countはlike以外のreactionを数えない', function () {
+    $article = $this->adminUser->articles()->create([
+        'category_id' => $this->category->id,
+        'title' => 'reaction種別の記事',
+        'summary' => '概要',
+        'body' => '本文',
+        'status' => 'published',
+        'published_at' => now(),
+    ]);
+
+    Reaction::create(['user_id' => $this->generalUser->id, 'article_id' => $article->id, 'type' => Reaction::TYPE_LIKE]);
+    Reaction::create(['user_id' => $this->generalUser->id, 'article_id' => $article->id, 'type' => Reaction::TYPE_BAD]);
+    Reaction::create(['user_id' => $this->generalUser->id, 'article_id' => $article->id, 'type' => Reaction::TYPE_BOOKMARK]);
+
+    $index = collect($this->getJson('/api/articles')->json('data'))
+        ->firstWhere('title', 'reaction種別の記事');
+    expect($index['like_count'])->toBe(1);
+
+    $this->getJson("/api/articles/{$article->id}")
+        ->assertJsonPath('data.like_count', 1);
+});
+
 // 削除用テスト
 test('自分の投稿記事を削除', function () {
     $article = $this->adminUser->articles()->create([

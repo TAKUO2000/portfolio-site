@@ -7,6 +7,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Reaction extends Model
 {
+    /** 好評価。記事の「いいね数」はこの種別だけを数える */
+    public const TYPE_LIKE = 'like';
+
+    /** 低評価 */
+    public const TYPE_BAD = 'bad';
+
+    /** あとで読む */
+    public const TYPE_BOOKMARK = 'bookmark';
+
     protected $primaryKey = null;
     public $incrementing = false;
     public $timestamps = false;
