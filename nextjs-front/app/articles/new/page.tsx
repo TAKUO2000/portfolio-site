@@ -40,7 +40,11 @@ export default function NewArticlePage() {
   const [summary, setSummary] = useState("");
   const [body, setBody] = useState("");
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // どちらのボタンで送信中かを持つ。2つのボタンでラベルを出し分けるため真偽値にしない
+  const [submittingStatus, setSubmittingStatus] = useState<
+    "draft" | "published" | null
+  >(null);
+  const [isDraftSaved, setIsDraftSaved] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
 
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -92,7 +96,8 @@ export default function NewArticlePage() {
   }, [isAuthorized]);
 
   async function handleSubmit(status: "draft" | "published") {
-    if (isSubmitting) return;
+    // 下書き保存後に送り直すと同じ記事がもう1件できてしまうため、保存済みなら受け付けない
+    if (submittingStatus !== null || isDraftSaved) return;
     setErrorMessages([]);
 
     const errors = validateArticleForm({
@@ -107,7 +112,7 @@ export default function NewArticlePage() {
       return;
     }
 
-    setIsSubmitting(true);
+    setSubmittingStatus(status);
     try {
       // 本文中に残っているblobプレビュー分だけ、送信時点で署名付きURLを取得してS3へアップロードする
       // （本文から削除された貼り付け画像はアップロードしない）
@@ -176,6 +181,13 @@ export default function NewArticlePage() {
         return;
       }
 
+      // 下書きは公開ページに出ないため遷移先がない。このページに留めて保存できたことだけ伝える
+      // （blobURLはプレビュー表示が残るようrevokeせず、ページを離れるときに解放されるのに任せる）
+      if (status === "draft") {
+        setIsDraftSaved(true);
+        return;
+      }
+
       pendingImages.forEach((img) => URL.revokeObjectURL(img.blobUrl));
       if (pendingHeader) URL.revokeObjectURL(pendingHeader.blobUrl);
 
@@ -187,7 +199,7 @@ export default function NewArticlePage() {
           : "記事の保存中にエラーが発生しました。",
       ]);
     } finally {
-      setIsSubmitting(false);
+      setSubmittingStatus(null);
     }
   }
 
@@ -238,17 +250,29 @@ export default function NewArticlePage() {
         </div>
       )}
 
+      {isDraftSaved && (
+        <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          下書きを保存しました。公開ページには表示されません。
+        </p>
+      )}
+
       <div className="flex justify-end gap-3">
-        {/* 下書き機能は別ブランチで作るため一旦非活性 */}
+        {isDraftSaved && (
+          <NormalButton buttonLabel="記事一覧へ" href="/articles" />
+        )}
         <NormalButton
-          buttonLabel={isSubmitting ? "保存中..." : "下書き保存"}
-          disabled={true}
+          buttonLabel={
+            submittingStatus === "draft" ? "保存中..." : "下書き保存"
+          }
+          disabled={submittingStatus !== null || isDraftSaved}
           onClick={() => handleSubmit("draft")}
         />
         <NormalButton
           color="green"
-          buttonLabel={isSubmitting ? "公開中..." : "公開する"}
-          disabled={isSubmitting}
+          buttonLabel={
+            submittingStatus === "published" ? "公開中..." : "公開する"
+          }
+          disabled={submittingStatus !== null || isDraftSaved}
           onClick={() => handleSubmit("published")}
         />
       </div>
