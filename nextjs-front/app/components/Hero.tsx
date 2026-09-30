@@ -1,5 +1,7 @@
 "use client";
 
+import PointingHandCanvas from "./PointingHandCanvas";
+
 const SCROLL_DURATION_MS = 900;
 
 export default function Hero() {
@@ -50,18 +52,25 @@ export default function Hero() {
   };
 
   return (
-    <section className="bg-[#f4f1eb] text-center py-24 px-6 h-screen flex flex-col items-center justify-center">
-      <h1 className="text-6xl font-bold mb-3">TAKUO_Log</h1>
-      <p className="text-base text-[#010101] mb-8">
+    <section className="relative bg-[#f4f1eb] text-center py-24 px-6 h-screen flex flex-col items-center justify-center">
+      {/* 背景の3D。ボタンのクリックを邪魔しないようポインターイベントは素通しにする */}
+      <PointingHandCanvas
+        className="absolute inset-0 pointer-events-none"
+        modelPosition={[0, 0.2, 0]}
+        modelRotation={[0, 0, 0]}
+      />
+      <h1 className="relative text-7xl font-extrabold mb-3">TAKUO_Log</h1>
+      <p className="relative text-lg text-[#010101] mb-8">
         TAKUO2000が読んだ本と、学んだ技術の保管庫。
       </p>
-      <div className="flex justify-center gap-4">
+      <div className="relative translate-y-40 flex justify-center gap-10">
         {navLinks.map((link) => (
           <a
             key={link.href}
             href={link.href}
             onClick={(event) => scrollToSection(event, link.href)}
-            className="bg-black text-white text-base px-6 py-2 hover:opacity-70 transition-opacity"
+            data-point-target // ホバー中は手がこのボタンの中心を指す
+            className="bg-black text-white text-base px-10 py-4 hover:opacity-70 transition-opacity"
           >
             {link.label}
           </a>
