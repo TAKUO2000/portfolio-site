@@ -61,7 +61,7 @@ export default function Hero() {
       {/* 背景の3D。ボタンのクリックを邪魔しないようポインターイベントは素通しにする */}
       <PointingHandCanvas
         className="absolute inset-0 pointer-events-none"
-        modelPosition={[0, 0.2, 0]}
+        modelPosition={[0, 0.2, -0.6]}
         modelRotation={[0, 0, 0]}
       />
       <h1 className="relative text-7xl font-extrabold mb-3">TAKUO_Log</h1>

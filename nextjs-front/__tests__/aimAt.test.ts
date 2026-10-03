@@ -18,7 +18,7 @@ function rect(left: number, top: number, width: number, height: number) {
   } as DOMRect;
 }
 
-/** 400x400のCanvasと、原点に置いた手 */
+/** 400x400のCanvasと、本番と同じ位置に置いた手 */
 function setup() {
   const canvas = document.createElement("canvas");
   canvas.getBoundingClientRect = () => rect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -28,6 +28,7 @@ function setup() {
   camera.updateMatrixWorld();
 
   const hand = new THREE.Object3D();
+  hand.position.set(0, 0.2, -0.6); // HeroのmodelPosition
   hand.updateMatrixWorld();
 
   return { canvas, camera, hand, scratch: createAimScratch() };
@@ -36,6 +37,12 @@ function setup() {
 /** 指先（モデルの+Z）が向くワールド方向 */
 function fingerDirection(quaternion: THREE.Quaternion) {
   return new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion);
+}
+
+/** 画面上の位置（NDC） */
+function toNdc(point: THREE.Vector3, camera: THREE.Camera) {
+  const p = point.clone().project(camera);
+  return new THREE.Vector2(p.x, p.y);
 }
 
 describe("aimAt", () => {
@@ -103,5 +110,44 @@ describe("aimAt", () => {
     )!;
 
     expect(viaTarget.angleTo(viaCursor)).toBeCloseTo(0);
+  });
+
+  // 指の延長線は画面上でカーソルを通るはず。
+  // 狙いの面を手の奥行きに合わせていないと、ここが画面の外側へずれて
+  // 「ボタンの下に指がはみ出す」見え方になる
+  it.each([
+    ["中央より下", 200, 320],
+    ["中央より上", 200, 80],
+    ["右下", 330, 300],
+  ])("指の延長線が画面上でカーソルを通る（%s）", (_name, cursorX, cursorY) => {
+    const { canvas, camera, hand, scratch } = setup();
+    const quaternion = aimAt(
+      scratch,
+      { x: cursorX, y: cursorY, target: null },
+      canvas,
+      camera,
+      hand,
+    );
+    expect(quaternion).not.toBeNull();
+
+    const handPosition = new THREE.Vector3();
+    hand.getWorldPosition(handPosition);
+    const along = handPosition
+      .clone()
+      .add(fingerDirection(quaternion!).multiplyScalar(0.9)); // 指先のあたり
+
+    const handNdc = toNdc(handPosition, camera);
+    const alongNdc = toNdc(along, camera);
+    const cursorNdc = new THREE.Vector2(
+      (cursorX / CANVAS_SIZE) * 2 - 1,
+      -(cursorY / CANVAS_SIZE) * 2 + 1,
+    );
+
+    // 手 → 指先 と 手 → カーソル が画面上で同じ向きなら、外積が0になる
+    const finger = alongNdc.sub(handNdc);
+    const toCursor = cursorNdc.sub(handNdc);
+    expect(
+      finger.cross(toCursor) / (finger.length() * toCursor.length()),
+    ).toBeCloseTo(0, 5);
   });
 });

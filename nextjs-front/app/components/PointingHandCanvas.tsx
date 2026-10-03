@@ -13,6 +13,8 @@ type Props = {
   modelPosition?: [number, number, number];
   /** カーソルがCanvasの外にあるときの手の角度（ラジアン）。[0, 0, 0]で指先が画面の手前を向く */
   modelRotation?: [number, number, number];
+  /** 手の大きさ。奥に置くと小さく映るので、見た目を保つならここで補う */
+  modelScale?: number;
 };
 
 /** 画面内に入っているかを監視する。IntersectionObserverが無い環境では常にtrue */
@@ -55,6 +57,7 @@ export default function PointingHandCanvas({
   className,
   modelPosition,
   modelRotation,
+  modelScale,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isVisible = useIsVisible(containerRef);
@@ -80,7 +83,11 @@ export default function PointingHandCanvas({
           <ambientLight intensity={0.8} />
           <directionalLight position={[3, 3, 3]} />
           <Suspense fallback={null}>
-            <Model position={modelPosition} rotation={modelRotation} />
+            <Model
+              position={modelPosition}
+              rotation={modelRotation}
+              scale={modelScale}
+            />
           </Suspense>
         </Canvas>
       </ErrorBoundary>

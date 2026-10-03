@@ -23,9 +23,9 @@ type GLTFResult = GLTF & {
 };
 
 // 指はモデルの+Z方向に伸びているので、+Zをカーソルへ向ければ指さしになる
-const POINT_DEPTH = 0.5; // カーソル位置をどれだけ手前に浮かせて狙うか。小さいほど横を向きやすい
+const POINT_DEPTH = 0.5; // 狙いの面を手の何単位手前に置くか。小さいほど指が大きく振れる
 const FOLLOW_SPEED = 10; // 大きいほど素早く追従する
-const HAND_PLANE = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // 手首のあるz=0の面
+const PLANE_NORMAL = new THREE.Vector3(0, 0, 1);
 const UP = new THREE.Vector3(0, 1, 0);
 /** この属性を付けた要素にホバーしている間は、カーソルではなく要素の中心を指す */
 export const POINT_TARGET_ATTR = "data-point-target";
@@ -43,6 +43,7 @@ export function createAimScratch() {
     lookMatrix: new THREE.Matrix4(),
     quaternion: new THREE.Quaternion(),
     pointer: new THREE.Vector2(),
+    plane: new THREE.Plane(),
   };
 }
 
@@ -80,13 +81,17 @@ export function aimAt(
     -((y - rect.top) / rect.height) * 2 + 1,
   );
 
+  object.getWorldPosition(scratch.handPosition);
+  // カメラ光線を受ける面を、手のPOINT_DEPTHだけ手前に置く。
+  // この面上の点は画面上でカーソルと必ず重なるので、指の延長線がカーソルを正確に指す。
+  // 固定のz=0面で受けると、面が手より手前にある分だけ狙いが画面の外側へずれる
+  scratch.plane.set(PLANE_NORMAL, -(scratch.handPosition.z + POINT_DEPTH));
+
   scratch.raycaster.setFromCamera(scratch.pointer, camera);
-  if (!scratch.raycaster.ray.intersectPlane(HAND_PLANE, scratch.target)) {
+  if (!scratch.raycaster.ray.intersectPlane(scratch.plane, scratch.target)) {
     return null;
   }
-  scratch.target.z += POINT_DEPTH;
 
-  object.getWorldPosition(scratch.handPosition);
   scratch.lookMatrix.lookAt(scratch.target, scratch.handPosition, UP); // 第1引数側へ+Zが向く
   return scratch.quaternion.setFromRotationMatrix(scratch.lookMatrix);
 }
