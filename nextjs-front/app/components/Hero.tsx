@@ -1,6 +1,11 @@
 "use client";
 
-import PointingHandCanvas from "./PointingHandCanvas";
+import dynamic from "next/dynamic";
+
+// threeは重いので初期JSに含めず、WebGLの無いサーバー側では描画しない
+const PointingHandCanvas = dynamic(() => import("./PointingHandCanvas"), {
+  ssr: false,
+});
 
 const SCROLL_DURATION_MS = 900;
 
