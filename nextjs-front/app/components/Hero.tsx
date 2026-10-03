@@ -65,7 +65,7 @@ export default function Hero() {
         className="absolute inset-0 pointer-events-none"
         modelPosition={[0, 0.59, -0.6]}
         modelRotation={[0, 0, 0]}
-        modelScale={1.25}
+        modelScale={1.3}
       />
       <h1 className="relative text-7xl font-extrabold mb-3">TAKUO_Log</h1>
       <p className="relative text-lg text-[#010101] mb-8">
