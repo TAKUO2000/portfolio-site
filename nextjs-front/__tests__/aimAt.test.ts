@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { aimAt, createAimScratch } from "@/app/components/PointingHand";
 
 const CANVAS_SIZE = 400;
+const HERO_HAND_Y = 1.1; // HeroのmodelPositionのy
 
 function rect(left: number, top: number, width: number, height: number) {
   return {
@@ -18,8 +19,11 @@ function rect(left: number, top: number, width: number, height: number) {
   } as DOMRect;
 }
 
-/** 400x400のCanvasと、本番と同じ位置に置いた手 */
-function setup() {
+/**
+ * 400x400のCanvasと手。
+ * handYの既定は0。上下左右の判定がhandYに左右されないよう、方向のテストでは中央に置く
+ */
+function setup(handY = 0) {
   const canvas = document.createElement("canvas");
   canvas.getBoundingClientRect = () => rect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
@@ -28,7 +32,7 @@ function setup() {
   camera.updateMatrixWorld();
 
   const hand = new THREE.Object3D();
-  hand.position.set(0, 0.2, -0.6); // HeroのmodelPosition
+  hand.position.set(0, handY, -0.6);
   hand.updateMatrixWorld();
 
   return { canvas, camera, hand, scratch: createAimScratch() };
@@ -120,7 +124,7 @@ describe("aimAt", () => {
     ["中央より上", 200, 80],
     ["右下", 330, 300],
   ])("指の延長線が画面上でカーソルを通る（%s）", (_name, cursorX, cursorY) => {
-    const { canvas, camera, hand, scratch } = setup();
+    const { canvas, camera, hand, scratch } = setup(HERO_HAND_Y);
     const quaternion = aimAt(
       scratch,
       { x: cursorX, y: cursorY, target: null },
