@@ -57,7 +57,7 @@ export default function Hero() {
   };
 
   return (
-    <section className="relative bg-[#f4f1eb] text-center py-24 px-6 h-screen flex flex-col items-center justify-center">
+    <section className="relative bg-[#f4f1eb] text-center py-24 px-6 min-h-screen flex flex-col items-center justify-center">
       {/* 背景の3D。ボタンのクリックを邪魔しないようポインターイベントは素通しにする */}
       <PointingHandCanvas
         className="absolute inset-0 pointer-events-none"
@@ -68,14 +68,14 @@ export default function Hero() {
       <p className="relative text-lg text-[#010101] mb-8">
         TAKUO2000が読んだ本と、学んだ技術の保管庫。
       </p>
-      <div className="relative translate-y-40 flex justify-center gap-10">
+      <div className="relative mt-20 sm:mt-40 flex flex-wrap justify-center gap-4 sm:gap-10">
         {navLinks.map((link) => (
           <a
             key={link.href}
             href={link.href}
             onClick={(event) => scrollToSection(event, link.href)}
             data-point-target // ホバー中は手がこのボタンの中心を指す
-            className="bg-black text-white text-base px-10 py-4 hover:opacity-70 transition-opacity"
+            className="bg-black text-white text-base px-6 sm:px-10 py-4 hover:opacity-70 transition-opacity"
           >
             {link.label}
           </a>

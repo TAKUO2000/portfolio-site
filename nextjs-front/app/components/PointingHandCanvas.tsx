@@ -5,9 +5,11 @@ import { Canvas } from "@react-three/fiber";
 import { Model } from "./PointingHand";
 import ErrorBoundary from "./ui/ErrorBoundary";
 
+const CAMERA_POSITION: [number, number, number] = [0, 0, 1.6];
+
 type Props = {
   className?: string;
-  /** 手首の位置。カメラは[0, 0, 1.5]から原点を見ている */
+  /** 手首の位置。カメラはCAMERA_POSITIONから原点を見ている */
   modelPosition?: [number, number, number];
   /** カーソルがCanvasの外にあるときの手の角度（ラジアン）。[0, 0, 0]で指先が画面の手前を向く */
   modelRotation?: [number, number, number];
@@ -71,7 +73,7 @@ export default function PointingHandCanvas({
       {/* WebGLが使えない環境では何も表示しない */}
       <ErrorBoundary>
         <Canvas
-          camera={{ position: [0, 0, 1.6] }}
+          camera={{ position: CAMERA_POSITION }}
           dpr={[1, 2]} // 高精細ディスプレイで解像度が上がりすぎないよう上限を決める
           frameloop={frameloop}
         >
