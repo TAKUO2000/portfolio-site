@@ -1,5 +1,12 @@
 "use client";
 
+import dynamic from "next/dynamic";
+
+// threeは重いので初期JSに含めず、WebGLの無いサーバー側では描画しない
+const PointingHandCanvas = dynamic(() => import("./PointingHandCanvas"), {
+  ssr: false,
+});
+
 const SCROLL_DURATION_MS = 900;
 
 export default function Hero() {
@@ -50,18 +57,28 @@ export default function Hero() {
   };
 
   return (
-    <section className="bg-[#f4f1eb] text-center py-24 px-6 h-screen flex flex-col items-center justify-center">
-      <h1 className="text-6xl font-bold mb-3">TAKUO_Log</h1>
-      <p className="text-base text-[#010101] mb-8">
+    <section className="relative bg-[#f4f1eb] text-center py-24 px-6 min-h-screen flex flex-col items-center justify-center">
+      {/* 背景の3D。ボタンのクリックを邪魔しないようポインターイベントは素通しにする */}
+      {/* yは見出しの中心の裏。大きくするほど指も長く映るので、
+          指先がボタンからはみ出さない範囲でscaleを決めている */}
+      <PointingHandCanvas
+        className="absolute inset-0 pointer-events-none"
+        modelPosition={[0, 0.59, -0.6]}
+        modelRotation={[0, 0, 0]}
+        modelScale={1.3}
+      />
+      <h1 className="relative text-7xl font-extrabold mb-3">TAKUO_Log</h1>
+      <p className="relative text-lg text-[#010101] mb-8">
         TAKUO2000が読んだ本と、学んだ技術の保管庫。
       </p>
-      <div className="flex justify-center gap-4">
+      <div className="relative mt-20 sm:mt-40 flex flex-wrap justify-center gap-4 sm:gap-10">
         {navLinks.map((link) => (
           <a
             key={link.href}
             href={link.href}
             onClick={(event) => scrollToSection(event, link.href)}
-            className="bg-black text-white text-base px-6 py-2 hover:opacity-70 transition-opacity"
+            data-point-target // ホバー中は手がこのボタンの中心を指す
+            className="bg-black text-white text-base px-6 sm:px-10 py-4 hover:opacity-70 transition-opacity"
           >
             {link.label}
           </a>

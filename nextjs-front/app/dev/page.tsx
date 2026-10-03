@@ -25,6 +25,7 @@ import SummaryInput from "../components/article-form/SummaryInput";
 import HeaderImageInput from "../components/article-form/HeaderImageInput";
 import { API_BASE_URL } from "../auth/authClient";
 import ComponentSectionDev from "./components/ComponentSectionDev";
+import PointingHandCanvas from "../components/PointingHandCanvas";
 
 export default function DevPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -255,6 +256,15 @@ export default function DevPage() {
               pendingHeader={pendingHeaderImage}
               setPendingHeader={setPendingHeaderImage}
             />
+          </ComponentSectionDev>
+        </div>
+      </section>
+
+      <section>
+        <h1 className="text-2xl font-bold mb-6 border-b pb-2">3Dモデル</h1>
+        <div className="flex flex-col gap-8">
+          <ComponentSectionDev title="PointingHand" className="flex flex-col">
+            <PointingHandCanvas className="h-125 w-125" />
           </ComponentSectionDev>
         </div>
       </section>
