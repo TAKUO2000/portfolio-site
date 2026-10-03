@@ -59,11 +59,13 @@ export default function Hero() {
   return (
     <section className="relative bg-[#f4f1eb] text-center py-24 px-6 min-h-screen flex flex-col items-center justify-center">
       {/* 背景の3D。ボタンのクリックを邪魔しないようポインターイベントは素通しにする */}
+      {/* yは見出しの中心の裏。大きくするほど指も長く映るので、
+          指先がボタンからはみ出さない範囲でscaleを決めている */}
       <PointingHandCanvas
         className="absolute inset-0 pointer-events-none"
-        modelPosition={[0, 1.1, -0.6]}
+        modelPosition={[0, 0.59, -0.6]}
         modelRotation={[0, 0, 0]}
-        modelScale={1.6}
+        modelScale={1.25}
       />
       <h1 className="relative text-7xl font-extrabold mb-3">TAKUO_Log</h1>
       <p className="relative text-lg text-[#010101] mb-8">

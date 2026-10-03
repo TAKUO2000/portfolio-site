@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { aimAt, createAimScratch } from "@/app/components/PointingHand";
 
 const CANVAS_SIZE = 400;
-const HERO_HAND_Y = 1.1; // HeroのmodelPositionのy
+const HERO_HAND_Y = 0.59; // HeroのmodelPositionのy
 
 function rect(left: number, top: number, width: number, height: number) {
   return {
