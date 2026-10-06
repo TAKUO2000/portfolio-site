@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -39,11 +39,6 @@ export default function NewArticlePage() {
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [body, setBody] = useState("");
-  // 保存のawait中に本文が書き足されたかを、保存完了時に判定するための最新値
-  const latestBodyRef = useRef(body);
-  useEffect(() => {
-    latestBodyRef.current = body;
-  }, [body]);
 
   // どちらのボタンで送信中かを持つ。2つのボタンでラベルを出し分けるため真偽値にしない
   const [submittingStatus, setSubmittingStatus] = useState<
@@ -227,12 +222,8 @@ export default function NewArticlePage() {
         ];
       });
       setSelectedTagIds(savedArticle.tags.map((tag) => tag.id));
-      // 新規タグはIDが付いてselectedTagIdsに入るので、送った分だけ入力中の一覧から外す。
-      // pendingTagsはこの関数が呼ばれた時点の値（＝送った分）で、引数のtagsは最新の値。
-      // 保存中に足されたタグは最新の値にしか無いので残る
-      setPendingTags((tags) =>
-        tags.filter((tag) => !pendingTags.includes(tag)),
-      );
+      // 新規タグはIDが付いてselectedTagIdsに入るので、入力中の一覧からは外す
+      setPendingTags([]);
       // ヘッダー画像の行が無ければnullが返る。その場合は保存済み扱いにせず、次の保存で選び直しを求める
       setSavedHeaderImage(
         savedArticle.header_image_key && savedArticle.header_image_url
@@ -243,24 +234,17 @@ export default function NewArticlePage() {
           : null,
       );
 
-      // 保存中に本文が書き足されていなければ、画像の移動で書き換わった本文を取り込む。
-      // 書き足されていた場合は入力を優先して本文を据え置く。貼り付け画像もblobプレビューのまま
-      // 残すので、次の保存で改めてアップロードされる（移動済みの画像は参照が外れ、後で回収される）
-      if (latestBodyRef.current === body) {
-        setBody(savedArticle.body);
+      // 保存中はフォームを操作できないため、送った内容から変わっていない前提で取り込める
+      setBody(savedArticle.body);
 
-        // 本置き場へ移った画像のblobプレビューは本文から消えているので解放する
-        usedImages.forEach((img) => URL.revokeObjectURL(img.blobUrl));
-        setPendingImages((images) =>
-          images.filter((img) => !usedImages.includes(img)),
-        );
-      }
-      // 送った画像だけを外す。保存中に選び直された画像は次の保存で送るので残す
+      // 本置き場へ移った画像のblobプレビューは本文から消えているので解放する
+      usedImages.forEach((img) => URL.revokeObjectURL(img.blobUrl));
+      setPendingImages((images) =>
+        images.filter((img) => !usedImages.includes(img)),
+      );
       if (pendingHeader) {
         URL.revokeObjectURL(pendingHeader.blobUrl);
-        setPendingHeader((current) =>
-          current === pendingHeader ? null : current,
-        );
+        setPendingHeader(null);
       }
 
       setSavedMessage("下書きを保存しました。公開ページには表示されません。");
@@ -281,35 +265,42 @@ export default function NewArticlePage() {
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-12 bg-gray-50">
       <h1 className="text-2xl font-bold">記事投稿</h1>
 
-      <HeaderImageInput
-        pendingHeader={pendingHeader}
-        setPendingHeader={setPendingHeader}
-        savedHeaderImageUrl={savedHeaderImage?.url}
-        onRemoveSavedHeaderImage={() => setSavedHeaderImage(null)}
-      />
-      <div className="flex gap-2">
-        <CategorySelect
-          categories={categories}
-          selectedCategoryId={selectedCategoryId}
-          setSelectedCategoryId={setSelectedCategoryId}
+      {/* 送信中は入力を止める。保存結果をフォームへ取り込むときに、保存中の入力と競合させないため。
+          クリック・ドロップを持つdiv/spanもあり、fieldsetのdisabledでは止まらないのでinertを使う */}
+      <div
+        inert={submittingStatus !== null}
+        className={`flex flex-col gap-8 ${submittingStatus !== null ? "opacity-60" : ""}`}
+      >
+        <HeaderImageInput
+          pendingHeader={pendingHeader}
+          setPendingHeader={setPendingHeader}
+          savedHeaderImageUrl={savedHeaderImage?.url}
+          onRemoveSavedHeaderImage={() => setSavedHeaderImage(null)}
         />
-        <TagSelect
-          tags={tags}
-          selectedTagIds={selectedTagIds}
-          setSelectedTagIds={setSelectedTagIds}
-          pendingTags={pendingTags}
-          setPendingTags={setPendingTags}
+        <div className="flex gap-2">
+          <CategorySelect
+            categories={categories}
+            selectedCategoryId={selectedCategoryId}
+            setSelectedCategoryId={setSelectedCategoryId}
+          />
+          <TagSelect
+            tags={tags}
+            selectedTagIds={selectedTagIds}
+            setSelectedTagIds={setSelectedTagIds}
+            pendingTags={pendingTags}
+            setPendingTags={setPendingTags}
+          />
+        </div>
+
+        <TitleInput title={title} setTitle={setTitle} />
+        <SummaryInput summary={summary} setSummary={setSummary} />
+        <MarkdownEditor
+          body={body}
+          setBody={setBody}
+          pendingImages={pendingImages}
+          setPendingImages={setPendingImages}
         />
       </div>
-
-      <TitleInput title={title} setTitle={setTitle} />
-      <SummaryInput summary={summary} setSummary={setSummary} />
-      <MarkdownEditor
-        body={body}
-        setBody={setBody}
-        pendingImages={pendingImages}
-        setPendingImages={setPendingImages}
-      />
 
       {errorMessages.length > 0 && (
         // 保存の失敗はすぐ伝える必要があるため、成功時のstatusではなくalertで読み上げさせる
