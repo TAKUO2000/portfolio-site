@@ -20,6 +20,21 @@ export interface PendingImage {
   file: File;
 }
 
+/** 記事の保存API(POST/PUT)が返す、編集フォームを復元できる形の記事 */
+export interface ArticleEdit {
+  id: number;
+  title: string;
+  summary: string;
+  body: string;
+  status: "draft" | "published";
+  published_at: string | null;
+  category: Category;
+  tags: Tag[];
+  /** 本置き場のヘッダー画像キー。次の更新でそのまま送り返す */
+  header_image_key: string;
+  header_image_url: string;
+}
+
 /** 記事一覧APIが返す記事。本文は含まれない */
 export interface ArticleSummary {
   id: number;
