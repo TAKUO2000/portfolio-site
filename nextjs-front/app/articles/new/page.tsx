@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -39,6 +39,11 @@ export default function NewArticlePage() {
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [body, setBody] = useState("");
+  // 保存のawait中に本文が書き足されたかを、保存完了時に判定するための最新値
+  const latestBodyRef = useRef(body);
+  useEffect(() => {
+    latestBodyRef.current = body;
+  }, [body]);
 
   // どちらのボタンで送信中かを持つ。2つのボタンでラベルを出し分けるため真偽値にしない
   const [submittingStatus, setSubmittingStatus] = useState<
@@ -151,8 +156,6 @@ export default function NewArticlePage() {
       // 初回は新規作成、2回目以降は同じ記事の更新。こうしないと保存のたびに記事が増える
       const isUpdate = savedArticleId !== null;
 
-      const sentPendingTags = pendingTags;
-
       const xsrfToken = await getCsrfToken();
       const response = await fetch(
         isUpdate
@@ -174,9 +177,7 @@ export default function NewArticlePage() {
             body: finalBody,
             status,
             tags: selectedTagIds,
-            ...(sentPendingTags.length > 0
-              ? { new_tags: sentPendingTags }
-              : {}),
+            ...(pendingTags.length > 0 ? { new_tags: pendingTags } : {}),
             header_image_key: headerImageKey,
           }),
         },
@@ -226,26 +227,34 @@ export default function NewArticlePage() {
         ];
       });
       setSelectedTagIds(savedArticle.tags.map((tag) => tag.id));
-      // 新規タグはIDが付いてselectedTagIdsに入るので、送った分だけ入力中の一覧から外す
-      // （保存中に足されたタグは残す）
+      // 新規タグはIDが付いてselectedTagIdsに入るので、送った分だけ入力中の一覧から外す。
+      // pendingTagsはこの関数が呼ばれた時点の値（＝送った分）で、引数のtagsは最新の値。
+      // 保存中に足されたタグは最新の値にしか無いので残る
       setPendingTags((tags) =>
-        tags.filter((tag) => !sentPendingTags.includes(tag)),
+        tags.filter((tag) => !pendingTags.includes(tag)),
       );
-      // 画像の移動で本文が書き換わったときだけ取り込む。
-      // 書き換えが無ければ送った内容と同じなので、保存中に書き足された分を消さずに済む
-      if (savedArticle.body !== finalBody) {
-        setBody(savedArticle.body);
-      }
-      setSavedHeaderImage({
-        key: savedArticle.header_image_key,
-        url: savedArticle.header_image_url,
-      });
+      // ヘッダー画像の行が無ければnullが返る。その場合は保存済み扱いにせず、次の保存で選び直しを求める
+      setSavedHeaderImage(
+        savedArticle.header_image_key && savedArticle.header_image_url
+          ? {
+              key: savedArticle.header_image_key,
+              url: savedArticle.header_image_url,
+            }
+          : null,
+      );
 
-      // 本置き場へ移った画像のblobプレビューは本文から消えているので解放する
-      usedImages.forEach((img) => URL.revokeObjectURL(img.blobUrl));
-      setPendingImages((images) =>
-        images.filter((img) => !usedImages.includes(img)),
-      );
+      // 保存中に本文が書き足されていなければ、画像の移動で書き換わった本文を取り込む。
+      // 書き足されていた場合は入力を優先して本文を据え置く。貼り付け画像もblobプレビューのまま
+      // 残すので、次の保存で改めてアップロードされる（移動済みの画像は参照が外れ、後で回収される）
+      if (latestBodyRef.current === body) {
+        setBody(savedArticle.body);
+
+        // 本置き場へ移った画像のblobプレビューは本文から消えているので解放する
+        usedImages.forEach((img) => URL.revokeObjectURL(img.blobUrl));
+        setPendingImages((images) =>
+          images.filter((img) => !usedImages.includes(img)),
+        );
+      }
       if (pendingHeader) {
         URL.revokeObjectURL(pendingHeader.blobUrl);
         setPendingHeader(null);
@@ -300,7 +309,8 @@ export default function NewArticlePage() {
       />
 
       {errorMessages.length > 0 && (
-        <div className="flex flex-col gap-1.5">
+        // 保存の失敗はすぐ伝える必要があるため、成功時のstatusではなくalertで読み上げさせる
+        <div role="alert" className="flex flex-col gap-1.5">
           {errorMessages.map((error, index) => (
             <p
               key={index}
@@ -313,7 +323,11 @@ export default function NewArticlePage() {
       )}
 
       {savedMessage && (
-        <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        // 保存後に動的に現れるため、スクリーンリーダーにも読み上げさせる
+        <p
+          role="status"
+          className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
+        >
           {savedMessage}
         </p>
       )}

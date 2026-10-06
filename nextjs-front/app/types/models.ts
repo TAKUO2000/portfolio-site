@@ -31,8 +31,8 @@ export interface ArticleEdit {
   category: Category;
   tags: Tag[];
   /** 本置き場のヘッダー画像キー。次の更新でそのまま送り返す */
-  header_image_key: string;
-  header_image_url: string;
+  header_image_key: string | null;
+  header_image_url: string | null;
 }
 
 /** 記事一覧APIが返す記事。本文は含まれない */
