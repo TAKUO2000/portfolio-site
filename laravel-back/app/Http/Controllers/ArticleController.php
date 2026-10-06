@@ -27,7 +27,12 @@ class ArticleController extends Controller
     {
         $article = $this->articleService->store($request->user(), $request->validated());
 
-        return response()->json($article, 201);
+        // 投稿後もそのまま編集を続けられるよう、updateと同じ編集フォーム向けの表現を返す。
+        // 保存時にサーバーが本置き場へ移した画像キーと書き換え後の本文を画面に渡さないと、
+        // 次の更新で既に存在しない一時キーを送ることになる
+        return (new ArticleEditResource($article))
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function index(IndexArticleRequest $request): AnonymousResourceCollection
