@@ -255,9 +255,12 @@ export default function NewArticlePage() {
           images.filter((img) => !usedImages.includes(img)),
         );
       }
+      // 送った画像だけを外す。保存中に選び直された画像は次の保存で送るので残す
       if (pendingHeader) {
         URL.revokeObjectURL(pendingHeader.blobUrl);
-        setPendingHeader(null);
+        setPendingHeader((current) =>
+          current === pendingHeader ? null : current,
+        );
       }
 
       setSavedMessage("下書きを保存しました。公開ページには表示されません。");
