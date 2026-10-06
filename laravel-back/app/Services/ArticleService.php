@@ -38,7 +38,8 @@ class ArticleService
             $article->tags()->sync($this->resolveTagIds($data));
             $this->syncImages($article, $images['header_key'], $images['body_keys']);
 
-            return $article->load('tags');
+            // ArticleEditResourceが参照するリレーションを揃えてから返す
+            return $article->load(['category', 'tags', 'images']);
         });
     }
 

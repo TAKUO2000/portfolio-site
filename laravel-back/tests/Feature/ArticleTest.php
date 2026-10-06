@@ -44,6 +44,73 @@ test('adminユーザーが記事を投稿できる', function () {
     ]);
 });
 
+test('投稿のレスポンスは編集フォームを復元できる形で返る', function () {
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => 'テスト記事',
+            'summary' => 'テスト概要',
+            'body' => 'テスト本文',
+            'status' => 'draft',
+            'tags' => Tag::pluck('id')->toArray(),
+            'header_image_key' => pendingImageKey(),
+        ]);
+
+    // 投稿後に続けて更新できるよう、updateと同じ項目が揃っている必要がある
+    $response->assertStatus(201)
+        ->assertJsonStructure([
+            'data' => [
+                'id',
+                'title',
+                'summary',
+                'body',
+                'status',
+                'published_at',
+                'category' => ['id', 'name'],
+                'tags',
+                'header_image_key',
+                'header_image_url',
+            ],
+        ]);
+
+    // ヘッダー画像のキーは一時置き場ではなく本置き場のものが返る
+    expect($response->json('data.header_image_key'))->toStartWith('images/');
+});
+
+test('投稿のレスポンスをそのまま使って同じ記事を更新できる', function () {
+    $bodyKey = pendingImageKey();
+
+    $created = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '下書き記事',
+            'summary' => '概要',
+            'body' => "本文 ![](/{$bodyKey})",
+            'status' => 'draft',
+            'header_image_key' => pendingImageKey(),
+        ])->assertStatus(201);
+
+    // 画面が保存後に持ち越す値（本文と本置き場のヘッダー画像キー）で下書きのまま続けて保存する
+    $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$created->json('data.id'), [
+            'category_id' => $this->category->id,
+            'title' => '書き足した下書き記事',
+            'summary' => '概要',
+            'body' => $created->json('data.body'),
+            'status' => 'draft',
+            'header_image_key' => $created->json('data.header_image_key'),
+        ])->assertStatus(200);
+
+    // 保存を繰り返しても記事は1件のまま、画像の参照も増えない
+    expect(Article::count())->toBe(1);
+    $article = Article::first();
+    expect($article->title)->toBe('書き足した下書き記事');
+    expect($article->images()->count())->toBe(2);
+    expect($article->body)->toContain('images/');
+    // 一時置き場のキーは本置き場のものに書き換わっている
+    expect($article->body)->not->toContain($bodyKey);
+});
+
 test('adminユーザーがdraftで記事を投稿できる', function () {
     $response = $this->actingAs($this->adminUser)
         ->postJson('/api/articles', [
