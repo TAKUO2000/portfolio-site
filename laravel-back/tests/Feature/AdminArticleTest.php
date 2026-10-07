@@ -2,6 +2,7 @@
 
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\Tag;
 use App\Models\User;
 
 beforeEach(function () {
@@ -110,13 +111,27 @@ test('記事が無いステータスの件数は0を返す', function () {
     expect($response->json('meta.status_counts'))->toBe(['all' => 1, 'published' => 1, 'draft' => 0]);
 });
 
+test('一覧は記事のタグを返す', function () {
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
+    $laravel = Tag::create(['name' => 'Laravel']);
+    $php = Tag::create(['name' => 'PHP']);
+    $article->tags()->attach([$laravel->id, $php->id]);
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
+
+    expect($response->json('data.0.tags'))->toEqualCanonicalizing([
+        ['id' => $laravel->id, 'name' => 'Laravel'],
+        ['id' => $php->id, 'name' => 'PHP'],
+    ]);
+});
+
 test('一覧は本文を返さない', function () {
     Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '記事']);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
 
     $response->assertJsonStructure([
-        'data' => [['id', 'title', 'summary', 'status', 'published_at', 'updated_at', 'category', 'header_image']],
+        'data' => [['id', 'title', 'summary', 'status', 'published_at', 'updated_at', 'category', 'tags', 'header_image']],
     ]);
     expect($response->json('data.0'))->not->toHaveKey('body');
 });
@@ -194,6 +209,18 @@ test('公開記事を下書きに戻せる', function () {
 
     $response->assertStatus(200)->assertJsonFragment(['status' => 'draft']);
     expect($article->fresh()->status)->toBe('draft');
+});
+
+test('ステータス変更後も一覧と同じ形でタグを返す', function () {
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
+    $tag = Tag::create(['name' => 'Laravel']);
+    $article->tags()->attach($tag->id);
+
+    $response = $this->actingAs($this->adminUser)
+        ->patchJson("/api/articles/{$article->id}/status", ['status' => 'draft']);
+
+    // 一覧の1行をレスポンスで差し替えられるよう、一覧と同じ項目を返す
+    expect($response->json('data.tags'))->toBe([['id' => $tag->id, 'name' => 'Laravel']]);
 });
 
 test('下書きを公開するとpublished_atが入る', function () {

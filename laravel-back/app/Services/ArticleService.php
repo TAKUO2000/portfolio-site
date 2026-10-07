@@ -246,7 +246,7 @@ class ArticleService
      */
     public function mine(User $user, array $data): LengthAwarePaginator
     {
-        $query = $this->mineQuery($user, $data)->with(['category', 'headerImage']);
+        $query = $this->mineQuery($user, $data)->with(['category', 'tags', 'headerImage']);
 
         if (!empty($data['status'])) {
             $query->where('status', $data['status']);
@@ -304,7 +304,7 @@ class ArticleService
             'published_at' => $this->publishedAtFor($article, $status),
         ]);
 
-        return $article->load(['category', 'headerImage']);
+        return $article->load(['category', 'tags', 'headerImage']);
     }
 
     /**
