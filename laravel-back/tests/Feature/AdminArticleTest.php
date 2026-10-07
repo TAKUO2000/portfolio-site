@@ -77,6 +77,39 @@ test('keywordでタイトルを絞り込める', function () {
     expect($response->json('data.*.title'))->toBe(['Laravelの記事']);
 });
 
+test('ステータスごとの件数をmetaに含めて返す', function () {
+    Article::factory()->for($this->adminUser)->for($this->category)->count(2)->create();
+    Article::factory()->for($this->adminUser)->for($this->category)->draft()->count(3)->create();
+    Article::factory()->for($this->subAdminUser)->for($this->category)->create();
+    Article::factory()->for($this->adminUser)->for($this->category)->create()->delete();
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
+
+    // ページネーションの項目は残したまま、件数が足される
+    expect($response->json('meta.total'))->toBe(5);
+    expect($response->json('meta.status_counts'))->toBe(['all' => 5, 'published' => 2, 'draft' => 3]);
+});
+
+test('件数はkeywordで絞り込んだ結果を数え、statusでは絞り込まない', function () {
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => 'Laravelの記事']);
+    Article::factory()->for($this->adminUser)->for($this->category)->draft()->create(['title' => 'Laravelの下書き']);
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => 'Vueの記事']);
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine?keyword=Laravel&status=draft');
+
+    // フィルタのボタンに出す件数なので、選んでいないステータスの件数も要る
+    expect($response->json('data.*.title'))->toBe(['Laravelの下書き']);
+    expect($response->json('meta.status_counts'))->toBe(['all' => 2, 'published' => 1, 'draft' => 1]);
+});
+
+test('記事が無いステータスの件数は0を返す', function () {
+    Article::factory()->for($this->adminUser)->for($this->category)->create();
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
+
+    expect($response->json('meta.status_counts'))->toBe(['all' => 1, 'published' => 1, 'draft' => 0]);
+});
+
 test('一覧は本文を返さない', function () {
     Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '記事']);
 

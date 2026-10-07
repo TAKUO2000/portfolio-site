@@ -53,8 +53,11 @@ class ArticleController extends Controller
     public function mine(IndexMyArticleRequest $request): AnonymousResourceCollection
     {
         $articles = $this->articleService->mine($request->user(), $request->validated());
+        $statusCounts = $this->articleService->mineStatusCounts($request->user(), $request->validated());
 
-        return MyArticleResource::collection($articles);
+        // additionalはページネーションのmetaと再帰的にマージされるため、metaの中に件数が足される
+        return MyArticleResource::collection($articles)
+            ->additional(['meta' => ['status_counts' => $statusCounts]]);
     }
 
     /** 編集フォームの初期値。公開・下書きのどちらも返す */
