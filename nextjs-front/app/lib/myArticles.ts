@@ -5,10 +5,14 @@ import {
   getApiErrorMessage,
   getCsrfToken,
 } from "@/app/auth/authClient";
-import type { MyArticle, MyArticleIndexResponse } from "@/app/types/models";
+import type {
+  ArticleEdit,
+  MyArticle,
+  MyArticleIndexResponse,
+} from "@/app/types/models";
 
 /**
- * 記事管理画面から呼ぶAPI（一覧・公開状態の切り替え・削除）。
+ * 記事管理画面・編集画面から呼ぶAPI（一覧・編集用の取得・公開状態の切り替え・削除）。
  *
  * ログイン中のユーザーの記事を扱うため、Cookieのセッションで認証する。
  * サーバーコンポーネントからは呼べないので、ブラウザ向けのAPI_BASE_URLを使う。
@@ -93,6 +97,23 @@ export async function fetchMyArticles({
   }
 
   return response.json();
+}
+
+/** GET /api/articles/{id}/edit。下書きも含め、編集フォームを復元できる形で返る */
+export async function fetchArticleForEdit(id: number): Promise<ArticleEdit> {
+  const response = await fetch(`${API_BASE_URL}/api/articles/${id}/edit`, {
+    credentials: "include",
+    headers: JSON_HEADERS,
+  });
+
+  if (!response.ok) {
+    throw await toApiError(
+      response,
+      "記事の取得に失敗しました。ページを再読み込みしてください。",
+    );
+  }
+
+  return (await response.json()).data;
 }
 
 /** PATCH /api/articles/{id}/status */

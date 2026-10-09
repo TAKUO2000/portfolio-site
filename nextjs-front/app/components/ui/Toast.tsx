@@ -4,9 +4,25 @@ import { useEffect } from "react";
 
 export interface ToastNotice {
   type: "success" | "error";
-  message: string;
+  /** 複数渡すと1つの通知の中に縦に並べる（入力チェックのエラーが複数あるときなど） */
+  message: string | string[];
   /** 同じ文言が続けて出たときも、表示し直して消えるまでの時間を数え直すための値。出すたびに変える */
   id: number;
+}
+
+/**
+ * 通知を出すときのstate更新。idを前の通知から数え上げ、同じ文言が続いても
+ * 出し直したと分かるようにする（Toastが自動で消すまでの時間を数え直す）
+ */
+export function nextNotice(
+  type: ToastNotice["type"],
+  message: ToastNotice["message"],
+) {
+  return (prev: ToastNotice | null): ToastNotice => ({
+    type,
+    message,
+    id: (prev?.id ?? 0) + 1,
+  });
 }
 
 /** 成功は読めば済むので自動で消す。失敗は読み落とすと困るので、閉じるまで残す */
@@ -70,14 +86,25 @@ function ToastBody({
   onClose,
 }: {
   className: string;
-  message: string;
+  message: ToastNotice["message"];
   onClose: () => void;
 }) {
+  const messages = typeof message === "string" ? [message] : message;
+
   return (
     <div
       className={`pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-lg ${className}`}
     >
-      <p className="flex-1 break-words">{message}</p>
+      {messages.length === 1 ? (
+        <p className="flex-1 break-words">{messages[0]}</p>
+      ) : (
+        <ul className="flex flex-1 list-disc flex-col gap-1 pl-4 break-words">
+          {messages.map((item, index) => (
+            // 同じ文言が重なることもあるため、並び順をkeyにする
+            <li key={index}>{item}</li>
+          ))}
+        </ul>
+      )}
       <button
         type="button"
         onClick={onClose}

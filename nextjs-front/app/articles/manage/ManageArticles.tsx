@@ -10,8 +10,9 @@ import ConfirmDeleteModal from "@/app/components/ui/ConfirmDeleteModal";
 import FittedTagList from "@/app/components/ui/FittedTagList";
 import NormalButton from "@/app/components/ui/NormalButton";
 import Pagination from "@/app/components/ui/Pagination";
-import Toast, { type ToastNotice } from "@/app/components/ui/Toast";
-import { getCurrentUser } from "@/app/auth/authClient";
+import Toast, { type ToastNotice, nextNotice } from "@/app/components/ui/Toast";
+import { useRequireAdmin } from "@/app/auth/useRequireAdmin";
+import { takeFlashNotice } from "@/app/lib/flashNotice";
 import { formatPublishedDate } from "@/app/lib/formatDate";
 import type { MyArticle, MyArticleIndexResponse } from "@/app/types/models";
 import {
@@ -70,18 +71,6 @@ function toErrorMessage(error: unknown, fallback: string): string {
   return error instanceof MyArticleApiError ? error.message : fallback;
 }
 
-/**
- * 通知を出すときのstate更新。idを前の通知から数え上げ、同じ文言が続いても
- * 出し直したと分かるようにする（Toastが自動で消すまでの時間を数え直す）
- */
-function nextNotice(type: ToastNotice["type"], message: string) {
-  return (prev: ToastNotice | null): ToastNotice => ({
-    type,
-    message,
-    id: (prev?.id ?? 0) + 1,
-  });
-}
-
 /** 別のタブで削除済みなど、対象がもう無いときは一覧が古いので取り直す */
 function isGone(error: unknown): boolean {
   return error instanceof MyArticleApiError && error.status === 404;
@@ -93,7 +82,7 @@ export default function ManageArticles() {
   const query = parseListQuery(searchParams);
   const { status, keyword, page } = query;
 
-  const [isAuthorized, setIsAuthorized] = useState(false);
+  const isAuthorized = useRequireAdmin();
 
   const [response, setResponse] = useState<MyArticleIndexResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -107,24 +96,6 @@ export default function ManageArticles() {
   const [notice, setNotice] = useState<ToastNotice | null>(null);
   // 初回の取得に失敗したとき、一覧の欄を「読み込み中」のまま残さないために持つ
   const [hasLoadFailed, setHasLoadFailed] = useState(false);
-
-  // ログイン済みかつroleがadminのユーザーのみアクセス可能。それ以外はトップへ戻す
-  useEffect(() => {
-    let isActive = true;
-
-    getCurrentUser().then((user) => {
-      if (!isActive) return;
-      if (user?.role === "admin") {
-        setIsAuthorized(true);
-      } else {
-        router.replace("/");
-      }
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, [router]);
 
   useEffect(() => {
     if (!isAuthorized) return;
@@ -150,6 +121,10 @@ export default function ManageArticles() {
         }
         setResponse(result);
         setHasLoadFailed(false);
+        // 編集画面で削除してから戻ってきたときなど、前の画面から渡された結果を
+        // 一覧と一緒に出す。取り出すと消えるので、出るのは最初の1回だけ
+        const flash = takeFlashNotice();
+        if (flash) setNotice(flash);
       } catch (error) {
         if (!isActive) return;
         setHasLoadFailed(true);
