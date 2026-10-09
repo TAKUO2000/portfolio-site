@@ -23,6 +23,7 @@ class MyArticleResource extends JsonResource
             'published_at' => $this->published_at,
             'updated_at'   => $this->updated_at,
             'category'     => ['id' => $this->category->id, 'name' => $this->category->name],
+            'tags'         => $this->tags->map(fn($tag) => ['id' => $tag->id, 'name' => $tag->name]),
             'header_image' => $this->headerImage?->url,
         ];
     }

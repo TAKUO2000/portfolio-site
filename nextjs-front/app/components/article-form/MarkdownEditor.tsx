@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -37,6 +37,24 @@ export default function MarkdownEditor({
   const [errorMessage, setErrorMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
+
+  // 入力欄の高さを本文に合わせて伸び縮みさせる。高さを固定したままだと、
+  // 長い本文（編集画面で既存の記事を開いたときなど）が欄の外に隠れて見えなくなる。
+  // Previewから戻ると入力欄が作り直されるため、タブの切り替えでも測り直す。
+  // 描画前に高さを決めないと一瞬縮んでちらつくので、useLayoutEffectを使う
+  useLayoutEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+
+    // 一度autoに戻してから測らないと、本文を消したときに縮まない。
+    // 最低の高さはCSSのmin-hが受け持つ。
+    // autoに戻した瞬間にページが短くなり、末尾付近を書いているとスクロール位置が
+    // 上へ飛ぶため、測り終えたら元の位置へ戻す
+    const scrollY = window.scrollY;
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
+    window.scrollTo({ top: scrollY });
+  }, [body, activeTab]);
 
   // 画像ファイルを貼り付け位置にblobプレビューとして即挿入し、キャッシュしておく。
   // S3署名付きURLの取得と実際のPUTは送信時にpage.tsx側でまとめて行う

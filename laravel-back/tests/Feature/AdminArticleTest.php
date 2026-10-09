@@ -2,6 +2,7 @@
 
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\Tag;
 use App\Models\User;
 
 beforeEach(function () {
@@ -46,13 +47,27 @@ test('論理削除した記事は一覧から消える', function () {
     expect($response->json('data.*.title'))->toBe(['残る記事']);
 });
 
-test('一覧は最終更新が新しい順に並ぶ', function () {
+test('一覧は作成日が新しい順に並ぶ', function () {
     $old = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '古い記事']);
     $new = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '新しい記事']);
 
-    // 書きかけを見つけやすいよう、公開日ではなく更新日で並べている
-    $old->forceFill(['updated_at' => now()->subDays(3)])->saveQuietly();
-    $new->forceFill(['updated_at' => now()])->saveQuietly();
+    $old->forceFill(['created_at' => now()->subDays(3), 'updated_at' => now()])->saveQuietly();
+    $new->forceFill(['created_at' => now(), 'updated_at' => now()->subDays(3)])->saveQuietly();
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
+
+    // 最近更新した古い記事が先頭に来ないこと
+    expect($response->json('data.*.title'))->toBe(['新しい記事', '古い記事']);
+});
+
+test('公開状態を切り替えても一覧の並び順は変わらない', function () {
+    $old = Article::factory()->for($this->adminUser)->for($this->category)->draft()->create(['title' => '古い記事']);
+    $new = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '新しい記事']);
+    $old->forceFill(['created_at' => now()->subDays(3)])->saveQuietly();
+
+    $this->actingAs($this->adminUser)
+        ->patchJson("/api/articles/{$old->id}/status", ['status' => 'published'])
+        ->assertStatus(200);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
 
@@ -77,13 +92,60 @@ test('keywordでタイトルを絞り込める', function () {
     expect($response->json('data.*.title'))->toBe(['Laravelの記事']);
 });
 
+test('ステータスごとの件数をmetaに含めて返す', function () {
+    Article::factory()->for($this->adminUser)->for($this->category)->count(2)->create();
+    Article::factory()->for($this->adminUser)->for($this->category)->draft()->count(3)->create();
+    Article::factory()->for($this->subAdminUser)->for($this->category)->create();
+    Article::factory()->for($this->adminUser)->for($this->category)->create()->delete();
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
+
+    // ページネーションの項目は残したまま、件数が足される
+    expect($response->json('meta.total'))->toBe(5);
+    expect($response->json('meta.status_counts'))->toBe(['all' => 5, 'published' => 2, 'draft' => 3]);
+});
+
+test('件数はkeywordで絞り込んだ結果を数え、statusでは絞り込まない', function () {
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => 'Laravelの記事']);
+    Article::factory()->for($this->adminUser)->for($this->category)->draft()->create(['title' => 'Laravelの下書き']);
+    Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => 'Vueの記事']);
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine?keyword=Laravel&status=draft');
+
+    // フィルタのボタンに出す件数なので、選んでいないステータスの件数も要る
+    expect($response->json('data.*.title'))->toBe(['Laravelの下書き']);
+    expect($response->json('meta.status_counts'))->toBe(['all' => 2, 'published' => 1, 'draft' => 1]);
+});
+
+test('記事が無いステータスの件数は0を返す', function () {
+    Article::factory()->for($this->adminUser)->for($this->category)->create();
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
+
+    expect($response->json('meta.status_counts'))->toBe(['all' => 1, 'published' => 1, 'draft' => 0]);
+});
+
+test('一覧は記事のタグを返す', function () {
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
+    $laravel = Tag::create(['name' => 'Laravel']);
+    $php = Tag::create(['name' => 'PHP']);
+    $article->tags()->attach([$laravel->id, $php->id]);
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
+
+    expect($response->json('data.0.tags'))->toEqualCanonicalizing([
+        ['id' => $laravel->id, 'name' => 'Laravel'],
+        ['id' => $php->id, 'name' => 'PHP'],
+    ]);
+});
+
 test('一覧は本文を返さない', function () {
     Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '記事']);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
 
     $response->assertJsonStructure([
-        'data' => [['id', 'title', 'summary', 'status', 'published_at', 'updated_at', 'category', 'header_image']],
+        'data' => [['id', 'title', 'summary', 'status', 'published_at', 'updated_at', 'category', 'tags', 'header_image']],
     ]);
     expect($response->json('data.0'))->not->toHaveKey('body');
 });
@@ -161,6 +223,18 @@ test('公開記事を下書きに戻せる', function () {
 
     $response->assertStatus(200)->assertJsonFragment(['status' => 'draft']);
     expect($article->fresh()->status)->toBe('draft');
+});
+
+test('ステータス変更後も一覧と同じ形でタグを返す', function () {
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
+    $tag = Tag::create(['name' => 'Laravel']);
+    $article->tags()->attach($tag->id);
+
+    $response = $this->actingAs($this->adminUser)
+        ->patchJson("/api/articles/{$article->id}/status", ['status' => 'draft']);
+
+    // 一覧の1行をレスポンスで差し替えられるよう、一覧と同じ項目を返す
+    expect($response->json('data.tags'))->toBe([['id' => $tag->id, 'name' => 'Laravel']]);
 });
 
 test('下書きを公開するとpublished_atが入る', function () {
