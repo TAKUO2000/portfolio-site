@@ -325,7 +325,15 @@ export default function ArticleForm({
       </div>
 
       <div className="flex justify-end gap-3">
-        {extraActions && <div className="mr-auto">{extraActions}</div>}
+        {extraActions && (
+          // 保存中は削除などの操作も止める。保存の通信が削除した記事へ届いて失敗するのを防ぐため
+          <div
+            inert={submittingStatus !== null}
+            className={`mr-auto ${submittingStatus !== null ? "opacity-50" : ""}`}
+          >
+            {extraActions}
+          </div>
+        )}
         <SavedStatusBadge status={savedStatus} />
         <NormalButton
           buttonLabel={
