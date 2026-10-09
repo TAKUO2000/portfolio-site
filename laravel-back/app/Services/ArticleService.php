@@ -252,8 +252,10 @@ class ArticleService
             $query->where('status', $data['status']);
         }
 
-        // 管理画面では書きかけを見つけたいので、公開日ではなく最終更新が新しい順
-        return $query->orderByDesc('updated_at')->paginate($data['per_page'] ?? 15);
+        // 作成日の新しい順。更新日で並べると、一覧から公開状態を切り替えただけで
+        // その記事が先頭へ移り、操作した行を見失うため。
+        // 同時刻に作られた記事でもページをまたいで順序が揺れないよう、idで決着させる
+        return $query->orderByDesc('created_at')->orderByDesc('id')->paginate($data['per_page'] ?? 15);
     }
 
     /**

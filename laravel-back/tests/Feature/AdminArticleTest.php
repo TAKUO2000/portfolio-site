@@ -47,13 +47,27 @@ test('論理削除した記事は一覧から消える', function () {
     expect($response->json('data.*.title'))->toBe(['残る記事']);
 });
 
-test('一覧は最終更新が新しい順に並ぶ', function () {
+test('一覧は作成日が新しい順に並ぶ', function () {
     $old = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '古い記事']);
     $new = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '新しい記事']);
 
-    // 書きかけを見つけやすいよう、公開日ではなく更新日で並べている
-    $old->forceFill(['updated_at' => now()->subDays(3)])->saveQuietly();
-    $new->forceFill(['updated_at' => now()])->saveQuietly();
+    $old->forceFill(['created_at' => now()->subDays(3), 'updated_at' => now()])->saveQuietly();
+    $new->forceFill(['created_at' => now(), 'updated_at' => now()->subDays(3)])->saveQuietly();
+
+    $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
+
+    // 最近更新した古い記事が先頭に来ないこと
+    expect($response->json('data.*.title'))->toBe(['新しい記事', '古い記事']);
+});
+
+test('公開状態を切り替えても一覧の並び順は変わらない', function () {
+    $old = Article::factory()->for($this->adminUser)->for($this->category)->draft()->create(['title' => '古い記事']);
+    $new = Article::factory()->for($this->adminUser)->for($this->category)->create(['title' => '新しい記事']);
+    $old->forceFill(['created_at' => now()->subDays(3)])->saveQuietly();
+
+    $this->actingAs($this->adminUser)
+        ->patchJson("/api/articles/{$old->id}/status", ['status' => 'published'])
+        ->assertStatus(200);
 
     $response = $this->actingAs($this->adminUser)->getJson('/api/articles/mine');
 
