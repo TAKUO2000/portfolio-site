@@ -57,7 +57,7 @@ export default function MarkdownEditor({
   }, [body, activeTab]);
 
   // 画像ファイルを貼り付け位置にblobプレビューとして即挿入し、キャッシュしておく。
-  // S3署名付きURLの取得と実際のPUTは送信時にpage.tsx側でまとめて行う
+  // S3署名付きURLの取得と実際のPUTは保存時にArticleForm側でまとめて行う
   // （早い段階で取得すると、フォーム入力が長引いた場合に署名付きURLの有効期限切れで失敗するため）
   function cacheImage(file: File) {
     const ta = textareaRef.current;
