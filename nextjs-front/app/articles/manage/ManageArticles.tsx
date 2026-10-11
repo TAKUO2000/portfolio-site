@@ -12,6 +12,10 @@ import NormalButton from "@/app/components/ui/NormalButton";
 import Pagination from "@/app/components/ui/Pagination";
 import Toast, { type ToastNotice, nextNotice } from "@/app/components/ui/Toast";
 import { useRequireAdmin } from "@/app/auth/useRequireAdmin";
+import {
+  ARTICLE_STATUS_COLORS,
+  ARTICLE_STATUS_LABELS,
+} from "@/app/lib/articleStatus";
 import { takeFlashNotice } from "@/app/lib/flashNotice";
 import { formatPublishedDate } from "@/app/lib/formatDate";
 import type { MyArticle, MyArticleIndexResponse } from "@/app/types/models";
@@ -19,6 +23,7 @@ import {
   MyArticleApiError,
   deleteMyArticle,
   fetchMyArticles,
+  toErrorMessage,
   updateMyArticleStatus,
 } from "@/app/lib/myArticles";
 
@@ -29,8 +34,8 @@ type StatusFilter = "all" | MyArticle["status"];
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "すべて" },
-  { value: "published", label: "公開" },
-  { value: "draft", label: "非公開" },
+  { value: "published", label: ARTICLE_STATUS_LABELS.published },
+  { value: "draft", label: ARTICLE_STATUS_LABELS.draft },
 ];
 
 /** 絞り込み・検索・ページ。リロードや戻る操作でも残るよう、URLのクエリを正とする */
@@ -61,14 +66,6 @@ function toQueryString({ status, keyword, page }: ListQuery): string {
 
   const query = params.toString();
   return query ? `?${query}` : "";
-}
-
-/**
- * APIが返した失敗は画面向けの文言をそのまま出す。通信自体の失敗（TypeError）などは
- * ブラウザの英語の文言になるため、呼び出し側の文言に置き換える。
- */
-function toErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof MyArticleApiError ? error.message : fallback;
 }
 
 /** 別のタブで削除済みなど、対象がもう無いときは一覧が古いので取り直す */
@@ -331,7 +328,6 @@ function ManageArticleRow({
   onDelete,
 }: ManageArticleRowProps) {
   const editHref = `/articles/${article.id}/edit`;
-  const isPublished = article.status === "published";
 
   return (
     // 概要は省略せず全文を出すため、行の高さは中身に合わせて伸びる。
@@ -385,7 +381,7 @@ function ManageArticleRow({
 
       <div className="flex shrink-0 items-center justify-between gap-4 border-t border-gray-100 pt-3 sm:flex-col sm:items-end sm:border-t-0 sm:pt-0">
         <StatusToggle
-          isPublished={isPublished}
+          status={article.status}
           disabled={isBusy}
           onToggle={onToggleStatus}
         />
@@ -409,14 +405,16 @@ function ManageArticleRow({
  * 状態のバッジとスイッチを別々に置くと、同じ情報が2か所に出て視線が散るため1つにまとめている。
  */
 function StatusToggle({
-  isPublished,
+  status,
   disabled,
   onToggle,
 }: {
-  isPublished: boolean;
+  status: MyArticle["status"];
   disabled: boolean;
   onToggle: () => void;
 }) {
+  const isPublished = status === "published";
+
   return (
     <button
       type="button"
@@ -426,10 +424,8 @@ function StatusToggle({
       title={isPublished ? "押すと非公開にします" : "押すと公開します"}
       onClick={onToggle}
       disabled={disabled}
-      className={`flex cursor-pointer items-center disabled:cursor-not-allowed disabled:opacity-50 gap-2 rounded-full py-1 pr-3 pl-1 text-xs font-semibold transition-colors ${
-        isPublished
-          ? "bg-green-100 text-green-700 hover:bg-green-200"
-          : "border border-dashed border-gray-400 text-gray-600 hover:bg-gray-100"
+      className={`flex cursor-pointer items-center disabled:cursor-not-allowed disabled:opacity-50 gap-2 rounded-full py-1 pr-3 pl-1 text-xs font-semibold transition-colors ${ARTICLE_STATUS_COLORS[status]} ${
+        isPublished ? "hover:bg-green-200" : "hover:bg-gray-100"
       }`}
     >
       <span
@@ -441,7 +437,7 @@ function StatusToggle({
       </span>
       {/* 幅が状態で変わると隣のボタンがずれるため、長い方の「非公開」に揃える */}
       <span className="min-w-[3em] text-left">
-        {isPublished ? "公開" : "非公開"}
+        {ARTICLE_STATUS_LABELS[status]}
       </span>
     </button>
   );

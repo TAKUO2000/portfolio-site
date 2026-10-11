@@ -29,6 +29,14 @@ export class MyArticleApiError extends Error {
 }
 
 /**
+ * APIが返した失敗は画面向けの文言をそのまま出す。通信自体の失敗（TypeError）などは
+ * ブラウザの英語の文言になるため、呼び出し側の文言に置き換える。
+ */
+export function toErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof MyArticleApiError ? error.message : fallback;
+}
+
+/**
  * Laravelが返す401/403/404の文言は英語の定型文なので、画面向けの言い回しに置き換える。
  * それ以外（419や422など）はサーバーの文言を優先する。
  */

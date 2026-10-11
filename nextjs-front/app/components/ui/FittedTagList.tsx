@@ -6,10 +6,11 @@ import ThreeDots from "@/public/ThreeDots.svg";
 import TagBox from "@/app/components/ui/TagBox";
 import type { Tag } from "@/app/types/models";
 
+/** 並べる上限。超えた分は「…」にまとめる */
+const MAX_TAGS = 5;
+
 interface FittedTagListProps {
   tags: Tag[];
-  /** 並べる上限。超えた分は「…」にまとめる */
-  max?: number;
 }
 
 /**
@@ -18,12 +19,12 @@ interface FittedTagListProps {
  * 何個入るかはタグ名の長さと置き場所の幅で変わるため、CSSだけでは決められない。
  * 見えない行に上限までのタグを並べて幅を測り、収まる個数だけを表の行に出している。
  */
-export default function FittedTagList({ tags, max = 5 }: FittedTagListProps) {
+export default function FittedTagList({ tags }: FittedTagListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const ellipsisRef = useRef<HTMLSpanElement>(null);
 
-  const candidates = tags.slice(0, max);
+  const candidates = tags.slice(0, MAX_TAGS);
   const [visibleCount, setVisibleCount] = useState(candidates.length);
 
   useLayoutEffect(() => {

@@ -11,9 +11,9 @@ import NormalButton from "@/app/components/ui/NormalButton";
 import Toast, { type ToastNotice, nextNotice } from "@/app/components/ui/Toast";
 import { setFlashNotice } from "@/app/lib/flashNotice";
 import {
-  MyArticleApiError,
   deleteMyArticle,
   fetchArticleForEdit,
+  toErrorMessage,
 } from "@/app/lib/myArticles";
 import type { ArticleEdit } from "@/app/types/models";
 
@@ -48,9 +48,10 @@ export default function EditArticlePage() {
       } catch (error) {
         if (!isActive) return;
         setLoadError(
-          error instanceof MyArticleApiError
-            ? error.message
-            : "記事の取得に失敗しました。ページを再読み込みしてください。",
+          toErrorMessage(
+            error,
+            "記事の取得に失敗しました。ページを再読み込みしてください。",
+          ),
         );
       }
     })();
@@ -75,9 +76,7 @@ export default function EditArticlePage() {
       setNotice(
         nextNotice(
           "error",
-          error instanceof MyArticleApiError
-            ? error.message
-            : "記事の削除に失敗しました。",
+          toErrorMessage(error, "記事の削除に失敗しました。"),
         ),
       );
     }

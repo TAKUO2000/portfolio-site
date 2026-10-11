@@ -20,6 +20,13 @@ import NormalButton from "@/app/components/ui/NormalButton";
 import type { PendingImage } from "@/app/types/models";
 import HeaderImageInput from "@/app/components/article-form/HeaderImageInput";
 import { uploadImageToS3 } from "@/app/lib/uploadImage";
+import {
+  ARTICLE_STATUS_COLORS,
+  ARTICLE_STATUS_LABELS,
+} from "@/app/lib/articleStatus";
+
+/** サーバーの本置き場にあるヘッダー画像。キーは保存時に送り返し、URLはプレビューに使う */
+type SavedHeaderImage = { key: string; url: string };
 
 interface ArticleFormProps {
   heading: string;
@@ -80,7 +87,7 @@ export default function ArticleForm({
 
   // どちらのボタンで送信中かを持つ。2つのボタンでラベルを出し分けるため真偽値にしない
   const [submittingStatus, setSubmittingStatus] = useState<
-    "draft" | "published" | null
+    ArticleEdit["status"] | null
   >(null);
   // 保存済みの記事。2回目以降の保存はPOSTではなくPUTで同じ記事を更新する
   const [savedArticleId, setSavedArticleId] = useState<number | null>(
@@ -92,10 +99,8 @@ export default function ArticleForm({
     initialArticle?.status ?? null,
   );
   // 保存時にサーバーが本置き場へ移したヘッダー画像。選び直さない限りこのキーを送り続ける
-  const [savedHeaderImage, setSavedHeaderImage] = useState<{
-    key: string;
-    url: string;
-  } | null>(toSavedHeaderImage(initialArticle));
+  const [savedHeaderImage, setSavedHeaderImage] =
+    useState<SavedHeaderImage | null>(toSavedHeaderImage(initialArticle));
 
   // 取得の失敗を知らせるためだけに使う。onNotifyはページが描画のたびに作り直すため、
   // 依存に入れると取得をやり直してしまう。最新のonNotifyを呼べればよいのでEffect Eventにする
@@ -130,7 +135,7 @@ export default function ArticleForm({
     })();
   }, []);
 
-  async function handleSubmit(status: "draft" | "published") {
+  async function handleSubmit(status: ArticleEdit["status"]) {
     if (submittingStatus !== null) return;
     const errors = validateArticleForm({
       selectedCategoryId,
@@ -355,24 +360,21 @@ export default function ArticleForm({
   );
 }
 
-/** 保存済みの公開状態の表示。記事管理一覧のトグルと同じ配色にそろえている */
+/** 保存済みの公開状態の表示。記事管理一覧のトグルと同じ呼び方・配色にそろえている */
 function SavedStatusBadge({
   status,
 }: {
   status: ArticleEdit["status"] | null;
 }) {
-  const { label, className } =
-    status === "published"
-      ? { label: "公開中", className: "bg-green-100 text-green-700" }
-      : status === "draft"
-        ? {
-            label: "非公開中",
-            className: "border border-dashed border-gray-400 text-gray-600",
-          }
-        : {
-            label: "未保存",
-            className: "border border-dashed border-gray-300 text-gray-400",
-          };
+  const { label, className } = status
+    ? {
+        label: `${ARTICLE_STATUS_LABELS[status]}中`,
+        className: ARTICLE_STATUS_COLORS[status],
+      }
+    : {
+        label: "未保存",
+        className: "border border-dashed border-gray-300 text-gray-400",
+      };
 
   return (
     <span
@@ -387,7 +389,7 @@ function SavedStatusBadge({
 /** ヘッダー画像の行が無ければキー・URLはnull。その場合は保存済み扱いにせず、保存時に選び直しを求める */
 function toSavedHeaderImage(
   article: ArticleEdit | undefined,
-): { key: string; url: string } | null {
+): SavedHeaderImage | null {
   return article?.header_image_key && article.header_image_url
     ? { key: article.header_image_key, url: article.header_image_url }
     : null;
