@@ -35,6 +35,8 @@ interface ArticleFormProps {
    * 新規投稿では渡さない（初回の保存でPOSTし、以降は作られた記事をPUTで更新する）
    */
   initialArticle?: ArticleEdit;
+  /** 見出しの行の右端に置く操作（編集画面の記事管理へ戻るボタンなど） */
+  headingActions?: ReactNode;
   /** 保存ボタンの行の左端に置く操作（編集画面の削除ボタンなど） */
   extraActions?: ReactNode;
   /**
@@ -61,6 +63,7 @@ interface ArticleFormProps {
 export default function ArticleForm({
   heading,
   initialArticle,
+  headingActions,
   extraActions,
   onNotify,
   onSaved,
@@ -290,7 +293,10 @@ export default function ArticleForm({
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-12 bg-gray-50">
-      <h1 className="text-2xl font-bold">{heading}</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold">{heading}</h1>
+        {headingActions}
+      </div>
 
       {/* 送信中は入力を止める。保存結果をフォームへ取り込むときに、保存中の入力と競合させないため。
           クリック・ドロップを持つdiv/spanもあり、fieldsetのdisabledでは止まらないのでinertを使う */}

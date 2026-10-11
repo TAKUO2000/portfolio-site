@@ -116,6 +116,10 @@ export default function EditArticlePage() {
         // フォームの初期値には使われ終わっているので、差し替えても入力中の内容は変わらない。
         // 削除モーダルのタイトルを保存後のものにするために持ち直す
         onSaved={setArticle}
+        // ヘッダーの無い画面なので、削除せずに一覧へ戻る道をここに置く
+        headingActions={
+          <NormalButton buttonLabel="記事管理へ戻る" href={manageHref} />
+        }
         extraActions={
           <NormalButton
             color="red"

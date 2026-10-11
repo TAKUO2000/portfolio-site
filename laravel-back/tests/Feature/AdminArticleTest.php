@@ -233,7 +233,6 @@ test('ステータス変更後も一覧と同じ形でタグを返す', function
     $response = $this->actingAs($this->adminUser)
         ->patchJson("/api/articles/{$article->id}/status", ['status' => 'draft']);
 
-    // 一覧の1行をレスポンスで差し替えられるよう、一覧と同じ項目を返す
     expect($response->json('data.tags'))->toBe([['id' => $tag->id, 'name' => 'Laravel']]);
 });
 
