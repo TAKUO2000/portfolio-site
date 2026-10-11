@@ -17,6 +17,7 @@ import {
   ARTICLE_STATUS_LABELS,
 } from "@/app/lib/articleStatus";
 import { takeFlashNotice } from "@/app/lib/flashNotice";
+import { toEditArticleHref } from "@/app/lib/manageArticlesHref";
 import { formatPublishedDate } from "@/app/lib/formatDate";
 import type { MyArticle, MyArticleIndexResponse } from "@/app/types/models";
 import {
@@ -125,6 +126,9 @@ export default function ManageArticles() {
       } catch (error) {
         if (!isActive) return;
         setHasLoadFailed(true);
+        // 前の画面から渡された結果は、一覧を出せなかったときも捨てる。
+        // 残すと、あとで一覧を出せたときに古い結果として出てしまう
+        takeFlashNotice();
         setNotice(
           nextNotice(
             "error",
@@ -271,6 +275,11 @@ export default function ManageArticles() {
               <li key={article.id}>
                 <ManageArticleRow
                   article={article}
+                  // 編集画面から戻ったときに同じ一覧を出せるよう、今の絞り込み・検索・ページを預ける
+                  editHref={toEditArticleHref(
+                    article.id,
+                    toQueryString(query).slice(1),
+                  )}
                   isBusy={busyArticleId === article.id}
                   onToggleStatus={() => handleToggleStatus(article)}
                   onDelete={() => setDeleteTarget(article)}
@@ -309,6 +318,7 @@ export default function ManageArticles() {
 
 interface ManageArticleRowProps {
   article: MyArticle;
+  editHref: string;
   /** この行の操作が通信中か。二重に送らないよう、その間はボタンを止める */
   isBusy: boolean;
   onToggleStatus: () => void;
@@ -323,12 +333,11 @@ interface ManageArticleRowProps {
  */
 function ManageArticleRow({
   article,
+  editHref,
   isBusy,
   onToggleStatus,
   onDelete,
 }: ManageArticleRowProps) {
-  const editHref = `/articles/${article.id}/edit`;
-
   return (
     // 概要は省略せず全文を出すため、行の高さは中身に合わせて伸びる。
     // 伸びたときにサムネイルが縦中央へ浮かないよう上揃えにしている

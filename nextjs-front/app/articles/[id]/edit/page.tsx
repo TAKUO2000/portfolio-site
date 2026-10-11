@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useRequireAdmin } from "@/app/auth/useRequireAdmin";
@@ -10,6 +10,7 @@ import ConfirmDeleteModal from "@/app/components/ui/ConfirmDeleteModal";
 import NormalButton from "@/app/components/ui/NormalButton";
 import Toast, { type ToastNotice, nextNotice } from "@/app/components/ui/Toast";
 import { setFlashNotice } from "@/app/lib/flashNotice";
+import { toManageArticlesHref } from "@/app/lib/manageArticlesHref";
 import {
   deleteMyArticle,
   fetchArticleForEdit,
@@ -21,6 +22,8 @@ export default function EditArticlePage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const articleId = Number(id);
+  // 一覧から来たときは、そのときの絞り込み・検索・ページの一覧へ戻す
+  const manageHref = toManageArticlesHref(useSearchParams());
   const isAuthorized = useRequireAdmin();
 
   const [article, setArticle] = useState<ArticleEdit | null>(null);
@@ -69,7 +72,7 @@ export default function EditArticlePage() {
       await deleteMyArticle(article.id);
       // 削除した記事の画面には居られないので一覧へ戻り、結果は戻った先で知らせる
       setFlashNotice("success", `「${article.title}」を削除しました`);
-      router.push("/articles/manage");
+      router.push(manageHref);
     } catch (error) {
       setIsDeleting(false);
       setIsConfirmingDelete(false);
@@ -91,7 +94,7 @@ export default function EditArticlePage() {
         <p role="alert" className="text-sm text-red-700">
           {loadError}
         </p>
-        <Link href="/articles/manage" className="text-sm underline">
+        <Link href={manageHref} className="text-sm underline">
           記事管理へ戻る
         </Link>
       </main>
