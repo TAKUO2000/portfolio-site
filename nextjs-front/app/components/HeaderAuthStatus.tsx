@@ -1,5 +1,6 @@
 "use client";
 
+import Pencil from "@/public/Pencil.svg";
 import Plus from "@/public/Plus.svg";
 
 import Link from "next/link";
@@ -75,13 +76,22 @@ export default function HeaderAuthStatus() {
         </button>
 
         {user.role === "admin" && (
-          <Link
-            href="/articles/new"
-            className="text-sm transition-opacity hover:opacity-70 bg-white text-black rounded-4xl px-3 py-1 flex items-center"
-          >
-            <Plus className="h-4 w-4 shrink-0 border bg-black text-white rounded-2xl mr-2" />
-            <span>記事投稿</span>
-          </Link>
+          <>
+            <Link
+              href="/articles/new"
+              className="text-sm transition-opacity hover:opacity-70 bg-white text-black border-[1.5px] border-white rounded-4xl px-3 py-1 flex items-center"
+            >
+              <Plus className="h-4 w-4 shrink-0 border bg-black text-white rounded-2xl mr-2" />
+              <span>記事投稿</span>
+            </Link>
+            <Link
+              href="/articles/manage"
+              className="text-sm transition-opacity hover:opacity-70 border-[1.5px] border-white rounded-4xl px-3 py-1 flex items-center"
+            >
+              <Pencil className="h-4 w-4 shrink-0 mr-2" />
+              <span>記事管理</span>
+            </Link>
+          </>
         )}
       </div>
     );

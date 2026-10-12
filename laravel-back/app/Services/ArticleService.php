@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Rules\ArticleImageKey;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -245,18 +246,51 @@ class ArticleService
      */
     public function mine(User $user, array $data): LengthAwarePaginator
     {
-        $query = $user->articles()->with(['category', 'headerImage']);
+        $query = $this->mineQuery($user, $data)->with(['category', 'tags', 'headerImage']);
 
         if (!empty($data['status'])) {
             $query->where('status', $data['status']);
         }
 
+        // 作成日の新しい順。更新日で並べると、一覧から公開状態を切り替えただけで
+        // その記事が先頭へ移り、操作した行を見失うため。
+        // 同時刻に作られた記事でもページをまたいで順序が揺れないよう、idで決着させる
+        return $query->orderByDesc('created_at')->orderByDesc('id')->paginate($data['per_page'] ?? 15);
+    }
+
+    /**
+     * 記事管理画面のステータス別の件数。
+     *
+     * 絞り込みボタンに添える件数なので、keywordは反映するがstatusでは絞らない。
+     * 「下書き」を選んでいる間も、公開中の件数を出し続ける必要があるため。
+     *
+     * @return array{all: int, published: int, draft: int}
+     */
+    public function mineStatusCounts(User $user, array $data): array
+    {
+        $counts = $this->mineQuery($user, $data)
+            ->toBase()
+            ->selectRaw('status, count(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status');
+
+        // 記事が1件も無いステータスはGROUP BYの結果に出てこないため、0で埋める
+        $published = (int) ($counts['published'] ?? 0);
+        $draft     = (int) ($counts['draft'] ?? 0);
+
+        return ['all' => $published + $draft, 'published' => $published, 'draft' => $draft];
+    }
+
+    /** 一覧と件数で絞り込み条件を揃えるための共通部分 */
+    private function mineQuery(User $user, array $data): HasMany
+    {
+        $query = $user->articles();
+
         if (!empty($data['keyword'])) {
             $query->where('title', 'like', '%' . $data['keyword'] . '%');
         }
 
-        // 管理画面では書きかけを見つけたいので、公開日ではなく最終更新が新しい順
-        return $query->orderByDesc('updated_at')->paginate($data['per_page'] ?? 15);
+        return $query;
     }
 
     /**
@@ -272,7 +306,7 @@ class ArticleService
             'published_at' => $this->publishedAtFor($article, $status),
         ]);
 
-        return $article->load(['category', 'headerImage']);
+        return $article->load(['category', 'tags', 'headerImage']);
     }
 
     /**

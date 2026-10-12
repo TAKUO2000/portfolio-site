@@ -49,6 +49,20 @@ export interface ArticleSummary {
   like_count: number;
 }
 
+/** 記事管理画面の一覧APIが返す記事。下書きも含み、本文は含まれない */
+export interface MyArticle {
+  id: number;
+  title: string;
+  summary: string;
+  status: "draft" | "published";
+  /** 一度も公開していない下書きはnull */
+  published_at: string | null;
+  updated_at: string;
+  category: Category;
+  tags: Tag[];
+  header_image: string | null;
+}
+
 export interface PaginationLinks {
   first: string;
   last: string;
@@ -61,6 +75,19 @@ export interface PaginationMeta {
   last_page: number;
   per_page: number;
   total: number;
+}
+
+/** 記事管理画面のステータス別の件数。keywordは反映し、statusでは絞らない */
+export interface MyArticleStatusCounts {
+  all: number;
+  published: number;
+  draft: number;
+}
+
+export interface MyArticleIndexResponse {
+  data: MyArticle[];
+  links: PaginationLinks;
+  meta: PaginationMeta & { status_counts: MyArticleStatusCounts };
 }
 
 export interface ArticleIndexResponse {

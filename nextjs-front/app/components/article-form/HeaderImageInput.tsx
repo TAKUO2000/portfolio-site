@@ -30,7 +30,7 @@ export default function HeaderImageInput({
   const [errorMessage, setErrorMessage] = useState("");
 
   // 選択されたファイルをblobプレビューとしてキャッシュする。
-  // S3署名付きURLの取得と実際のPUTは送信ボタン押下時（page.tsx側）にまとめて行う
+  // S3署名付きURLの取得と実際のPUTは保存時（ArticleForm側）にまとめて行う
   // （早い段階で取得すると、フォーム入力が長引いた場合に署名付きURLの有効期限切れで失敗するため）
   function cacheHeaderImage(file: File) {
     if (
