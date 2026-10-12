@@ -31,6 +31,23 @@ import {
 /** 1ページに並べる件数。APIにはper_pageとして渡す */
 const PER_PAGE = 5;
 
+/**
+ * 読み込み中に高さを取るためだけに並べる、見えない行の中身。
+ * 概要が1行の記事と同じ高さになる
+ */
+const PLACEHOLDER_ARTICLE: MyArticle = {
+  id: 0,
+  // 空だと見出しの行が潰れて低くなるため、空白を1文字入れる
+  title: "\u00a0",
+  summary: "",
+  status: "draft",
+  published_at: null,
+  updated_at: "2000-01-01T00:00:00Z",
+  category: { id: 0, name: "" },
+  tags: [],
+  header_image: null,
+};
+
 type StatusFilter = "all" | MyArticle["status"];
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
@@ -95,8 +112,9 @@ export default function ManageArticles() {
   // 初回の取得に失敗したとき、一覧の欄を「読み込み中」のまま残さないために持つ
   const [hasLoadFailed, setHasLoadFailed] = useState(false);
 
+  // 権限の確認（useRequireAdmin）を待たずに取り始め、通信を2回分続けて待たないようにする。
+  // admin以外にはAPIが401/403を返してデータは渡らず、その間に確認の側がトップへ戻す
   useEffect(() => {
-    if (!isAuthorized) return;
     let isActive = true;
 
     (async () => {
@@ -147,7 +165,7 @@ export default function ManageArticles() {
     return () => {
       isActive = false;
     };
-  }, [isAuthorized, status, keyword, page, reloadKey, router]);
+  }, [status, keyword, page, reloadKey, router]);
 
   /** 絞り込み・検索・ページの変更。履歴に残し、戻る操作で前の一覧に戻れるようにする */
   function changeQuery(next: Partial<ListQuery>) {
@@ -209,10 +227,6 @@ export default function ManageArticles() {
     }
   }
 
-  if (!isAuthorized) {
-    return null;
-  }
-
   const articles = response?.data ?? [];
   const counts = response?.meta.status_counts;
 
@@ -266,9 +280,29 @@ export default function ManageArticles() {
         className={`transition-opacity ${isLoading ? "opacity-60" : ""}`}
       >
         {response === null ? (
-          <p className="py-16 text-center text-sm text-gray-500">
-            {hasLoadFailed ? "記事一覧を表示できませんでした" : "読み込み中..."}
-          </p>
+          // 一覧が出る前から1ページ分の高さを取っておき、出たときにフッターが跳ねないようにする。
+          // 本物の行を見えない状態で並べるので、画面幅で行の高さが変わっても合う
+          <div className="relative">
+            <ul aria-hidden inert className="invisible flex flex-col gap-3">
+              {Array.from({ length: PER_PAGE }, (_, index) => (
+                <li key={index}>
+                  <ManageArticleRow
+                    article={PLACEHOLDER_ARTICLE}
+                    editHref=""
+                    isBusy={false}
+                    onToggleStatus={() => {}}
+                    onDelete={() => {}}
+                  />
+                </li>
+              ))}
+            </ul>
+            <p className="absolute inset-x-0 top-16 text-center text-lg text-gray-500">
+              {/* 権限の確認が済むまでは、admin以外の取得失敗を出さない（すぐトップへ戻るため） */}
+              {hasLoadFailed && isAuthorized
+                ? "記事一覧を表示できませんでした"
+                : "読み込み中..."}
+            </p>
+          </div>
         ) : articles.length > 0 ? (
           <ul className="flex flex-col gap-3">
             {articles.map((article) => (
@@ -304,7 +338,11 @@ export default function ManageArticles() {
         </div>
       )}
 
-      <Toast notice={notice} onClose={() => setNotice(null)} />
+      {/* admin以外への取得失敗の通知は出さない。確認が済んでから出すので、admin には遅れて出る */}
+      <Toast
+        notice={isAuthorized ? notice : null}
+        onClose={() => setNotice(null)}
+      />
 
       <ConfirmDeleteModal
         targetTitle={deleteTarget?.title ?? null}
