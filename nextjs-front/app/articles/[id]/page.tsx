@@ -71,9 +71,12 @@ export default async function ArticlePage({
           </article>
 
           {/* 目次エリア (2割) */}
-          <aside className="w-1/5 shrink-0 sticky top-8">
+          <aside className="w-1/5 shrink-0 sticky top-8 flex flex-col gap-4">
             <TableOfContents headings={headings} />
-            <ArticleActionButtons likeCount={article.like_count} />
+            <ArticleActionButtons
+              articleId={article.id}
+              likeCount={article.like_count}
+            />
           </aside>
         </div>
       </main>
