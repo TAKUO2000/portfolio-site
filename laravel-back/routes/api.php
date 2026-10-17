@@ -5,6 +5,7 @@ use App\Models\Tag;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ArticleController;
+use App\Http\Controllers\ArticleLikeController;
 use App\Http\Controllers\ImageController;
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
@@ -25,6 +26,16 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     });
     Route::post('/images/upload-url', [ImageController::class, 'getUploadUrl']);
 });
+
+// いいねは連打されてもDBを叩き続けないよう、1分あたりの回数を絞る
+Route::middleware(['auth:sanctum', 'throttle:60,1'])
+    ->prefix('articles/{id}/like')
+    ->whereNumber('id')
+    ->group(function () {
+        Route::get('/', [ArticleLikeController::class, 'show']);
+        Route::post('/', [ArticleLikeController::class, 'store']);
+        Route::delete('/', [ArticleLikeController::class, 'destroy']);
+    });
 
 Route::prefix('articles')->group(function () {
     Route::get('/', [ArticleController::class, 'index']);
