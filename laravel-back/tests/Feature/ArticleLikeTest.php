@@ -100,3 +100,13 @@ test('下書き・削除済み・存在しない記事には404を返す', funct
     }
     $this->assertDatabaseCount('reactions', 0);
 });
+
+test('1分あたり60回を超えると429を返す', function () {
+    $url = "/api/articles/{$this->article->id}/like";
+
+    for ($i = 0; $i < 60; $i++) {
+        $this->actingAs($this->generalUser)->postJson($url)->assertOk();
+    }
+
+    $this->actingAs($this->generalUser)->postJson($url)->assertStatus(429);
+});

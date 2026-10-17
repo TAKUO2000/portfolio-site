@@ -59,7 +59,8 @@ export default function ArticleActionButtons({
     // 押した手応えを返すため、APIの応答を待たずに画面を先に変える
     setLikeState({
       liked: nextLiked,
-      like_count: previous.like_count + (nextLiked ? 1 : -1),
+      // 件数は他の人の操作でずれ得るので、先に変える値は0未満にしない
+      like_count: Math.max(0, previous.like_count + (nextLiked ? 1 : -1)),
     });
     setMessage(null);
     setIsSending(true);

@@ -52,6 +52,18 @@ describe("ArticleActionButtons", () => {
     expect(setLikeMock).not.toHaveBeenCalled();
   });
 
+  it("取り消しで件数が0未満にならない", async () => {
+    // いいね済みかと件数がずれて返ってきた場合でも、先に変える件数は0で止める
+    fetchLikeStatusMock.mockResolvedValue({ liked: true, like_count: 0 });
+    setLikeMock.mockReturnValue(new Promise(() => {}));
+
+    render(<ArticleActionButtons articleId={1} likeCount={0} />);
+    await waitFor(() => expect(likeButton().disabled).toBe(false));
+    fireEvent.click(likeButton());
+
+    expect(screen.getByText("good:0")).toBeDefined();
+  });
+
   it("押すと応答を待たずに件数を増やし、応答の値で確定する", async () => {
     fetchLikeStatusMock.mockResolvedValue({ liked: false, like_count: 3 });
     let resolve!: (v: { liked: boolean; like_count: number }) => void;
