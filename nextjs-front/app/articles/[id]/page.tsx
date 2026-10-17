@@ -1,46 +1,27 @@
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
 import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
-import type { Category, Tag } from "@/app/types/models";
-import { markdownSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
+import TableOfContents from "@/app/components/ui/TableOfContents";
+import type { ArticleDetail } from "@/app/types/models";
+import {
+  articleRehypePlugins,
+  extractHeadings,
+} from "@/app/lib/articleMarkdown";
 import { getApiBaseUrl } from "@/app/lib/apiBaseUrl";
 
-interface ShowResponse {
-  data: {
-    id: number;
-    title: string;
-    body: string;
-    published_at: string;
-    user: { id: number; name: string };
-    category: Category;
-    tags: Tag[];
-    like_count: number;
-    images: ImageTypeUrl[];
-  };
-}
-
-interface ImageTypeUrl {
-  id: number;
-  url: string;
-  type: string;
-}
-
-async function fetchArticles(id: string): Promise<ShowResponse> {
+async function fetchArticle(id: string): Promise<ArticleDetail> {
   const res = await fetch(`${getApiBaseUrl()}/api/articles/${id}`, {
     headers: { Accept: "application/json" },
   });
 
   if (!res.ok) {
-    console.log("記事一覧の取得に失敗しました。");
-    throw new Error("記事一覧の取得に失敗しました。");
+    throw new Error("記事の取得に失敗しました。");
   }
-  return res.json();
+  return (await res.json()).data;
 }
 
 export default async function ArticlePage({
@@ -49,8 +30,8 @@ export default async function ArticlePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const article = (await fetchArticles(id)).data;
-  console.log(article);
+  const article = await fetchArticle(id);
+  const headings = extractHeadings(article.body);
 
   const headerImage = article.images.find((img) => img.type === "header");
 
@@ -82,25 +63,20 @@ export default async function ArticlePage({
               ))}
             </div>
             <h1 className="text-3xl font-bold mb-6">{article.title}</h1>
-            <div className="prose prose-neutral [&_ul>li::marker]:text-black max-w-none wrap-break-word">
-              <ReactMarkdown
-                rehypePlugins={[
-                  rehypeRaw,
-                  [rehypeSanitize, markdownSanitizeSchema],
-                ]}
-              >
+            <div className="prose prose-neutral [&_ul>li::marker]:text-black [&_:is(h1,h2,h3)]:scroll-mt-8 max-w-none wrap-break-word">
+              <ReactMarkdown rehypePlugins={articleRehypePlugins}>
                 {article.body}
               </ReactMarkdown>
             </div>
           </article>
 
           {/* 目次エリア (2割) */}
-          <aside className="w-1/5 shrink-0 sticky top-8">
-            <div className="border rounded p-4 text-sm text-gray-500">
-              <p className="font-semibold mb-2">目次</p>
-              <p>（ダミー）</p>
-            </div>
-            <ArticleActionButtons likeCount={article.like_count} />
+          <aside className="w-1/5 shrink-0 sticky top-8 flex flex-col gap-4">
+            <TableOfContents headings={headings} />
+            <ArticleActionButtons
+              articleId={article.id}
+              likeCount={article.like_count}
+            />
           </aside>
         </div>
       </main>

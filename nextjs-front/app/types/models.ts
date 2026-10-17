@@ -49,6 +49,26 @@ export interface ArticleSummary {
   like_count: number;
 }
 
+/** 記事詳細APIが返す画像 */
+export interface ArticleImage {
+  id: number;
+  url: string;
+  type: string;
+}
+
+/** 記事詳細APIが返す公開記事 */
+export interface ArticleDetail {
+  id: number;
+  title: string;
+  body: string;
+  published_at: string;
+  user: Pick<User, "id" | "name">;
+  category: Category;
+  tags: Tag[];
+  like_count: number;
+  images: ArticleImage[];
+}
+
 /** 記事管理画面の一覧APIが返す記事。下書きも含み、本文は含まれない */
 export interface MyArticle {
   id: number;
