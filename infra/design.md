@@ -54,8 +54,9 @@ Terraform のコードは #53 で `infra/` に追加する予定です。
 | --- | --- | --- |
 | EC2 | t4g.micro（2 vCPU / 1GB、ARM）を常時稼働 | 約 $7.9 |
 | パブリック IPv4 | Elastic IP 1つ | 約 $3.6 |
-| EBS | gp3 20GB | 約 $1.9 |
-| EBS スナップショット | 日次で7世代（差分のみ課金） | 〜$1 |
+| EBS | gp3 ルート 12GB ＋ データ用 10GB | 約 $2.1 |
+| EBS スナップショット | データ用ボリュームを日次で7世代（差分のみ課金） | 〜$1 |
+| S3（バックアップ） | `mysqldump` を30日分 | 〜$0.1 |
 | ECR | イメージ数百MB | 〜$0.1 |
 | S3 | 画像の保存と転送（小規模） | 〜$0.5 |
 | Vercel | Hobby プラン | $0 |
@@ -76,7 +77,7 @@ infra/terraform/
 ├── modules/app/   # VPC・SG・EC2・IAM ロール・S3 の画像バケットなど、環境ごとに作るもの
 └── envs/
     ├── shared/    # ECR、GitHub OIDC プロバイダー、Parameter Store、AWS Budgets
-    ├── prod/      # modules/app を本番の値で呼ぶ。DLM・CloudWatch アラーム・Elastic IP・Cloudflare の DNS レコードもここ
+    ├── prod/      # modules/app を本番の値で呼ぶ。データ用 EBS・バックアップ用バケット・DLM・CloudWatch アラーム・Elastic IP・Cloudflare の DNS レコードもここ
     └── stg/       # modules/app をステージングの値で呼ぶ（必要なときだけ apply / destroy）。Cloudflare の DNS レコードもここ
 ```
 
@@ -93,18 +94,33 @@ tfstate は同じバケットに置き、キーを環境ごとに分けます（
 | セキュリティグループ | EC2 用 | インバウンドは 80 / 443 を `0.0.0.0/0` と `::/0` から許可するだけ。22 は開けない |
 | EC2 | インスタンス | t4g.micro、Amazon Linux 2023（arm64）、IMDSv2 を必須にする。CPU クレジットは **Standard モード**（[CPU クレジットと費用の監視](#cpu-クレジットと費用の監視)） |
 | | Elastic IP | `api.takuosblog.com` の向き先 |
-| | EBS | ルート gp3 20GB、暗号化する |
-| IAM | インスタンスプロファイル | S3 の画像バケットの読み書き、ECR の pull、SSM（`AmazonSSMManagedInstanceCore`）、Parameter Store の読み取り |
+| | EBS（ルート） | gp3 12GB、暗号化する。OS と Docker のイメージを置く。インスタンスを作り直すと消えてよいものだけを置く |
+| | EBS（データ用） | gp3 10GB、暗号化する。`/data` にマウントし、MySQL のデータと証明書を置く。**`envs/prod` に置き、`prevent_destroy = true` にする**（[データの置き場所](#データの置き場所)） |
+| IAM | インスタンスプロファイル | S3 の画像バケットの読み書き、バックアップ用バケットへの `s3:PutObject` だけ、ECR の pull、SSM（`AmazonSSMManagedInstanceCore`）、Parameter Store の読み取り |
 | | GitHub Actions 用のロール | OIDC で引き受ける。ECR への push と SSM Run Command の実行だけを許可する |
 | S3 | 画像バケット | [S3（画像）](#s3画像)を参照 |
+| | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する |
 | | tfstate バケット | Terraform の状態を保存する。バージョニングを有効にする |
 | ECR | リポジトリ | `portfolio/app`。古いイメージはライフサイクルルールで消す |
 | SSM | Parameter Store | 秘密情報（SecureString）を置く |
-| DLM | ライフサイクルポリシー | EBS の日次スナップショットを7世代残す |
+| DLM | ライフサイクルポリシー | データ用 EBS の日次スナップショットを7世代残す |
 | CloudWatch | アラーム | ステータスチェックの失敗と CPU クレジット残高。通知先は SNS からメールに送る |
 | Budgets | 月の予算（`envs/shared`） | アカウント全体で月 $20。実績が 80% を超えたとき、月末の予測が 100% を超えそうなときにメールで知らせる |
 
 DB だけをプライベートサブネットに分ける構成は採らない。プライベートサブネットから外に出るには NAT Gateway が必要で、高くつくからです。MySQL は EC2 内のコンテナで動かし、ポートを外に公開しないことで守ります。
+
+### データの置き場所
+
+MySQL のデータと証明書は、ルートとは別の EBS（データ用）に置きます。
+
+ルートボリュームは、インスタンスを終了すると一緒に削除されます（初期設定）。Terraform では、AMI や `user_data` を変えると `aws_instance` が作り直されることがあり、データをルートに置いているとそのときに DB と証明書が消えます。
+
+| 対策 | 内容 |
+| --- | --- |
+| データ用 EBS を分ける | `aws_ebs_volume` と `aws_volume_attachment` で作り、`user_data` で `/data` にマウントする。compose は名前付きボリュームではなく `/data/mysql`、`/data/letsencrypt` をマウントする |
+| 消せないようにする | データ用 EBS は `envs/prod` に置き、`lifecycle { prevent_destroy = true }` を付ける。`prevent_destroy` には変数を使えないので、ステージングと共有する `modules/app` には置かない（ステージングは DB を毎回空にするので、ルートの `/data` ディレクトリで足りる） |
+| 作り直しを起こしにくくする | `aws_instance` に `lifecycle { ignore_changes = [ami, user_data] }` を付ける。AMI を新しくするときは、意図して作り直す |
+| インスタンスタイプの変更 | t4g.small などへの変更は、停止して変えるだけで作り直しにならない（Terraform も停止・起動で変更する）。plan で `must be replaced` と出ていないかを確かめてから apply する |
 
 ### CPU クレジットと費用の監視
 
@@ -172,7 +188,7 @@ CPU を使いやすい場面と、その対策：
 | `certbot` | `certbot/certbot` | Let's Encrypt の証明書の取得と更新。常駐させず、更新するときだけ `docker compose run --rm` で動かす | 0MB（実行中だけ約 50MB） |
 | `app` | ECR の `portfolio/app` | php-fpm（Laravel）。起動時に migrate と optimize を実行する | 約 150MB |
 | `scheduler` | `app` と同じイメージ | `php artisan schedule:work`（`images:prune` などを実行） | 約 60MB |
-| `mysql` | `mysql:8.0` | DB。データは名前付きボリューム（EBS 上）に置く | 約 250MB |
+| `mysql` | `mysql:8.0` | DB。データはデータ用 EBS の `/data/mysql` に置く | 約 250MB |
 
 Web サーバーは開発環境と同じ nginx にします。証明書の取得と更新は certbot で行います。Caddy（証明書を自動で管理する Web サーバー）とも比べましたが、開発環境とそろえることと、証明書の発行と更新の仕組みを学ぶことを優先しました。メモリの差は 10〜30MB ほどで、判断には影響しません。
 
@@ -188,9 +204,18 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 ### 証明書（certbot）
 
-- 証明書は名前付きボリューム（`/etc/letsencrypt`、EBS 上）に置き、nginx と certbot で共有する。チャレンジ用の webroot も同じように共有する
+- 証明書はデータ用 EBS の `/data/letsencrypt` に置き、nginx と certbot の `/etc/letsencrypt` にマウントして共有する。チャレンジ用の webroot（`/var/www/certbot`）も同じように共有する
 - **初回の取得**：nginx は証明書がないと 443 の設定で起動できない。そのため、nginx を起動する前に `certbot certonly --standalone` で取得する（certbot が自分で 80 番を開いて確認を受ける）。手順はセットアップ用のスクリプトにまとめる
-- **更新**：systemd timer で1日2回、`certbot renew --webroot` を実行し、続けて `docker compose exec nginx nginx -s reload` を実行する。certbot は期限が残り30日を切った証明書だけを更新する。Amazon Linux 2023 には cron が入っていないので、systemd timer を使う
+- **更新**：systemd timer で1日2回、次のように実行する。certbot は期限が残り30日を切った証明書だけを更新する。Amazon Linux 2023 には cron が入っていないので、systemd timer を使う
+
+  ```bash
+  docker compose -f docker-compose.prod.yml run --rm certbot renew --webroot -w /var/www/certbot
+  docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  ```
+
+- **更新の認証方法を必ず指定する**：初回に `--standalone` で取った証明書は、更新の設定（`/etc/letsencrypt/renewal/<ドメイン>.conf`）に `authenticator = standalone` が記録される。そのまま `renew` すると certbot が 80 番を開こうとして nginx とぶつかり、90日後に初めて更新の失敗に気づくことになる。`--webroot -w /var/www/certbot` を渡すと webroot で更新され、成功すると設定も webroot に書き換わる
+- reload は certbot の `--deploy-hook` ではなく、ホスト側で続けて実行する。certbot はコンテナの中で動くので、hook から nginx のコンテナを操作できないため
+- **初回の取得のあとに `renew --dry-run` を実行し、webroot での更新が通ることを確かめる**。手順はセットアップ用のスクリプトに入れる
 - 更新に失敗したまま期限（90日）が切れると、API に HTTPS でつながらなくなる。Let's Encrypt は期限切れが近づいても通知メールを送らないので、更新のログを確認できるようにしておく
 
 ### 1GB に収めるための設定
@@ -198,7 +223,7 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 - 合計は OS を含めて約 700MB。余裕を持たせるため、**swap を 2GB 作る**
 - MySQL：`innodb_buffer_pool_size=128M`、`performance_schema=OFF`
 - php-fpm：`pm=ondemand`、`pm.max_children=5`
-- メモリ不足で落ちるようなら t4g.small（2GB、月 +$8 程度）に上げる。Terraform の変数を1つ変えるだけで済むようにしておく
+- メモリ不足で落ちるようなら t4g.small（2GB、月 +$8 程度）に上げる。Terraform の変数を1つ変えるだけで済むようにしておく（停止して変えるだけで、作り直しにはならない。[データの置き場所](#データの置き場所)）
 - **イメージは EC2 上でビルドしない**（GitHub Actions でビルドする）
 
 開発用の MinIO は本番では使いません。実際の S3 を使います（[S3（画像）](#s3画像)）。
@@ -254,14 +279,25 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 | 設定 | 内容 |
 | --- | --- |
 | バケット | 本番用を新しく作る（開発用とは分ける） |
-| パブリックアクセス | `images/*` と `tmp/*` だけ、バケットポリシーで `s3:GetObject` を公開する（`ImageStorage::objectUrl()` が S3 の URL をそのまま返すため） |
-| CORS | ブラウザが署名付き URL へ直接 PUT するため、`AllowedOrigins: https://takuosblog.com`、`AllowedMethods: PUT, GET`、`AllowedHeaders: *` を設定する |
+| パブリックアクセス | `images/*` と `tmp/*` だけ、バケットポリシーで `s3:GetObject` を公開する（下の「`tmp/*` を公開する理由」を参照） |
+| CORS | ブラウザが署名付き URL へ直接 PUT するため、`AllowedOrigins: https://takuosblog.com`、`AllowedMethods: PUT, GET`、`AllowedHeaders: Content-Type` を設定する（ブラウザが PUT で付けるヘッダーは `Content-Type` だけ。`nextjs-front/app/lib/uploadImage.ts`） |
 | ライフサイクル | `tmp/` プレフィックスは1日で削除する（[画像管理の仕組み](../docs/image-management.md#本番で必要な準備)） |
 | アクセス方法 | EC2 の IAM ロールを使う。`AWS_ACCESS_KEY_ID` と `AWS_SECRET_ACCESS_KEY` は設定しない |
 | `AWS_ENDPOINT` / `AWS_PUBLIC_ENDPOINT` | 空にする |
 | `AWS_USE_PATH_STYLE_ENDPOINT` | `false` |
 
 本番のバケット名は `nextjs-front/next.config.ts` の `images.remotePatterns` にも追加する（今は開発用のバケットだけが入っている）。
+
+**`tmp/*` を公開する理由**
+
+`tmp/` は、アップロードしたがまだ記事に保存していない画像の置き場です。公開すると、下書き中の画像や使わなかった画像も、URL を知っていれば誰でも読めます。それでも今は公開します。
+
+- 記事の編集画面は、アップロード直後のプレビューに `tmp/` の URL（`/api/images/upload-url` が返す `image_url`）を使っている。非公開にすると、プレビューが表示されなくなる
+- キーは UUID v4（`ImageController`）で、推測できない。URL を知っているのは、アップロードした管理者だけ
+- `tmp/` の画像は1日で消える（ライフサイクルルール）
+- 下書きの記事の画像は保存した時点で `images/` に移るので、`tmp/` を非公開にしても下書きの画像は見える。`tmp/` だけ閉じても効果は限られる
+
+公開前の画像を見せたくなったら、`tmp/`（と下書きの画像）を非公開にし、プレビューには署名付き GET URL を返すように `ImageStorage::objectUrl()` を変える。その場合、本文に入った署名付き URL を保存時に `images/` の URL へ書き換える処理も確かめる。
 
 ---
 
@@ -366,11 +402,11 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 | API | `api.takuosblog.com` | `api.stg.takuosblog.com` |
 | VPC | `10.0.0.0/16` | `10.1.0.0/16`（本番とは別の VPC） |
 | EC2 | t4g.micro + Elastic IP | t4g.micro。**Elastic IP は使わず**、自動で割り当てられるパブリック IP を apply のたびに Cloudflare の DNS へ登録する |
-| DB | EBS に保存して残す | 作るたびに空。管理者をコマンドで作り、サンプルデータをシーダーで入れる |
+| DB | データ用 EBS に保存して残す | データ用 EBS は作らず、ルートの `/data` に置く。作るたびに空。管理者をコマンドで作り、サンプルデータをシーダーで入れる |
 | S3 | 本番用バケット（CORS は `https://takuosblog.com`） | stg 用バケット（CORS は `https://stg.takuosblog.com`）。`force_destroy` で destroy のときに中身ごと消す。`next.config.ts` の `remotePatterns` にも追加する |
 | ECR | 共有（`envs/shared`） | 共有。本番と同じイメージを使う |
 | Parameter Store | `/portfolio/prod/*` | `/portfolio/stg/*`（`envs/shared` で管理し、destroy しても残す） |
-| バックアップ・監視 | DLM・CloudWatch アラーム | なし（AWS Budgets はアカウント全体なので、ステージングの費用も対象になる） |
+| バックアップ・監視 | DLM・`mysqldump`・CloudWatch アラーム | なし（AWS Budgets はアカウント全体なので、ステージングの費用も対象になる） |
 
 ### 使い方
 
@@ -408,8 +444,8 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 
 | 対象 | 方法 |
 | --- | --- |
-| EBS（MySQL のデータを含む） | DLM で日次スナップショットを7世代残す |
-| MySQL | systemd timer で `mysqldump` を取り S3 に置く（スナップショットだけだと、書き込み途中の状態を拾う可能性があるため） |
+| データ用 EBS（MySQL のデータと証明書） | DLM で日次スナップショットを7世代残す。ルートボリュームは対象にしない（作り直せばよいため） |
+| MySQL | systemd timer で毎日 `mysqldump --single-transaction` を取り、バックアップ用バケットに日付入りのキーで置く（スナップショットだけだと、書き込み途中の状態を拾う可能性があるため）。EC2 の権限は `s3:PutObject` だけにし、削除はライフサイクル（30日）に任せる。EC2 が乗っ取られても、バックアップを消されないようにするため |
 | S3 の画像 | バージョニングは使わない（`images:prune` の論理削除の猶予期間で代わりにする） |
 | 死活監視 | CloudWatch のステータスチェックのアラーム。通知先は SNS からメールに送る |
 | CPU クレジット | CloudWatch の `CPUCreditBalance` のアラーム（Standard モードで遅くなる前に気づく） |
@@ -437,7 +473,8 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 **インフラ（#53）**
 
 - [ ] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#53）
-- [ ] certbot の初回の取得スクリプトと、更新用の systemd timer を作る（#53）
+- [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
+- [ ] データ用 EBS のマウント（`user_data`）と、`mysqldump` の systemd timer を作る。`mysqldump` から復元する手順を一度試して、この設計書に書く（#53）
 - [ ] Terraform のコード化。tfstate のバケットを手で作るか Terraform で作るかを決める（#53）
 - [ ] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` を GitHub Actions から apply する場合は、OIDC のロールに Budgets の権限を足す（#53）
 - [ ] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions のシークレットに登録する（#53）
