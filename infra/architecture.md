@@ -17,6 +17,10 @@
 
 構成図は draw.io 形式の [architecture.drawio](./architecture.drawio) です。draw.io（デスクトップ版・VS Code 拡張・diagrams.net）で開いて編集します。
 
+![本番環境の構成図](./architecture-prod.png)
+
+GitHub は `.drawio` を図として表示しないので、本番のページを PNG（[architecture-prod.png](./architecture-prod.png)）に書き出して README とこのページに載せています。**図を直したら PNG も書き出し直してください**（draw.io で「本番」のページを開き、ファイル → エクスポート → PNG。倍率 200%、背景は白）。
+
 | ページ | 内容 |
 | --- | --- |
 | 本番 | 常に動かす本番環境 |

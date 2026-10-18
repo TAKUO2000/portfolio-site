@@ -8,6 +8,15 @@
 | --- | --- |
 | `laravel-back` | API（Laravel 13 / PHP 8.4） |
 | `nextjs-front` | フロントエンド（Next.js 16 / Node 22） |
+| `infra` | インフラの設計書と構成図 |
+
+## 本番環境の構成
+
+フロントエンド（Next.js）を Vercel、API（Laravel）と MySQL を AWS の EC2 1台（docker compose）に置き、DNS は Cloudflare で管理する構成です（構築は #53 で行う予定）。
+
+![本番環境の構成図](infra/architecture-prod.png)
+
+設計の詳細は [infra/design.md](infra/design.md)、図の見方やステージング環境の図は [infra/architecture.md](infra/architecture.md) を参照してください。
 
 ## セットアップ（Docker）
 
