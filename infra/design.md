@@ -1,7 +1,7 @@
 # インフラ設計書
 
 本アプリを本番公開するためのインフラ設計です。構成図は [architecture.md](./architecture.md) を参照してください。
-Terraform のコードは #53 で `infra/` に追加する予定です。
+Terraform のコードは #53 で `infra/terraform/` に追加する予定です。
 
 ## 目次
 
@@ -96,8 +96,8 @@ tfstate は同じバケットに置き、キーを環境ごとに分けます（
 | | Elastic IP | `api.takuosblog.com` の向き先 |
 | | EBS（ルート） | gp3 12GB、暗号化する。OS と Docker のイメージを置く。インスタンスを作り直すと消えてよいものだけを置く |
 | | EBS（データ用） | gp3 10GB、暗号化する。`/data` にマウントし、MySQL のデータと証明書を置く。**`envs/prod` に置き、`prevent_destroy = true` にする**（[データの置き場所](#データの置き場所)） |
-| IAM | インスタンスプロファイル | S3 の画像バケットの読み書き、バックアップ用バケットへの `s3:PutObject` だけ、ECR の pull、SSM（`AmazonSSMManagedInstanceCore`）、Parameter Store の読み取り |
-| | GitHub Actions 用のロール | OIDC で引き受ける。ECR への push と SSM Run Command の実行だけを許可する |
+| IAM | インスタンスプロファイル | **自分の環境のものだけ**に絞る。S3 は自分の環境の画像バケットの読み書き（本番はバックアップ用バケットへの `s3:PutObject` も）、Parameter Store は `arn:aws:ssm:ap-northeast-1:<アカウント ID>:parameter/portfolio/<env>/*` の読み取りだけ。ほかに ECR の pull と SSM（`AmazonSSMManagedInstanceCore`）。`modules/app` に `env` 変数を渡して ARN を組み立てる |
+| | GitHub Actions 用のロール | 用途ごとに3つに分ける（[GitHub Actions のロール](#github-actions-のロール)） |
 | S3 | 画像バケット | [S3（画像）](#s3画像)を参照 |
 | | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する |
 | | tfstate バケット | Terraform の状態を保存する。バージョニングを有効にする |
@@ -108,6 +108,21 @@ tfstate は同じバケットに置き、キーを環境ごとに分けます（
 | Budgets | 月の予算（`envs/shared`） | アカウント全体で月 $20。実績が 80% を超えたとき、月末の予測が 100% を超えそうなときにメールで知らせる |
 
 DB だけをプライベートサブネットに分ける構成は採らない。プライベートサブネットから外に出るには NAT Gateway が必要で、高くつくからです。MySQL は EC2 内のコンテナで動かし、ポートを外に公開しないことで守ります。
+
+### GitHub Actions のロール
+
+ステージングの EC2 はインターネットに公開され、DB も毎回作り直すので、本番より侵害されやすい環境です。どの環境からも、本番の秘密情報やリソースに届かないように、権限を環境と用途で分けます。
+
+| ロール | 引き受けられる条件（OIDC の `sub`） | 許可すること |
+| --- | --- | --- |
+| `github-deploy-prod` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/main` | ECR の `portfolio/app` への push。`Env=prod` タグの EC2 に、デプロイ用の SSM ドキュメントだけを `ssm:SendCommand` で実行する |
+| `github-deploy-stg` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/develop` | ECR への push。`Env=stg` タグの EC2 に、デプロイ用の SSM ドキュメントだけを実行する。ステージングの有無を確かめるための `ec2:DescribeInstances` |
+| `github-terraform-stg` | `repo:TAKUO2000/portfolio-site:environment:staging` | `envs/stg` の apply / destroy に必要な権限（VPC・EC2・S3 の stg バケット・IAM など）。作る IAM ロールには permissions boundary を必須にし、自分より強い権限のロールを作れないようにする |
+
+- **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
+- `github-terraform-stg` は、GitHub の Environment（`staging`）に結び付ける。Environment の設定で、実行できるブランチを `main` だけに限定する。`workflow_dispatch` で手動実行したときだけ使う
+- **`envs/shared` と `envs/prod` は GitHub Actions から apply しない**。手元から、MFA を付けた管理用のユーザーで apply する。この2つを Actions から apply できるロールを作ると、ワークフローを書き換えられただけでアカウント全体を奪われるため
+- Cloudflare の API トークンも、ステージングの DNS レコードを作るために GitHub Actions のシークレットに置く。対象ゾーンの DNS 編集権限だけに絞る
 
 ### データの置き場所
 
@@ -279,7 +294,7 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 | 設定 | 内容 |
 | --- | --- |
 | バケット | 本番用を新しく作る（開発用とは分ける） |
-| パブリックアクセス | `images/*` と `tmp/*` だけ、バケットポリシーで `s3:GetObject` を公開する（下の「`tmp/*` を公開する理由」を参照） |
+| パブリックアクセス | `images/*` だけ、バケットポリシーで `s3:GetObject` を公開する。**`tmp/*` は公開しない**（下の「`tmp/*` を公開しない理由」を参照） |
 | CORS | ブラウザが署名付き URL へ直接 PUT するため、`AllowedOrigins: https://takuosblog.com`、`AllowedMethods: PUT, GET`、`AllowedHeaders: Content-Type` を設定する（ブラウザが PUT で付けるヘッダーは `Content-Type` だけ。`nextjs-front/app/lib/uploadImage.ts`） |
 | ライフサイクル | `tmp/` プレフィックスは1日で削除する（[画像管理の仕組み](../docs/image-management.md#本番で必要な準備)） |
 | アクセス方法 | EC2 の IAM ロールを使う。`AWS_ACCESS_KEY_ID` と `AWS_SECRET_ACCESS_KEY` は設定しない |
@@ -288,16 +303,17 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 本番のバケット名は `nextjs-front/next.config.ts` の `images.remotePatterns` にも追加する（今は開発用のバケットだけが入っている）。
 
-**`tmp/*` を公開する理由**
+**`tmp/*` を公開しない理由**
 
-`tmp/` は、アップロードしたがまだ記事に保存していない画像の置き場です。公開すると、下書き中の画像や使わなかった画像も、URL を知っていれば誰でも読めます。それでも今は公開します。
+`tmp/` は、アップロードしたがまだ記事に保存していない画像の置き場です。公開すると、使わなかった画像も URL を知っていれば誰でも読めるので、公開しません。公開しなくても、今のコードのまま動きます。
 
-- 記事の編集画面は、アップロード直後のプレビューに `tmp/` の URL（`/api/images/upload-url` が返す `image_url`）を使っている。非公開にすると、プレビューが表示されなくなる
-- キーは UUID v4（`ImageController`）で、推測できない。URL を知っているのは、アップロードした管理者だけ
-- `tmp/` の画像は1日で消える（ライフサイクルルール）
-- 下書きの記事の画像は保存した時点で `images/` に移るので、`tmp/` を非公開にしても下書きの画像は見える。`tmp/` だけ閉じても効果は限られる
+- 編集画面のプレビューは、ブラウザが持っているファイルから作った Blob URL（`URL.createObjectURL(file)`）で表示している（`MarkdownEditor.tsx`、`HeaderImageInput.tsx`）。`tmp/` の URL はプレビューに使っていない
+- `tmp/` へのアップロードは記事を保存するときに行う。`/api/images/upload-url` が返す `image_url`（`tmp/` の URL）は、本文中の Blob URL と差し替えてサーバーへ送るだけで、ブラウザが読みに行くことはない（`ArticleForm.tsx`）
+- サーバーは保存時に、本文の `tmp/` の URL からキーを取り出し、IAM ロールの権限で `images/` へコピーして、本文の URL も書き換える。公開設定は関係しない
+- 保存に失敗したときも、画面の本文は Blob URL のまま残る
+- 開発環境の MinIO はバケット全体を公開している（`docker-compose.yml` の `minio-init`）が、本番では `images/*` だけにする
 
-公開前の画像を見せたくなったら、`tmp/`（と下書きの画像）を非公開にし、プレビューには署名付き GET URL を返すように `ImageStorage::objectUrl()` を変える。その場合、本文に入った署名付き URL を保存時に `images/` の URL へ書き換える処理も確かめる。
+注意：下書き・非表示の記事の画像は、保存した時点で `images/` に移り、記事から参照されている間は残ります。`images/*` は公開しているので、URL を知っていれば公開前の画像も読めます（キーは推測しにくい）。公開前の画像を隠したくなったら、記事の公開時に画像を移す、または下書きの画像を署名付き URL で返すなど、`images/` 側の設計を見直します。
 
 ---
 
@@ -375,9 +391,9 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 
 **バックエンド**：GitHub Actions で行う。
 
-1. OIDC で AWS のロールを引き受ける（長期のアクセスキーは使わない）
+1. OIDC で AWS のロール（本番は `github-deploy-prod`）を引き受ける（長期のアクセスキーは使わない）
 2. `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、コミットの SHA をタグにして ECR へ push する
-3. SSM Run Command で EC2 に次を実行させる
+3. SSM Run Command で、デプロイ用の SSM ドキュメント（`portfolio-deploy`）を EC2 に実行させる。ドキュメントの中身は次のとおり
    - Parameter Store から `.env` を作り直す
    - `docker compose -f docker-compose.prod.yml pull`
    - `docker compose -f docker-compose.prod.yml up -d`
@@ -410,9 +426,12 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 
 ### 使い方
 
-1. GitHub Actions の手動実行（`workflow_dispatch`）で `envs/stg` を `terraform apply` する
+1. GitHub Actions の手動実行（`workflow_dispatch`、`github-terraform-stg` のロール）で `envs/stg` を `terraform apply` する
 2. EC2 の起動後、`develop` の最新イメージを SSM Run Command でデプロイする（`migrate` まで行う）
-3. Session Manager で接続し、`php artisan user:create-admin` で管理者を作ってから、`php artisan db:seed --force` でサンプルデータを入れる（[管理者アカウントの作成](#管理者アカウントの作成)）
+3. Session Manager で接続し、`php artisan user:create-admin` で管理者を作ってから、サンプルデータを入れる（[管理者アカウントの作成](#管理者アカウントの作成)）
+   - **#80 がマージされるまで、`php artisan db:seed` は実行しない**。今の `DatabaseSeeder` は `UserSeeder` を必ず呼ぶので、公開されたステージングに `admin@example.com` / `password` の管理者ができてしまう
+   - それまでは、シーダーを1つずつ指定して実行する：`php artisan db:seed --class=CategorySeeder --force`、`--class=TagSeeder`、`--class=ArticleImageSeeder` の順
+   - #80 のあとは `php artisan db:seed --force` でよい
 4. 起動している間は、`develop` に push するたびに同じ手順でデプロイする。ステージングが無いときはデプロイを飛ばす（EC2 のタグで有無を確かめる）
 5. 確認が終わったら、手動実行で `terraform destroy` する
 
@@ -457,6 +476,8 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 ## セキュリティ
 
 - SSH の 22 番は開けず、Session Manager で接続する
+- IAM の権限は環境ごとに分ける。ステージングの EC2 やロールから、本番の Parameter Store・S3・EC2 に届かないようにする（[GitHub Actions のロール](#github-actions-のロール)）
+- `envs/shared` と `envs/prod` は GitHub Actions から apply せず、手元から MFA 付きのユーザーで apply する
 - IMDSv2 を必須にする
 - EBS を暗号化する
 - MySQL のポートはホストに公開しない（compose の `ports` を書かない）
@@ -476,7 +497,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
 - [ ] データ用 EBS のマウント（`user_data`）と、`mysqldump` の systemd timer を作る。`mysqldump` から復元する手順を一度試して、この設計書に書く（#53）
 - [ ] Terraform のコード化。tfstate のバケットを手で作るか Terraform で作るかを決める（#53）
-- [ ] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` を GitHub Actions から apply する場合は、OIDC のロールに Budgets の権限を足す（#53）
+- [ ] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#53）
 - [ ] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions のシークレットに登録する（#53）
 - [ ] GitHub Actions のデプロイワークフローを作る（#53）
 - [ ] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#53）
