@@ -62,7 +62,7 @@ export default function HeaderAuthStatus() {
 
   if (user) {
     return (
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:gap-6">
         <span className="max-w-36 truncate text-sm font-semibold">
           {user.name}
         </span>
@@ -72,7 +72,7 @@ export default function HeaderAuthStatus() {
           onClick={handleLogout}
           disabled={isLoggingOut}
         >
-          ログアウト
+          Sign out
         </button>
 
         {user.role === "admin" && (
@@ -98,21 +98,22 @@ export default function HeaderAuthStatus() {
   }
 
   return (
-    <ul className="flex gap-8">
+    // 管理者向けの記事投稿・記事管理ボタンと同じ形にそろえ、新規登録の方を塗りで目立たせる
+    <ul className="flex flex-col items-start gap-4 md:flex-row md:items-center md:gap-3">
       <li>
         <Link
           href="/auth/sign-up"
-          className="text-sm transition-opacity hover:opacity-70"
+          className="text-sm transition-opacity hover:opacity-70 bg-white text-black border-[1.5px] border-white rounded-4xl px-3 py-1 flex items-center"
         >
-          サインアップ
+          Sign up
         </Link>
       </li>
       <li>
         <Link
           href="/auth/sign-in"
-          className="text-sm transition-opacity hover:opacity-70"
+          className="text-sm transition-opacity hover:opacity-70 border-[1.5px] border-white rounded-4xl px-3 py-1 flex items-center"
         >
-          ログイン
+          Sign in
         </Link>
       </li>
     </ul>
