@@ -19,11 +19,14 @@ class VerifyEmailController extends Controller
      */
     public function __invoke(Request $request, string $id, string $hash): RedirectResponse
     {
+        // 署名が不正ならDBを見るまでもないので、先に返す
+        if (! $request->hasValidSignature()) {
+            return $this->redirectToFrontend('invalid');
+        }
+
         $user = User::find($id);
 
-        if (! $request->hasValidSignature()
-            || ! $user
-            || ! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+        if (! $user || ! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
             return $this->redirectToFrontend('invalid');
         }
 
