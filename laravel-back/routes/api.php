@@ -9,7 +9,8 @@ use App\Http\Controllers\ArticleLikeController;
 use App\Http\Controllers\ImageController;
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
-    return $request->user();
+    // 画面で使う項目だけを返す（日時や削除状態は出さない）
+    return $request->user()->only(['id', 'name', 'email', 'role']);
 });
 
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {

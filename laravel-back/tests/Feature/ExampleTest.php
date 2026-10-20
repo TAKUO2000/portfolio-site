@@ -1,7 +1,5 @@
 <?php
 
-test('example', function () {
-    $response = $this->get('/');
-
-    $response->assertStatus(200);
+test('トップページはバージョンなどの情報を返さない', function () {
+    $this->get('/')->assertNotFound();
 });
