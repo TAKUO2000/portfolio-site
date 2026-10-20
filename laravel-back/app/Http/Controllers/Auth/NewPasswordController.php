@@ -42,9 +42,10 @@ class NewPasswordController extends Controller
             }
         );
 
+        // 未登録のメールアドレスもトークンが違うときと同じエラーにし、登録済みかを判別できないようにする
         if ($status != Password::PASSWORD_RESET) {
             throw ValidationException::withMessages([
-                'email' => [__($status)],
+                'email' => [__(Password::INVALID_TOKEN)],
             ]);
         }
 
