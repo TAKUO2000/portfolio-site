@@ -8,6 +8,8 @@ export interface User {
   name: string;
   email: string;
   role: "admin" | "user";
+  /** ログイン中のユーザー（/api/user）だけが持つ。記事の著者などには含まれない */
+  email_verified?: boolean;
 }
 
 export interface Category {

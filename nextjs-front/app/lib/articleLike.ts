@@ -15,6 +15,14 @@ export interface LikeStatus {
   like_count: number;
 }
 
+/** メールアドレスを確認していないユーザーがいいねしようとしたとき(409)のエラー */
+export class EmailNotVerifiedError extends Error {
+  constructor() {
+    super("メールアドレスの確認が済んでいません。");
+    this.name = "EmailNotVerifiedError";
+  }
+}
+
 const JSON_HEADERS = {
   Accept: "application/json",
   "X-Requested-With": "XMLHttpRequest",
@@ -51,6 +59,7 @@ export async function setLike(
     headers: { ...JSON_HEADERS, "X-XSRF-TOKEN": xsrfToken },
   });
 
+  if (response.status === 409) throw new EmailNotVerifiedError();
   if (!response.ok) throw new Error("いいねできませんでした。");
 
   return (await response.json()).data;

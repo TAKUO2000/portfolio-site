@@ -7,11 +7,17 @@ import {
   waitFor,
 } from "@testing-library/react";
 import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
-import { fetchLikeStatus, setLike } from "@/app/lib/articleLike";
+import {
+  EmailNotVerifiedError,
+  fetchLikeStatus,
+  setLike,
+} from "@/app/lib/articleLike";
 
 // vitestではSVGRが効かずSVGがURL文字列になるため、空のコンポーネントに置き換える
 vi.mock("@/public/good_outline.svg", () => ({ default: () => null }));
-vi.mock("@/app/lib/articleLike", () => ({
+// エラーのクラスは本物を使い、APIを呼ぶ関数だけを差し替える
+vi.mock("@/app/lib/articleLike", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/app/lib/articleLike")>()),
   fetchLikeStatus: vi.fn(),
   setLike: vi.fn(),
 }));
@@ -92,5 +98,21 @@ describe("ArticleActionButtons", () => {
     expect(setLikeMock).toHaveBeenCalledWith(1, false);
     expect(screen.getByText("good:3")).toBeDefined();
     expect(likeButton().getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("メールアドレスが未確認なら元の状態に戻し、確認の画面へ案内する", async () => {
+    fetchLikeStatusMock.mockResolvedValue({ liked: false, like_count: 3 });
+    setLikeMock.mockRejectedValue(new EmailNotVerifiedError());
+
+    render(<ArticleActionButtons articleId={1} likeCount={3} />);
+    await waitFor(() => expect(likeButton().disabled).toBe(false));
+    fireEvent.click(likeButton());
+
+    const link = await screen.findByRole("link", {
+      name: "メールアドレスを確認",
+    });
+    expect(link.getAttribute("href")).toBe("/auth/verify-email");
+    expect(screen.getByText("good:3")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

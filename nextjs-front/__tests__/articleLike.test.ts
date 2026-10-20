@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchLikeStatus, setLike } from "@/app/lib/articleLike";
+import {
+  EmailNotVerifiedError,
+  fetchLikeStatus,
+  setLike,
+} from "@/app/lib/articleLike";
 
 vi.mock("@/app/auth/authClient", () => ({
   API_BASE_URL: "http://api.test",
@@ -64,5 +68,13 @@ describe("articleLike", () => {
     mockFetch(429);
 
     await expect(setLike(1, true)).rejects.toThrow();
+  });
+
+  it("メールアドレスが未確認(409)なら、それと分かるエラーにする", async () => {
+    mockFetch(409);
+
+    await expect(setLike(1, true)).rejects.toBeInstanceOf(
+      EmailNotVerifiedError,
+    );
   });
 });
