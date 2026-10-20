@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
+
 import ResetPasswordForm from "./ResetPasswordForm";
+
+// URLに再設定トークンとメールアドレスが入るため、この画面から外へ出るリクエストにReferrerを付けない
+export const metadata: Metadata = {
+  referrer: "no-referrer",
+};
 
 // 再設定メールのリンク（BEのAppServiceProviderで組み立てる）から開く画面
 export default async function PasswordReset({

@@ -44,8 +44,12 @@ export default function ForgotPassword() {
         return;
       }
 
+      // サーバーの文言は文字列のときだけ使う（形が想定外でも画面を壊さない）
+      const status =
+        typeof responseBody?.status === "string" ? responseBody.status : null;
       setStatusMessage(
-        responseBody?.status ?? "パスワード再設定用のメールを送信しました。",
+        status ??
+          "入力したメールアドレスが登録されていれば、パスワード再設定用のメールを送信しました。",
       );
     } catch (error) {
       setErrorMessage(
