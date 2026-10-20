@@ -48,6 +48,16 @@ test('再設定メールの依頼は、登録の有無や再送の待ち時間�
     Notification::assertSentToTimes($user, ResetPassword::class, 1);
 });
 
+test('再設定メールの依頼は同じ IP から1分に6回までに制限される', function () {
+    Notification::fake();
+
+    foreach (range(1, 6) as $i) {
+        $this->postJson(route('password.email'), ['email' => "user{$i}@example.com"])->assertOk();
+    }
+
+    $this->postJson(route('password.email'), ['email' => 'user7@example.com'])->assertTooManyRequests();
+});
+
 test('password can be reset with valid token', function () {
     Notification::fake();
 
@@ -87,4 +97,19 @@ test('未登録のメールアドレスでの再設定は、トークンが違�
     $wrongToken->assertUnprocessable();
     expect($unknownEmail->status())->toBe($wrongToken->status())
         ->and($unknownEmail->json())->toBe($wrongToken->json());
+});
+
+test('パスワードの再設定は同じ IP から1分に6回までに制限される', function () {
+    $payload = [
+        'token' => 'invalid-token',
+        'email' => 'nobody@example.com',
+        'password' => 'password',
+        'password_confirmation' => 'password',
+    ];
+
+    foreach (range(1, 6) as $i) {
+        $this->postJson(route('password.store'), $payload)->assertUnprocessable();
+    }
+
+    $this->postJson(route('password.store'), $payload)->assertTooManyRequests();
 });

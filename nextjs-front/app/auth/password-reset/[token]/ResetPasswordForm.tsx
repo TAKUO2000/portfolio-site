@@ -25,6 +25,13 @@ export default function ResetPasswordForm({ token, initialEmail }: Props) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage("");
+
+    // 打ち間違いはサーバーに聞くまでもないので、送る前に止める
+    if (password !== passwordConfirmation) {
+      setErrorMessage("新しいパスワードと確認用のパスワードが違います。");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
