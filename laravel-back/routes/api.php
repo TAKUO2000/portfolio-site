@@ -10,7 +10,10 @@ use App\Http\Controllers\ImageController;
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
     // 画面で使う項目だけを返す（日時や削除状態は出さない）
-    return $request->user()->only(['id', 'name', 'email', 'role']);
+    return [
+        ...$request->user()->only(['id', 'name', 'email', 'role']),
+        'email_verified' => $request->user()->hasVerifiedEmail(),
+    ];
 });
 
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
@@ -34,8 +37,11 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])
     ->whereNumber('id')
     ->group(function () {
         Route::get('/', [ArticleLikeController::class, 'show']);
-        Route::post('/', [ArticleLikeController::class, 'store']);
-        Route::delete('/', [ArticleLikeController::class, 'destroy']);
+        // いいねできるのは、メールアドレスを確認したユーザーだけ（確認前は409）
+        Route::middleware('verified')->group(function () {
+            Route::post('/', [ArticleLikeController::class, 'store']);
+            Route::delete('/', [ArticleLikeController::class, 'destroy']);
+        });
     });
 
 Route::prefix('articles')->group(function () {
