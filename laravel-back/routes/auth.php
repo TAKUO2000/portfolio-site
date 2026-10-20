@@ -26,9 +26,10 @@ Route::post('/reset-password', [NewPasswordController::class, 'store'])
     ->middleware(['guest', 'throttle:6,1'])
     ->name('password.store');
 
-// メールのリンクから開くためログインは求めない。署名の検証はコントローラーで行い、無効でもFEへ戻す
+// メールのリンクから開くためログインは求めない。署名の検証はコントローラーで行い、無効でもFEへ戻す。
+// 署名で守られているので回数は緩めにする（メールのセキュリティ製品の先読みや、同じNATの利用者で429にならないように）
 Route::get('/verify-email/{id}/{hash}', VerifyEmailController::class)
-    ->middleware('throttle:6,1')
+    ->middleware('throttle:30,1')
     ->name('verification.verify');
 
 Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])

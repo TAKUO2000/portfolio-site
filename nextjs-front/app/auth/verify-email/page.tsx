@@ -64,6 +64,7 @@ export default function VerifyEmail() {
         return;
       }
 
+      // 別のタブやスマホで確認リンクを開いたあとに再送を押した場合。送らずに、確認済みの表示に切り替える
       if (responseBody?.status === "already-verified") {
         setUser((current) => current && { ...current, email_verified: true });
         return;
