@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import GoodIcon from "@/public/good_outline.svg";
 import {
+  EmailNotVerifiedError,
   fetchLikeStatus,
   setLike,
   type LikeStatus,
@@ -27,7 +28,9 @@ export default function ArticleActionButtons({
   // 自分がいいね済みか分かるまでは押せない。未ログインはnull
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [message, setMessage] = useState<"login" | "error" | null>(null);
+  const [message, setMessage] = useState<"login" | "verify" | "error" | null>(
+    null,
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -67,9 +70,9 @@ export default function ArticleActionButtons({
 
     try {
       setLikeState(await setLike(articleId, nextLiked));
-    } catch {
+    } catch (error) {
       setLikeState(previous);
-      setMessage("error");
+      setMessage(error instanceof EmailNotVerifiedError ? "verify" : "error");
     } finally {
       setIsSending(false);
     }
@@ -115,6 +118,15 @@ export default function ArticleActionButtons({
           いいねするには
           <Link href="/auth/sign-in" className="text-blue-500 underline">
             ログイン
+          </Link>
+          してください
+        </p>
+      )}
+      {message === "verify" && (
+        <p className="mt-3 text-center text-xs">
+          いいねするには
+          <Link href="/auth/verify-email" className="text-blue-500 underline">
+            メールアドレスを確認
           </Link>
           してください
         </p>

@@ -8,8 +8,9 @@ use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
+// 登録は誰でも呼べるため、IP ごとに1分あたりの回数を絞る
 Route::post('/register', [RegisteredUserController::class, 'store'])
-    ->middleware('guest')
+    ->middleware(['guest', 'throttle:6,1'])
     ->name('register');
 
 Route::post('/login', [AuthenticatedSessionController::class, 'store'])
@@ -25,8 +26,10 @@ Route::post('/reset-password', [NewPasswordController::class, 'store'])
     ->middleware(['guest', 'throttle:6,1'])
     ->name('password.store');
 
+// メールのリンクから開くためログインは求めない。署名の検証はコントローラーで行い、無効でもFEへ戻す。
+// 署名で守られているので回数は緩めにする（メールのセキュリティ製品の先読みや、同じNATの利用者で429にならないように）
 Route::get('/verify-email/{id}/{hash}', VerifyEmailController::class)
-    ->middleware(['auth:sanctum', 'signed', 'throttle:6,1'])
+    ->middleware('throttle:30,1')
     ->name('verification.verify');
 
 Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])

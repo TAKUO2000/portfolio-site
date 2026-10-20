@@ -19,6 +19,17 @@ test('未ログインではいいねの取得・追加・取り消しができ�
     $this->assertDatabaseCount('reactions', 0);
 });
 
+test('メールアドレスを確認していないユーザーは、いいねの追加・取り消しができない', function () {
+    $unverifiedUser = User::factory()->unverified()->create(['role' => 'user']);
+    $url = "/api/articles/{$this->article->id}/like";
+
+    // いいねしたかの表示は確認前でもできる
+    $this->actingAs($unverifiedUser)->getJson($url)->assertOk();
+    $this->actingAs($unverifiedUser)->postJson($url)->assertStatus(409);
+    $this->actingAs($unverifiedUser)->deleteJson($url)->assertStatus(409);
+    $this->assertDatabaseCount('reactions', 0);
+});
+
 test('一般ユーザーが公開記事にいいねできる', function () {
     $this->actingAs($this->generalUser)
         ->postJson("/api/articles/{$this->article->id}/like")

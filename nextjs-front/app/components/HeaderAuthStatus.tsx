@@ -66,6 +66,14 @@ export default function HeaderAuthStatus() {
         <span className="max-w-36 truncate text-sm font-semibold">
           {user.name}
         </span>
+        {user.email_verified === false && (
+          <Link
+            href="/auth/verify-email"
+            className="text-sm underline transition-opacity hover:opacity-70"
+          >
+            メールを確認
+          </Link>
+        )}
         <button
           className="text-sm transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-50"
           type="button"

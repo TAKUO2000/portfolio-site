@@ -51,7 +51,8 @@ export default function SignUp() {
         return;
       }
 
-      router.push("/");
+      // 登録するとメールアドレスの確認メールが送られるので、確認を促す画面へ移る
+      router.push("/auth/verify-email");
       router.refresh();
     } catch (error) {
       setErrorMessage(
