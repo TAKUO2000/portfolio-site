@@ -23,7 +23,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         ResetPassword::createUrlUsing(function (object $notifiable, string $token) {
-            return config('app.frontend_url')."/password-reset/$token?email={$notifiable->getEmailForPasswordReset()}";
+            // FEの再設定画面（nextjs-front/app/auth/password-reset/[token]）へのリンク
+            return config('app.frontend_url')."/auth/password-reset/$token?email=".urlencode($notifiable->getEmailForPasswordReset());
         });
     }
 }

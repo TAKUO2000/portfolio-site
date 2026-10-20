@@ -152,12 +152,16 @@ class ImageStorage
         $config = [
             'version'                 => 'latest',
             'region'                  => $this->config('region'),
-            'credentials'             => [
-                'key'    => $this->config('key'),
-                'secret' => $this->config('secret'),
-            ],
             'use_path_style_endpoint' => (bool) $this->config('use_path_style_endpoint'),
         ];
+
+        // キーが無ければcredentialsを渡さず、SDKの既定の探索（本番ではEC2のインスタンスロール）に任せる
+        if ($this->config('key') && $this->config('secret')) {
+            $config['credentials'] = [
+                'key'    => $this->config('key'),
+                'secret' => $this->config('secret'),
+            ];
+        }
 
         // 未設定の場合はSDKが実AWS S3のエンドポイントを組み立てる
         if ($endpoint) {

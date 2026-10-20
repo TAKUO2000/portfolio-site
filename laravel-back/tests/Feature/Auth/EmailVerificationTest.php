@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 
 test('email can be verified', function () {
+    // 期待値をconfig()から作ると実装と同じ値を読むだけになるため、既知の値を入れて比較する
+    config(['app.frontend_url' => 'https://fe.example.com']);
+
     $user = User::factory()->unverified()->create();
 
     Event::fake();
@@ -20,7 +23,7 @@ test('email can be verified', function () {
 
     Event::assertDispatched(Verified::class);
     expect($user->fresh()->hasVerifiedEmail())->toBeTrue();
-    $response->assertRedirect(config('app.frontend_url').'/dashboard?verified=1');
+    $response->assertRedirect('https://fe.example.com/dashboard?verified=1');
 });
 
 test('email is not verified with invalid hash', function () {

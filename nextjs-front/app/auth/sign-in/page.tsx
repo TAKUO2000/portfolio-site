@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { API_BASE_URL, getApiErrorMessage, getCsrfToken } from "../authClient";
@@ -103,6 +104,15 @@ export default function SignIn() {
             {isSubmitting ? "ログイン中..." : "ログイン"}
           </button>
         </form>
+
+        <p className="text-center text-sm text-neutral-600">
+          <Link
+            className="font-semibold text-neutral-950"
+            href="/auth/forgot-password"
+          >
+            パスワードを忘れた方はこちら
+          </Link>
+        </p>
       </section>
     </main>
   );
