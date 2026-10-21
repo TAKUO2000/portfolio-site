@@ -363,25 +363,25 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 ## 管理者アカウントの作成
 
 本番でもステージングでも、**管理者はシーダーで作らず、Artisan コマンドを対話的に実行して作ります**。
-固定のパスワードがコードやシーダーに残らないようにするためです。コマンドの追加とシーダーの修正は **#80** で対応します。
+固定のパスワードがコードやシーダーに残らないようにするためです（#80）。
 
 ```bash
 # Session Manager で EC2 に接続してから実行する
 docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 ```
 
-`user:create-admin`（これから作る）の仕様：
+`user:create-admin` の仕様：
 
-- 名前・メールアドレス・パスワードを対話的に聞く。パスワードは画面に表示せず、確認のためにもう一度入力させる
+- 名前・メールアドレス・パスワードを対話的に聞く（メールアドレスと名前は引数でも渡せる）。パスワードは画面に表示せず、確認のためにもう一度入力させる
 - パスワードをコマンドの引数やオプションでは受け取らない（シェルの履歴やプロセス一覧に残るため）
 - メールアドレスの重複とパスワードの強さは、会員登録と同じルールで検証する
-- `role` を `admin` にして作る
+- `role` を `admin` にし、メールアドレスを確認済みにして作る（未確認だと、管理者もいいねできないため）
 
 シーダーの扱い：
 
-- `DatabaseSeeder` は、`local` と `testing` の環境でだけ `UserSeeder`（`admin@example.com` / `password` などの固定ユーザー）を呼ぶようにする
-- 記事などのサンプルデータを入れるシーダー（`CategorySeeder`、`TagSeeder`、`ArticleImageSeeder`）は、ステージングでも使う。`ArticleImageSeeder` は既存のユーザー（`User::first()`）を記事の作者にするので、**先に `user:create-admin` で管理者を作ってから**実行する
-- 本番ではシーダーを実行しない
+- `UserSeeder`（`admin@example.com` / `password` などの固定ユーザー）は `local` と `testing` でだけ動く。`DatabaseSeeder` もその環境でだけ呼び、ほかの環境で `--class` で直接指定すると中断する
+- `DatabaseSeeder` は、マスタ（`MasterDataSeeder`：カテゴリとタグ）とサンプルの記事（`ArticleImageSeeder`）を入れる。ステージングでも使う。`ArticleImageSeeder` は既存の管理者を記事の作者にするので、**先に `user:create-admin` で管理者を作ってから**実行する（管理者がいないと中断する）
+- 本番では `DatabaseSeeder` と `ArticleImageSeeder` は中断する。カテゴリとタグには管理画面が無いので、マスタだけを `php artisan db:seed --class=MasterDataSeeder --force` で入れる（何度実行しても重複しない）
 
 ---
 
@@ -429,9 +429,7 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 1. GitHub Actions の手動実行（`workflow_dispatch`、`github-terraform-stg` のロール）で `envs/stg` を `terraform apply` する
 2. EC2 の起動後、`develop` の最新イメージを SSM Run Command でデプロイする（`migrate` まで行う）
 3. Session Manager で接続し、`php artisan user:create-admin` で管理者を作ってから、サンプルデータを入れる（[管理者アカウントの作成](#管理者アカウントの作成)）
-   - **#80 がマージされるまで、`php artisan db:seed` は実行しない**。今の `DatabaseSeeder` は `UserSeeder` を必ず呼ぶので、公開されたステージングに `admin@example.com` / `password` の管理者ができてしまう
-   - それまでは、シーダーを1つずつ指定して実行する：`php artisan db:seed --class=CategorySeeder --force`、`--class=TagSeeder`、`--class=ArticleImageSeeder` の順
-   - #80 のあとは `php artisan db:seed --force` でよい
+   - サンプルデータは `php artisan db:seed --force` で入れる。ステージング（`APP_ENV=staging`）では固定のパスワードのユーザーは作られない
 4. 起動している間は、`develop` に push するたびに同じ手順でデプロイする。ステージングが無いときはデプロイを飛ばす（EC2 のタグで有無を確かめる）
 5. 確認が終わったら、手動実行で `terraform destroy` する
 
@@ -453,7 +451,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - **ステージングはシークレットウィンドウ（または別のブラウザプロファイル）で開く**。本番の Cookie は `.takuosblog.com` に向けて発行されるため、`stg.takuosblog.com` にも送られる。本番にログインしたブラウザでステージングを開くと `XSRF-TOKEN` が2つ存在する状態になり、CSRF エラー（419）が起きることがある
 - **TLS 証明書は作るたびに取り直す**。作るたびに certbot の初回の取得（`--standalone`）から行う。Let's Encrypt には同じホスト名の証明書を週5回までという発行制限があり、超えると最長1週間は取得できない。1週間に何度も作り直すときは気をつける。手順を試すだけなら、`--staging`（Let's Encrypt のテスト用の環境。ブラウザは信頼しない）で取得する
 - **ステージングが無い間、`stg.takuosblog.com` は API につながらずエラーになる**。Vercel の Preview はそのまま残るが、気にしない
-- **固定のパスワードの管理者を作らない**。今の `UserSeeder` は `admin@example.com` / `password` の管理者を作る。ステージングはインターネットに公開されるので、そのままだと誰でも管理者としてログインできてしまう。`DatabaseSeeder` が `local` と `testing` 以外で `UserSeeder` を呼ばないように直すまでは、ステージングで `db:seed` を実行しない
+- **固定のパスワードの管理者を作らない**。`UserSeeder` は `admin@example.com` / `password` の管理者を作る。ステージングはインターネットに公開されるので、作ると誰でも管理者としてログインできてしまう。そのため `UserSeeder` は `local` と `testing` 以外では中断する（`APP_ENV` を `local` にしない）
 - 作り直すたびに DB は空になるので、管理者もそのたびに `user:create-admin` で作る
 - シーダーの画像（`ArticleImageSeeder`）は S3 ディスクに直接置く作りなので、stg バケットでもそのまま動く
 
@@ -504,8 +502,8 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 
 **アプリ側**
 
-- [ ] `php artisan user:create-admin` を作る（#80、[管理者アカウントの作成](#管理者アカウントの作成)）
-- [ ] `DatabaseSeeder` が `local` と `testing` 以外で `UserSeeder` を呼ばないようにする（#80）
+- [x] `php artisan user:create-admin` を作る（#80、[管理者アカウントの作成](#管理者アカウントの作成)）
+- [x] `DatabaseSeeder` が `local` と `testing` 以外で `UserSeeder` を呼ばないようにする（#80）
 - [ ] `config('app.frontend_url')` を定義し、S3 の認証情報をインスタンスロールで取れるようにする（`ImageStorage` がアクセスキーを常に渡している）。本番用の環境変数の雛形を作る（#79）
 - [ ] 本番のバケットを `next.config.ts` の `remotePatterns` に追加できるようにする。`NEXT_PUBLIC_API_BASE_URL` の未設定を本番のビルドで検出する（#85）
 - [ ] API の全ルートで `StartSession` が動き、ログインと関係ない応答にもセッション Cookie が付く件（#87）
