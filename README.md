@@ -70,3 +70,15 @@ make docker-down  # 停止
 起動すると、フロントエンドは http://localhost:3000 、API は http://localhost:8000 で開けます。
 
 ポートの変更や Docker を使わない場合の手順などは [docs/development.md](docs/development.md) に、画像管理の仕組みは [docs/image-management.md](docs/image-management.md) にまとめています。
+
+## 本番の初期設定
+
+本番では、固定のパスワードの管理者やサンプルの記事を作らないよう、シーダーをそのまま流しません（`php artisan db:seed` は本番では中断します）。最初に次の順で実行します。
+
+```bash
+php artisan migrate --force                                  # テーブルを作る
+php artisan db:seed --class=MasterDataSeeder --force          # カテゴリ・タグのマスタを入れる（何度実行しても重複しない）
+php artisan user:create-admin                                 # 管理者を作る（名前・メールアドレス・パスワードを対話的に聞く）
+```
+
+`user:create-admin` のパスワードは対話入力でだけ受け取ります（シェルの履歴やプロセス一覧に残さないため）。作った管理者はメールアドレスを確認済みになります。ステージングでの手順は [infra/design.md](infra/design.md#ステージング環境) にまとめています。

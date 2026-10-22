@@ -12,7 +12,7 @@ class CategorySeeder extends Seeder
         $categories = ['技術', '趣味', 'ビジネス', 'その他'];
 
         foreach ($categories as $name) {
-            Category::create(['name' => $name]);
+            Category::firstOrCreate(['name' => $name]);
         }
     }
 }

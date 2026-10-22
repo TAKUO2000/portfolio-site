@@ -12,7 +12,7 @@ class TagSeeder extends Seeder
         $tags = ['Laravel', 'Vue.js', 'AWS', 'Docker', 'PHP', 'JavaScript'];
 
         foreach ($tags as $name) {
-            Tag::create(['name' => $name]);
+            Tag::firstOrCreate(['name' => $name]);
         }
     }
 }

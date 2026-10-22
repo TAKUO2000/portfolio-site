@@ -10,12 +10,19 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 class ArticleImageSeeder extends Seeder
 {
   public function run(): void
   {
-    $user = User::first();
+    // デモ記事が公開され、画像も本番のバケットに置かれてしまうため
+    if (app()->environment('production')) {
+      throw new RuntimeException('本番ではサンプルの記事を入れません。');
+    }
+
+    $user = User::where('role', 'admin')->first()
+      ?? throw new RuntimeException('記事の作者にする管理者がいません。先に user:create-admin で管理者を作ってください。');
     $categories = Category::pluck('id', 'name');
     $tags = Tag::pluck('id', 'name');
 
