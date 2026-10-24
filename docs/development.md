@@ -69,7 +69,7 @@ FRONTEND_PORT=3001
 
 ## Docker を使わない場合
 
-ホストに PHP 8.4 以上と Node 22（`nextjs-front/.nvmrc` 参照）、MySQL が必要です。
+ホストに PHP 8.4 以上と Node 24（`nextjs-front/.nvmrc` 参照）、MySQL が必要です。
 
 ```bash
 make setup
