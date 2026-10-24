@@ -1,6 +1,6 @@
-FROM php:8.4-fpm
+FROM php:8.4.27-fpm
 
-# mbstring / curl / xml はphp:8.4-fpmに組み込み済みなのでビルド対象から除外している
+# mbstring / curl / xml は公式の php イメージに組み込み済みなのでビルド対象から除外している
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng-dev \
         libjpeg62-turbo-dev \
