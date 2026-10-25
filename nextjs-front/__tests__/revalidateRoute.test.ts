@@ -34,6 +34,13 @@ describe("POST /api/revalidate", () => {
     expect(revalidateTag).toHaveBeenCalledWith("articles", "max");
   });
 
+  it("Bearerの大文字小文字は区別しない", async () => {
+    const res = await postWith("bearer secret");
+
+    expect(res.status).toBe(200);
+    expect(revalidateTag).toHaveBeenCalledWith("articles", "max");
+  });
+
   it("シークレットが違えば401を返し、キャッシュは捨てない", async () => {
     const res = await postWith("Bearer wrong");
 

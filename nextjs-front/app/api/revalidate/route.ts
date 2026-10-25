@@ -18,11 +18,10 @@ export async function POST(request: Request) {
     return Response.json({ revalidated: false }, { status: 500 });
   }
 
-  // 接頭辞の無い「Authorization: <secret>」は受け付けない
+  // 接頭辞の無い「Authorization: <secret>」は受け付けない。
+  // 認証スキーム名は大文字小文字を区別しない（RFC 7235）ため、bearer でも通す
   const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ")
-    ? header.slice("Bearer ".length)
-    : "";
+  const token = /^Bearer (.+)$/i.exec(header)?.[1] ?? "";
   if (!matchesSecret(token, secret)) {
     return Response.json({ revalidated: false }, { status: 401 });
   }

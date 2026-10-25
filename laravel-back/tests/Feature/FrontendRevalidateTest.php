@@ -105,9 +105,9 @@ test('シークレットが未設定なら、フロントへは何も送らな�
     Http::assertNothingSent();
 });
 
-test('本番でシークレットが未設定なら、設定漏れとして警告を残す', function () {
+test('本番・ステージングでシークレットが未設定なら、設定漏れとして警告を残す', function (string $environment) {
     config(['services.frontend.revalidate_secret' => null]);
-    $this->app['env'] = 'production';
+    $this->app['env'] = $environment;
     $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
     Http::preventStrayRequests();
     Http::fake();
@@ -119,7 +119,7 @@ test('本番でシークレットが未設定なら、設定漏れとして警�
 
     Http::assertNothingSent();
     Log::shouldHaveReceived('warning')->once();
-});
+})->with(['production', 'staging']);
 
 test('フロントが一時的に5xxを返したら送り直し、成功すれば警告は残さない', function () {
     $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
@@ -136,6 +136,38 @@ test('フロントが一時的に5xxを返したら送り直し、成功すれ�
 
     Http::assertSentCount(2);
     Log::shouldNotHaveReceived('warning');
+});
+
+test('5xxが続いて送り直しを使い切っても、記事の変更は成功として返し、警告を1回残す', function () {
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
+    Http::preventStrayRequests();
+    Http::fake([REVALIDATE_URL => Http::response(['revalidated' => false], 503)]);
+    Sleep::fake();
+    Log::spy();
+
+    $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/'.$article->id)
+        ->assertStatus(204);
+
+    $this->assertSoftDeleted('articles', ['id' => $article->id]);
+    Http::assertSentCount(3);
+    Log::shouldHaveReceived('warning')->once();
+});
+
+test('フロントにつながらなくても送り直し、使い切ったら記事の変更は成功として返し、警告を1回残す', function () {
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
+    Http::preventStrayRequests();
+    Http::fake([REVALIDATE_URL => Http::failedConnection()]);
+    Sleep::fake();
+    Log::spy();
+
+    $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/'.$article->id)
+        ->assertStatus(204);
+
+    $this->assertSoftDeleted('articles', ['id' => $article->id]);
+    Sleep::assertSleptTimes(2);
+    Log::shouldHaveReceived('warning')->once();
 });
 
 test('シークレットの食い違い（401）は送り直さず、記事の変更は成功として返し、警告を残す', function () {

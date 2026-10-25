@@ -22,6 +22,8 @@ class FrontendCache
      * 記事の保存そのものは済んでいるため、届かなくても例外にはしない。
      * その場合もNext.js側の時間による作り直し（1時間）で追いつく。
      * 一時的な失敗で1時間待たないよう、つながらないときと5xxのときだけ2回まで送り直す。
+     * 応答後（defer）でもその間はPHP-FPMのワーカーを使い続けるため、タイムアウトは短くし、
+     * 全部失敗しても10秒ほどで終わるようにしている。
      */
     public function revalidateArticles(): void
     {
@@ -40,7 +42,8 @@ class FrontendCache
         try {
             Http::withToken($secret)
                 ->acceptJson()
-                ->timeout(5)
+                ->connectTimeout(2)
+                ->timeout(3)
                 ->retry(3, 200, fn (Throwable $e) => $e instanceof ConnectionException
                     || ($e instanceof RequestException && $e->response->serverError()))
                 ->post(config('app.frontend_url').'/api/revalidate')
