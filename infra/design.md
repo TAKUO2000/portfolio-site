@@ -325,7 +325,13 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 | Root Directory | `nextjs-front` |
 | Functions のリージョン | `hnd1`（東京）。EC2 と同じリージョンにして、SSR の往復を短くする |
 | 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコードを作る（[DNS（Cloudflare）](#dnscloudflare)） |
-| 環境変数 | `NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com` |
+| 環境変数 | `NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`REVALIDATE_SECRET`（秘密。下記） |
+
+`REVALIDATE_SECRET` は、記事の変更時に API が `/api/revalidate` を呼ぶときのシークレットです（`nextjs-front/app/api/revalidate/route.ts`）。トップページは記事一覧を静的なページとしてキャッシュし、記事が変わったときと1時間ごとに作り直します。API 側の `FRONTEND_REVALIDATE_SECRET` と同じ値にし、Production（本番）と Preview（`develop` のステージング）で別の値を入れます。
+
+トップページはビルドのときにも API から記事一覧を取ります。API に届かないとビルドは失敗します（記事0件のページを公開しないため）。Vercel はビルドに失敗しても今のデプロイを出し続けるので、API を戻してから再デプロイします。動いている間の作り直しで API に届かなかったときは、前のページを出し続けます。ステージングを消している間の Preview のビルドも同じ理由で失敗します（[ステージング環境](#注意点)）。
+
+`/api/revalidate` はインターネットから呼べます。シークレットが違えば何もせずに 401 を返すだけなので、レート制限は置いていません。不正なリクエストが目立つようなら、Vercel の Firewall でこのパスを制限します。
 
 `API_INTERNAL_BASE_URL` は設定しません。`app/lib/apiBaseUrl.ts` は、これが無ければ `NEXT_PUBLIC_API_BASE_URL` を使います。
 
@@ -353,7 +359,7 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 
 ## 環境変数と秘密情報
 
-- 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`）は SSM Parameter Store に SecureString で置く
+- 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
 - EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env`（パーミッション 600）に書き出す。compose はそこから読む
 - 秘密でない値（`APP_ENV=production`、`APP_DEBUG=false`、`LOG_LEVEL=warning` など）も同じ `.env` にまとめる
 - `.env` も秘密情報もリポジトリには入れない
@@ -451,6 +457,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - **ステージングはシークレットウィンドウ（または別のブラウザプロファイル）で開く**。本番の Cookie は `.takuosblog.com` に向けて発行されるため、`stg.takuosblog.com` にも送られる。本番にログインしたブラウザでステージングを開くと `XSRF-TOKEN` が2つ存在する状態になり、CSRF エラー（419）が起きることがある
 - **TLS 証明書は作るたびに取り直す**。作るたびに certbot の初回の取得（`--standalone`）から行う。Let's Encrypt には同じホスト名の証明書を週5回までという発行制限があり、超えると最長1週間は取得できない。1週間に何度も作り直すときは気をつける。手順を試すだけなら、`--staging`（Let's Encrypt のテスト用の環境。ブラウザは信頼しない）で取得する
 - **ステージングが無い間、`stg.takuosblog.com` は API につながらずエラーになる**。Vercel の Preview はそのまま残るが、気にしない
+- **ステージングが無い間は、`develop` への push で Vercel の Preview のビルドが失敗する**。トップページがビルドのときに API から記事一覧を取るため。`stg.takuosblog.com` は最後に成功したデプロイのまま残る。ステージングを作ったら、Vercel で `develop` の最新のデプロイを Redeploy する
 - **固定のパスワードの管理者を作らない**。`UserSeeder` は `admin@example.com` / `password` の管理者を作る。ステージングはインターネットに公開されるので、作ると誰でも管理者としてログインできてしまう。そのため `UserSeeder` は `local` と `testing` 以外では中断する（`APP_ENV` を `local` にしない）
 - 作り直すたびに DB は空になるので、管理者もそのたびに `user:create-admin` で作る
 - シーダーの画像（`ArticleImageSeeder`）は S3 ディスクに直接置く作りなので、stg バケットでもそのまま動く

@@ -14,18 +14,25 @@ use App\Http\Resources\ArticleResource;
 use App\Http\Resources\MyArticleResource;
 use App\Models\Article;
 use App\Services\ArticleService;
+use App\Services\FrontendCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
 
+use function Illuminate\Support\defer;
+
 class ArticleController extends Controller
 {
-    //CRUDの順で追加予定～
-    public function __construct(private ArticleService $articleService) {}
+    // CRUDの順で追加予定～
+    public function __construct(
+        private ArticleService $articleService,
+        private FrontendCache $frontendCache,
+    ) {}
 
     public function store(StoreArticleRequest $request): JsonResponse
     {
         $article = $this->articleService->store($request->user(), $request->validated());
+        $this->revalidateFrontendArticles();
 
         // 投稿後もそのまま編集を続けられるよう、updateと同じ編集フォーム向けの表現を返す。
         // 保存時にサーバーが本置き場へ移した画像キーと書き換え後の本文を画面に渡さないと、
@@ -73,6 +80,7 @@ class ArticleController extends Controller
     public function updateStatus(UpdateArticleStatusRequest $request, Article $article): MyArticleResource
     {
         $updated = $this->articleService->updateStatus($article, $request->validated()['status']);
+        $this->revalidateFrontendArticles();
 
         return new MyArticleResource($updated);
     }
@@ -83,6 +91,7 @@ class ArticleController extends Controller
             $article,
             $request->validated()
         );
+        $this->revalidateFrontendArticles();
 
         return new ArticleEditResource($updated);
     }
@@ -93,7 +102,18 @@ class ArticleController extends Controller
         Gate::authorize('delete', $article);
 
         $this->articleService->delete($article);
+        $this->revalidateFrontendArticles();
 
         return response()->json(null, 204);
+    }
+
+    /**
+     * トップページなどの記事一覧に変更を出すため、Next.jsのキャッシュを捨てさせる。
+     * 下書きの保存でも呼ぶが、一覧が変わらないだけで害は無いため分けない。
+     * 保存した人を待たせないよう、応答を返したあとに送る
+     */
+    private function revalidateFrontendArticles(): void
+    {
+        defer(fn () => $this->frontendCache->revalidateArticles());
     }
 }

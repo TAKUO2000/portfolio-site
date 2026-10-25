@@ -11,25 +11,17 @@ import { SITE_DATA } from "./constants/siteData";
 const POPULAR_ARTICLES_COUNT = 3;
 
 export default async function Home() {
-  // 記事の取得に失敗してもHeroやAboutSiteまで巻き添えにしないよう、
-  // 「記事0件」の表示へフォールバックする
-  const [latest, popular] = await Promise.allSettled([
+  // 取得に失敗したら0件で描かずに例外にする。このページは静的に作ってキャッシュしているため、
+  // 0件で描くとそれがキャッシュされてしまう。例外にすれば、作り直しのときはNext.jsが前回の
+  // ページを出し続けて次のアクセスで作り直しを試し、ビルドのときはビルドが失敗する
+  // （Vercelは今のデプロイを出し続ける）
+  const [latest, popular] = await Promise.all([
     fetchArticles({ sort: "latest", perPage: 1 }),
     fetchArticles({ sort: "popular", perPage: POPULAR_ARTICLES_COUNT }),
   ]);
 
-  // 表示は0件で済ませるが、障害の原因が追えなくならないよう理由は残す
-  if (latest.status === "rejected") {
-    console.error("最新記事の取得に失敗しました。", latest.reason);
-  }
-  if (popular.status === "rejected") {
-    console.error("人気記事の取得に失敗しました。", popular.reason);
-  }
-
-  const latestArticle =
-    latest.status === "fulfilled" ? (latest.value.data[0] ?? null) : null;
-  const popularArticles =
-    popular.status === "fulfilled" ? popular.value.data : [];
+  const latestArticle = latest.data[0] ?? null;
+  const popularArticles = popular.data;
 
   return (
     <>
