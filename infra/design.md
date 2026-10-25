@@ -325,7 +325,9 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 | Root Directory | `nextjs-front` |
 | Functions のリージョン | `hnd1`（東京）。EC2 と同じリージョンにして、SSR の往復を短くする |
 | 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコードを作る（[DNS（Cloudflare）](#dnscloudflare)） |
-| 環境変数 | `NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com` |
+| 環境変数 | `NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`REVALIDATE_SECRET`（秘密。下記） |
+
+`REVALIDATE_SECRET` は、記事の変更時に API が `/api/revalidate` を呼ぶときのシークレットです（`nextjs-front/app/api/revalidate/route.ts`）。トップページは記事一覧を静的なページとしてキャッシュし、記事が変わったときと1時間ごとに作り直します。API 側の `FRONTEND_REVALIDATE_SECRET` と同じ値にし、Production（本番）と Preview（`develop` のステージング）で別の値を入れます。
 
 `API_INTERNAL_BASE_URL` は設定しません。`app/lib/apiBaseUrl.ts` は、これが無ければ `NEXT_PUBLIC_API_BASE_URL` を使います。
 
@@ -353,7 +355,7 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 
 ## 環境変数と秘密情報
 
-- 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`）は SSM Parameter Store に SecureString で置く
+- 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
 - EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env`（パーミッション 600）に書き出す。compose はそこから読む
 - 秘密でない値（`APP_ENV=production`、`APP_DEBUG=false`、`LOG_LEVEL=warning` など）も同じ `.env` にまとめる
 - `.env` も秘密情報もリポジトリには入れない
