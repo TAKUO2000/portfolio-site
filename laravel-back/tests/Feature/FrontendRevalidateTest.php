@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 
 const REVALIDATE_URL = 'https://front.test/api/revalidate';
 
@@ -104,10 +105,43 @@ test('シークレットが未設定なら、フロントへは何も送らな�
     Http::assertNothingSent();
 });
 
-test('フロントが再検証に失敗しても、記事の変更は成功として返し、警告を残す', function () {
+test('本番でシークレットが未設定なら、設定漏れとして警告を残す', function () {
+    config(['services.frontend.revalidate_secret' => null]);
+    $this->app['env'] = 'production';
     $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
     Http::preventStrayRequests();
-    Http::fake([REVALIDATE_URL => Http::response(['revalidated' => false], 500)]);
+    Http::fake();
+    Log::spy();
+
+    $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/'.$article->id)
+        ->assertStatus(204);
+
+    Http::assertNothingSent();
+    Log::shouldHaveReceived('warning')->once();
+});
+
+test('フロントが一時的に5xxを返したら送り直し、成功すれば警告は残さない', function () {
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
+    Http::preventStrayRequests();
+    Http::fake([REVALIDATE_URL => Http::sequence()
+        ->push(['revalidated' => false], 503)
+        ->push(['revalidated' => true])]);
+    Sleep::fake();
+    Log::spy();
+
+    $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/'.$article->id)
+        ->assertStatus(204);
+
+    Http::assertSentCount(2);
+    Log::shouldNotHaveReceived('warning');
+});
+
+test('シークレットの食い違い（401）は送り直さず、記事の変更は成功として返し、警告を残す', function () {
+    $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
+    Http::preventStrayRequests();
+    Http::fake([REVALIDATE_URL => Http::response(['revalidated' => false], 401)]);
     Log::spy();
 
     $this->actingAs($this->adminUser)
@@ -115,5 +149,6 @@ test('フロントが再検証に失敗しても、記事の変更は成功と�
         ->assertStatus(204);
 
     $this->assertSoftDeleted('articles', ['id' => $article->id]);
+    Http::assertSentCount(1);
     Log::shouldHaveReceived('warning')->once();
 });

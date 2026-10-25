@@ -329,6 +329,8 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 `REVALIDATE_SECRET` は、記事の変更時に API が `/api/revalidate` を呼ぶときのシークレットです（`nextjs-front/app/api/revalidate/route.ts`）。トップページは記事一覧を静的なページとしてキャッシュし、記事が変わったときと1時間ごとに作り直します。API 側の `FRONTEND_REVALIDATE_SECRET` と同じ値にし、Production（本番）と Preview（`develop` のステージング）で別の値を入れます。
 
+トップページはビルドのときにも API から記事一覧を取ります。API に届かなくてもビルドは失敗せず、記事0件のページになります。このページは、次の再検証か1時間後の作り直しで正しい内容に置き換わります。
+
 `API_INTERNAL_BASE_URL` は設定しません。`app/lib/apiBaseUrl.ts` は、これが無ければ `NEXT_PUBLIC_API_BASE_URL` を使います。
 
 Hobby プランでは、画像最適化（`next/image`）の回数に月ごとの上限があります。超えそうな場合は `unoptimized` にするか、S3 の前に CloudFront を置きます。

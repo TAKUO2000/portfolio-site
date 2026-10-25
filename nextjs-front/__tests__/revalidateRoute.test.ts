@@ -41,6 +41,13 @@ describe("POST /api/revalidate", () => {
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
+  it("Bearerの接頭辞が無ければ、シークレットが合っていても401を返す", async () => {
+    const res = await postWith("secret");
+
+    expect(res.status).toBe(401);
+    expect(revalidateTag).not.toHaveBeenCalled();
+  });
+
   it("Authorizationが無ければ401を返す", async () => {
     const res = await postWith();
 

@@ -18,8 +18,11 @@ export async function POST(request: Request) {
     return Response.json({ revalidated: false }, { status: 500 });
   }
 
-  const token =
-    request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
+  // 接頭辞の無い「Authorization: <secret>」は受け付けない
+  const header = request.headers.get("authorization") ?? "";
+  const token = header.startsWith("Bearer ")
+    ? header.slice("Bearer ".length)
+    : "";
   if (!matchesSecret(token, secret)) {
     return Response.json({ revalidated: false }, { status: 401 });
   }
