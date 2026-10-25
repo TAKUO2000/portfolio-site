@@ -31,7 +31,7 @@ describe("POST /api/revalidate", () => {
     const res = await postWith("Bearer secret");
 
     expect(res.status).toBe(200);
-    expect(revalidateTag).toHaveBeenCalledWith("articles", { expire: 0 });
+    expect(revalidateTag).toHaveBeenCalledWith("articles", "max");
   });
 
   it("シークレットが違えば401を返し、キャッシュは捨てない", async () => {

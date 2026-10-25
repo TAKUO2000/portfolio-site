@@ -27,9 +27,10 @@ export async function POST(request: Request) {
     return Response.json({ revalidated: false }, { status: 401 });
   }
 
-  // アクセスの少ないサイトなので、古いページを1回返すより、次の1人目に待ってもらう方を選ぶ。
-  // 記事を公開した直後にトップを開いても、新しい記事が出るようにするため
-  revalidateTag(ARTICLES_CACHE_TAG, { expire: 0 });
+  // 古いページを残したまま作り直させる（次の1回は古いページを返し、裏で作り直す）。
+  // { expire: 0 } で古いページを捨てると、作り直しの瞬間にAPIが落ちていたとき
+  // 出せるページが無くなり500になる。"max" なら前のページを出し続けられる
+  revalidateTag(ARTICLES_CACHE_TAG, "max");
 
   return Response.json({ revalidated: true });
 }
