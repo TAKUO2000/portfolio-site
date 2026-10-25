@@ -92,6 +92,30 @@ test('記事を削除すると、フロントの記事一覧のキャッシュ�
     assertRevalidateRequested();
 });
 
+test('バリデーションで弾かれた投稿では、フロントへは何も送らない', function () {
+    Http::preventStrayRequests();
+    Http::fake();
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', ['title' => 'タイトルだけ'])
+        ->assertStatus(422);
+
+    Http::assertNothingSent();
+});
+
+test('他人の記事を削除しようとして弾かれたときは、フロントへは何も送らない', function () {
+    $otherAdmin = User::factory()->create(['role' => 'admin']);
+    $article = Article::factory()->for($otherAdmin)->for($this->category)->create();
+    Http::preventStrayRequests();
+    Http::fake();
+
+    $this->actingAs($this->adminUser)
+        ->deleteJson('/api/articles/'.$article->id)
+        ->assertStatus(403);
+
+    Http::assertNothingSent();
+});
+
 test('シークレットが未設定なら、フロントへは何も送らない', function () {
     config(['services.frontend.revalidate_secret' => null]);
     $article = Article::factory()->for($this->adminUser)->for($this->category)->create();
