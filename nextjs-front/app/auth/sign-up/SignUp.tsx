@@ -70,9 +70,7 @@ export default function SignUp() {
       <section className="mx-auto flex w-full max-w-sm flex-col gap-8">
         <div className="space-y-2">
           <p className="text-sm font-semibold text-neutral-600">Sign up</p>
-          <h1 className="text-3xl font-bold text-neutral-950">
-            サインアップ
-          </h1>
+          <h1 className="text-3xl font-bold text-neutral-950">サインアップ</h1>
         </div>
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
