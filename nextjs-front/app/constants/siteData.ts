@@ -26,8 +26,19 @@ export const SITE_DATA = {
 
   footer: {
     name: "TAKUO2000",
-    email: "hello@example.com",
-    phone: "+123-456-7890",
-    url: "www.example.com",
+    email: "contact@takuosblog.com",
+    accounts: [
+      { service: "X", handle: "@TAKUO2000", href: "https://x.com/TAKUO2000" },
+      {
+        service: "Qiita",
+        handle: "@TAKUO2000",
+        href: "https://qiita.com/TAKUO2000",
+      },
+      {
+        service: "GitHub",
+        handle: "@TAKUO2000",
+        href: "https://github.com/TAKUO2000",
+      },
+    ],
   },
 };
