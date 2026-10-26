@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { tv } from "tailwind-variants";
 import { TAG_COLOR } from "@/app/constants/colorsData";
 
@@ -20,8 +19,6 @@ const tagBox = tv({
 
 interface TagBoxProps {
   tag: string;
-  id?: number;
-  isLink?: boolean;
   onClick?: () => void;
   title?: string;
   isPending?: boolean;
@@ -29,13 +26,11 @@ interface TagBoxProps {
 
 export default function TagBox({
   tag,
-  id,
-  isLink = false,
   onClick,
   title,
   isPending = false,
 }: TagBoxProps) {
-  const content = (
+  return (
     <div
       onClick={onClick}
       title={title}
@@ -46,12 +41,4 @@ export default function TagBox({
       {isPending && <span className="text-xs text-red-400 ">NEW</span>}
     </div>
   );
-
-  if (isLink) {
-    return (
-      <Link href={/** 修正予定  /articles?tag=${id}*/ "/"}>{content}</Link>
-    );
-  } else {
-    return content;
-  }
 }

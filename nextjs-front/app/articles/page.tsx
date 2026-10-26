@@ -25,7 +25,7 @@ export default async function ArticlesListPage({
       <Header />
       <main className="h-auto w-full max-w-5xl mx-auto px-4 py-8">
         <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-3xl font-bold">記事一覧ページ</h1>
+          <h1 className="text-3xl font-bold">記事一覧</h1>
           <ArticleSortSwitch current={currentSort} />
         </div>
 

@@ -78,7 +78,7 @@ export default function DevPage() {
 
           <ComponentSectionDev title="TagBox">
             {tags.map((tag) => (
-              <TagBox key={tag.id} tag={tag.name} id={tag.id} />
+              <TagBox key={tag.id} tag={tag.name} />
             ))}
           </ComponentSectionDev>
 

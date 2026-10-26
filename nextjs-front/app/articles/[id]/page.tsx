@@ -72,7 +72,7 @@ export default async function ArticlePage({
                 id={article.category.id}
               />
               {article.tags.map((tag) => (
-                <TagBox key={tag.id} tag={tag.name} id={tag.id} />
+                <TagBox key={tag.id} tag={tag.name} />
               ))}
             </div>
             <h1 className="text-3xl font-bold mb-6">{article.title}</h1>

@@ -85,7 +85,7 @@ export default function FittedTagList({ tags }: FittedTagListProps) {
         className="invisible absolute top-0 left-0 flex items-center whitespace-nowrap"
       >
         {candidates.map((tag) => (
-          <TagBox key={tag.id} tag={tag.name} id={tag.id} />
+          <TagBox key={tag.id} tag={tag.name} />
         ))}
       </div>
       <span
@@ -97,7 +97,7 @@ export default function FittedTagList({ tags }: FittedTagListProps) {
       </span>
 
       {candidates.slice(0, visibleCount).map((tag) => (
-        <TagBox key={tag.id} tag={tag.name} id={tag.id} />
+        <TagBox key={tag.id} tag={tag.name} />
       ))}
       {visibleCount < tags.length && (
         // 省略したタグ名はホバーで確認できるようにする

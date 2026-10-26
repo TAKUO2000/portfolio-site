@@ -99,7 +99,6 @@ export default function TagSelect({
           <TagBox
             key={tag.id}
             tag={tag.name}
-            isLink={false}
             title="クリックで削除"
             onClick={() => removeTag(tag.id)}
           />
@@ -108,7 +107,6 @@ export default function TagSelect({
           <TagBox
             key={name}
             tag={name}
-            isLink={false}
             isPending
             title="クリックで削除（記事保存時に新規作成されます）"
             onClick={() => removePendingTag(name)}
