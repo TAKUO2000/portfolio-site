@@ -83,20 +83,9 @@ export default function DevPage() {
           </ComponentSectionDev>
 
           <ComponentSectionDev title="Button">
-            <NormalButton
-              color="green"
-              buttonLabel="保存する"
-              onClick={() => console.log("hello")}
-            />
-            <NormalButton
-              color="red"
-              buttonLabel="削除"
-              onClick={() => console.log("hello")}
-            />
-            <NormalButton
-              buttonLabel="キャンセル"
-              onClick={() => console.log("hello")}
-            />
+            <NormalButton color="green" buttonLabel="保存する" />
+            <NormalButton color="red" buttonLabel="削除" />
+            <NormalButton buttonLabel="キャンセル" />
           </ComponentSectionDev>
 
           {/* Topページのカードはセクション単位なので、そのまま埋め込んで確認する */}
