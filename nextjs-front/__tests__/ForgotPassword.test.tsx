@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import ForgotPassword from "@/app/auth/forgot-password/page";
+import ForgotPassword from "@/app/auth/forgot-password/ForgotPassword";
 
 // エラー文言の組み立ては本物を使い、通信に関わる部分だけ差し替える
 vi.mock("@/app/auth/authClient", async (importOriginal) => ({

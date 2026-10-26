@@ -4,6 +4,7 @@ import ResetPasswordForm from "./ResetPasswordForm";
 
 // URLに再設定トークンとメールアドレスが入るため、この画面から外へ出るリクエストにReferrerを付けない
 export const metadata: Metadata = {
+  title: "パスワードの再設定",
   referrer: "no-referrer",
 };
 

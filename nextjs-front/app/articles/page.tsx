@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
+
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import ArticleSortSwitch from "../components/ArticleSortSwitch";
 import { VerticalArticleCard } from "../components/ArticleCard";
 import { fetchArticles, toSortOrder } from "@/app/lib/articles";
+
+export const metadata: Metadata = {
+  title: "記事一覧",
+};
 
 export default async function ArticlesListPage({
   searchParams,

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import Header from "../../components/Header";
@@ -22,6 +23,18 @@ async function fetchArticle(id: string): Promise<ArticleDetail> {
     throw new Error("記事の取得に失敗しました。");
   }
   return (await res.json()).data;
+}
+
+// fetchArticleはページ本体と同じURL・オプションで呼ぶため、1回の表示の中では結果が共有され、APIへのリクエストは増えない
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const article = await fetchArticle(id);
+
+  return { title: article.title };
 }
 
 export default async function ArticlePage({

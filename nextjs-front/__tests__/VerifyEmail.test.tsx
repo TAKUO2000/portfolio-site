@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import VerifyEmail from "@/app/auth/verify-email/page";
+import VerifyEmail from "@/app/auth/verify-email/VerifyEmail";
 import { getCurrentUser } from "@/app/auth/authClient";
 import type { User } from "@/app/types/models";
 
