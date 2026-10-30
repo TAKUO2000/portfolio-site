@@ -62,16 +62,16 @@ function asSpa(): TestCase
 {
     config(['sanctum.stateful' => ['localhost:3000']]);
 
-    $test = test()->withHeaders([
+    $testCase = test()->withHeaders([
         'Origin'  => 'http://localhost:3000',
         'Referer' => 'http://localhost:3000/',
     ]);
 
-    $response = $test->get('/sanctum/csrf-cookie');
+    $response = $testCase->get('/sanctum/csrf-cookie');
     $xsrfToken = $response->getCookie('XSRF-TOKEN', decrypt: false)->getValue();
 
     // レスポンスの Cookie は暗号化済みなので、ブラウザと同じくそのまま送り返す
-    return $test->withHeader('X-XSRF-TOKEN', $xsrfToken)
+    return $testCase->withHeader('X-XSRF-TOKEN', $xsrfToken)
         ->withUnencryptedCookies([
             'XSRF-TOKEN'             => $xsrfToken,
             config('session.cookie') => $response->getCookie(config('session.cookie'), decrypt: false)->getValue(),

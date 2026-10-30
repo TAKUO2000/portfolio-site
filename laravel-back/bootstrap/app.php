@@ -13,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // セッションは SANCTUM_STATEFUL_DOMAINS から来たリクエスト（SPA）にだけ、Sanctum が始める。
-        // StartSession を全体に足すと、公開 API やクローラーの呼び出しでもセッションが作られ、Set-Cookie が付く
+        // StartSession を全体に足すと、公開 API やクローラーの呼び出しでもセッションが作られ、Set-Cookie が付く。
         $middleware->api(prepend: [
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
