@@ -3,6 +3,8 @@
 use App\Services\ImageStorage;
 use Illuminate\Support\Str;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Assert;
 use Tests\Support\FakeImageStorage;
 use Tests\TestCase;
 
@@ -50,6 +52,45 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * 以降のリクエストを、SPA（FE）からブラウザで呼んだときと同じ形にする。
+ * Sanctum は stateful なドメインの Origin・Referer が付いたリクエストにだけセッションを使うため、
+ * ログインのようにセッションが要る API はこれを通して呼ぶ。
+ * FE と同じく先に /sanctum/csrf-cookie を呼び、受け取った Cookie と XSRF-TOKEN を付ける。
+ */
+function asSpa(): TestCase
+{
+    config(['sanctum.stateful' => ['localhost:3000']]);
+
+    $testCase = test()->withHeaders([
+        'Origin'  => 'http://localhost:3000',
+        'Referer' => 'http://localhost:3000/',
+    ]);
+
+    $response = $testCase->get('/sanctum/csrf-cookie');
+    $xsrfToken = encryptedCookieValue($response, 'XSRF-TOKEN');
+
+    return $testCase->withHeader('X-XSRF-TOKEN', $xsrfToken)
+        ->withUnencryptedCookies([
+            'XSRF-TOKEN'             => $xsrfToken,
+            config('session.cookie') => encryptedCookieValue($response, config('session.cookie')),
+        ]);
+}
+
+/**
+ * レスポンスが返した Cookie の値を、暗号化されたまま取り出す。
+ * ブラウザと同じくこの値をそのまま送り返すときは、withUnencryptedCookies() に渡す
+ * （withCookies() に渡すと、もう一度暗号化されてしまう）。
+ */
+function encryptedCookieValue(TestResponse $response, string $name): string
+{
+    $cookie = $response->getCookie($name, decrypt: false);
+
+    Assert::assertNotNull($cookie, "レスポンスに Cookie「{$name}」がありません");
+
+    return $cookie->getValue();
 }
 
 /**

@@ -5,7 +5,7 @@ use App\Models\User;
 test('users can authenticate using the login screen', function () {
     $user = User::factory()->create();
 
-    $response = $this->post(route('login'), [
+    $response = asSpa()->post(route('login'), [
         'email' => $user->email,
         'password' => 'password',
     ]);
@@ -17,7 +17,7 @@ test('users can authenticate using the login screen', function () {
 test('users can not authenticate with invalid password', function () {
     $user = User::factory()->create();
 
-    $this->post(route('login'), [
+    asSpa()->post(route('login'), [
         'email' => $user->email,
         'password' => 'wrong-password',
     ]);
@@ -28,7 +28,7 @@ test('users can not authenticate with invalid password', function () {
 test('users can logout', function () {
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->post(route('logout'));
+    $response = asSpa()->actingAs($user)->post(route('logout'));
 
     // auth:sanctumがデフォルトガードをsanctumに切り替え、そのRequestGuardは
     // リクエスト中に解決したユーザーを保持し続ける。セッションが破棄されたことは
