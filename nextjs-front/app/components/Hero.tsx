@@ -67,7 +67,9 @@ export default function Hero() {
         modelRotation={[0, 0, 0]}
         modelScale={1.3}
       />
-      <h1 className="relative text-7xl font-extrabold mb-3">TAKUO_Log</h1>
+      <h1 className="relative text-5xl sm:text-7xl font-extrabold mb-3">
+        TAKUO_Log
+      </h1>
       <p className="relative text-lg text-[#010101] mb-8">
         TAKUO2000が読んだ本と、学んだ技術の保管庫。
       </p>
