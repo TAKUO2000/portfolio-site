@@ -3,6 +3,8 @@
 use App\Services\ImageStorage;
 use Illuminate\Support\Str;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Assert;
 use Tests\Support\FakeImageStorage;
 use Tests\TestCase;
 
@@ -68,14 +70,27 @@ function asSpa(): TestCase
     ]);
 
     $response = $testCase->get('/sanctum/csrf-cookie');
-    $xsrfToken = $response->getCookie('XSRF-TOKEN', decrypt: false)->getValue();
+    $xsrfToken = encryptedCookieValue($response, 'XSRF-TOKEN');
 
-    // レスポンスの Cookie は暗号化済みなので、ブラウザと同じくそのまま送り返す
     return $testCase->withHeader('X-XSRF-TOKEN', $xsrfToken)
         ->withUnencryptedCookies([
             'XSRF-TOKEN'             => $xsrfToken,
-            config('session.cookie') => $response->getCookie(config('session.cookie'), decrypt: false)->getValue(),
+            config('session.cookie') => encryptedCookieValue($response, config('session.cookie')),
         ]);
+}
+
+/**
+ * レスポンスが返した Cookie の値を、暗号化されたまま取り出す。
+ * ブラウザと同じくこの値をそのまま送り返すときは、withUnencryptedCookies() に渡す
+ * （withCookies() に渡すと、もう一度暗号化されてしまう）。
+ */
+function encryptedCookieValue(TestResponse $response, string $name): string
+{
+    $cookie = $response->getCookie($name, decrypt: false);
+
+    Assert::assertNotNull($cookie, "レスポンスに Cookie「{$name}」がありません");
+
+    return $cookie->getValue();
 }
 
 /**

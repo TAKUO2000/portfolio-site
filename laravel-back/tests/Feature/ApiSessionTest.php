@@ -27,7 +27,7 @@ test('SPA からはログインでき、そのセッションの Cookie で /api
 
     $this->withUnencryptedCookie(
         config('session.cookie'),
-        $loginResponse->getCookie(config('session.cookie'), decrypt: false)->getValue(),
+        encryptedCookieValue($loginResponse, config('session.cookie')),
     )
         ->getJson('/api/user')
         ->assertOk()
