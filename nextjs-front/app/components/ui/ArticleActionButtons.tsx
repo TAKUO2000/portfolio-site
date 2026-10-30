@@ -14,12 +14,14 @@ import {
 interface ArticleActionButtonsProps {
   articleId: number;
   likeCount: number;
+  className?: string;
 }
 
 // Bad・保存ボタンはAPIが無く押しても何も起きないため、実装されるまで出さない
 export default function ArticleActionButtons({
   articleId,
   likeCount,
+  className,
 }: ArticleActionButtonsProps) {
   const [like, setLikeState] = useState<LikeStatus>({
     liked: false,
@@ -79,12 +81,20 @@ export default function ArticleActionButtons({
   }
 
   return (
-    <div className="border rounded p-4 text-sm text-gray-500">
-      <p className="font-semibold mb-3 text-center text-xs">この記事は？</p>
+    // md未満は画面下のバーに入るので、枠と見出しを外して小さく出す
+    <div
+      className={clsx(
+        "text-sm text-gray-500 md:border md:rounded md:p-4",
+        className,
+      )}
+    >
+      <p className="hidden md:block font-semibold mb-3 text-center text-xs">
+        この記事は？
+      </p>
       <div className="flex justify-around items-center">
         <button
           type="button"
-          className="flex flex-col items-center gap-1.5 group cursor-pointer disabled:cursor-wait"
+          className="flex flex-row md:flex-col items-center gap-1.5 group cursor-pointer disabled:cursor-wait"
           onClick={handleLike}
           disabled={isLoggedIn === null || isSending}
           aria-pressed={like.liked}

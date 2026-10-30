@@ -5,8 +5,7 @@ import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
-import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
-import TableOfContents from "@/app/components/ui/TableOfContents";
+import ArticleSidebar from "@/app/components/ui/ArticleSidebar";
 import {
   articleRehypePlugins,
   extractHeadings,
@@ -39,18 +38,18 @@ export default async function ArticlePage({
   return (
     <>
       <Header />
-      <main className="w-5xl mx-auto px-4 py-8">
-        {/* 本文 + 目次 の横並びレイアウト */}
+      <main className="w-full max-w-5xl mx-auto px-4 py-8">
+        {/* md以上は本文と目次の横並び */}
         <div className="flex gap-8 items-start">
-          {/* 本文エリア (8割) */}
-          <article className="w-4/5 min-w-0 bg-black/10 rounded-xl p-6">
+          {/* 本文エリア (md以上で8割) */}
+          <article className="min-w-0 md:w-4/5 bg-black/10 rounded-xl p-4 md:p-6">
             {headerImage && (
               <Image
                 src={headerImage.url}
                 alt={article.title}
                 width={1200}
                 height={800}
-                className="h-80 max-w-120 object-cover object-center mb-6 mx-auto block"
+                className="w-full h-56 sm:h-80 max-w-120 object-cover object-center mb-6 mx-auto block"
                 loading="eager"
               />
             )}
@@ -63,7 +62,9 @@ export default async function ArticlePage({
                 <TagBox key={tag.id} tag={tag.name} />
               ))}
             </div>
-            <h1 className="text-3xl font-bold mb-6">{article.title}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold mb-6">
+              {article.title}
+            </h1>
             <div className="prose prose-neutral [&_ul>li::marker]:text-black [&_:is(h1,h2,h3)]:scroll-mt-8 max-w-none wrap-break-word">
               <ReactMarkdown rehypePlugins={articleRehypePlugins}>
                 {article.body}
@@ -71,17 +72,21 @@ export default async function ArticlePage({
             </div>
           </article>
 
-          {/* 目次エリア (2割) */}
-          <aside className="w-1/5 shrink-0 sticky top-8 flex flex-col gap-4">
-            <TableOfContents headings={headings} />
-            <ArticleActionButtons
-              articleId={article.id}
-              likeCount={article.like_count}
-            />
-          </aside>
+          {/* 目次・いいね (md以上で2割)。md未満は画面の下に固定する */}
+          <ArticleSidebar
+            headings={headings}
+            articleId={article.id}
+            likeCount={article.like_count}
+          />
         </div>
       </main>
       <Footer />
+      {/* md未満は画面下に目次・いいねのバーが重なるので、フッターの末尾が隠れないよう高さ分を空ける。
+          バーの高さと少しずれても隙間に見えないよう、フッターと同じ黒で塗る */}
+      <div
+        className="h-[calc(4rem+env(safe-area-inset-bottom))] bg-black md:hidden"
+        aria-hidden="true"
+      />
     </>
   );
 }
