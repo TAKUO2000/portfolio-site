@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
+
 import NotFoundHero from "./components/NotFoundHero";
+
+export const metadata: Metadata = {
+  title: "ページが見つかりません",
+};
 
 /**
  * notFound()が呼ばれたときと、どのルートにも一致しないURLに来たときに表示する。

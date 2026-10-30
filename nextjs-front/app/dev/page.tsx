@@ -78,25 +78,14 @@ export default function DevPage() {
 
           <ComponentSectionDev title="TagBox">
             {tags.map((tag) => (
-              <TagBox key={tag.id} tag={tag.name} id={tag.id} />
+              <TagBox key={tag.id} tag={tag.name} />
             ))}
           </ComponentSectionDev>
 
           <ComponentSectionDev title="Button">
-            <NormalButton
-              color="green"
-              buttonLabel="保存する"
-              onClick={() => console.log("hello")}
-            />
-            <NormalButton
-              color="red"
-              buttonLabel="削除"
-              onClick={() => console.log("hello")}
-            />
-            <NormalButton
-              buttonLabel="キャンセル"
-              onClick={() => console.log("hello")}
-            />
+            <NormalButton color="green" buttonLabel="保存する" />
+            <NormalButton color="red" buttonLabel="削除" />
+            <NormalButton buttonLabel="キャンセル" />
           </ComponentSectionDev>
 
           {/* Topページのカードはセクション単位なので、そのまま埋め込んで確認する */}

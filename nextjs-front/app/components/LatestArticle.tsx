@@ -56,7 +56,7 @@ export default function LatestArticle({
                 <div className="mb-1.5 flex min-h-6 items-start justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-y-1">
                     {article.tags.slice(0, 3).map((tag) => (
-                      <TagBox key={tag.id} tag={tag.name} id={tag.id} />
+                      <TagBox key={tag.id} tag={tag.name} />
                     ))}
                   </div>
                   <ArticleMeta

@@ -188,7 +188,7 @@ export function VerticalArticleCard({
           <div className="mb-1.5 flex min-h-6 flex-wrap items-center gap-y-1">
             {/* タグが多い記事もあるため、はみ出さないよう先頭3件だけ出す */}
             {tags?.slice(0, 3).map((tag) => (
-              <TagBox key={tag.id} tag={tag.name} id={tag.id} />
+              <TagBox key={tag.id} tag={tag.name} />
             ))}
             {tags && tags.length > 3 && (
               <span className="text-xs text-gray-500">+{tags.length - 3}</span>

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import Header from "../../components/Header";
@@ -6,22 +7,22 @@ import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
 import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
 import TableOfContents from "@/app/components/ui/TableOfContents";
-import type { ArticleDetail } from "@/app/types/models";
 import {
   articleRehypePlugins,
   extractHeadings,
 } from "@/app/lib/articleMarkdown";
-import { getApiBaseUrl } from "@/app/lib/apiBaseUrl";
+import { fetchArticle } from "@/app/lib/articles";
 
-async function fetchArticle(id: string): Promise<ArticleDetail> {
-  const res = await fetch(`${getApiBaseUrl()}/api/articles/${id}`, {
-    headers: { Accept: "application/json" },
-  });
+// fetchArticleはページ本体と同じURL・オプションで呼ぶため、1回の表示の中では結果が共有され、APIへのリクエストは増えない
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const article = await fetchArticle(id);
 
-  if (!res.ok) {
-    throw new Error("記事の取得に失敗しました。");
-  }
-  return (await res.json()).data;
+  return { title: article.title };
 }
 
 export default async function ArticlePage({
@@ -59,7 +60,7 @@ export default async function ArticlePage({
                 id={article.category.id}
               />
               {article.tags.map((tag) => (
-                <TagBox key={tag.id} tag={tag.name} id={tag.id} />
+                <TagBox key={tag.id} tag={tag.name} />
               ))}
             </div>
             <h1 className="text-3xl font-bold mb-6">{article.title}</h1>

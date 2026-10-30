@@ -1,5 +1,7 @@
+import { notFound } from "next/navigation";
+
 import { getApiBaseUrl } from "@/app/lib/apiBaseUrl";
-import type { ArticleIndexResponse } from "@/app/types/models";
+import type { ArticleDetail, ArticleIndexResponse } from "@/app/types/models";
 
 export type SortOrder = "latest" | "popular";
 
@@ -51,4 +53,31 @@ export async function fetchArticles({
   }
 
   return res.json();
+}
+
+/**
+ * 公開記事を1件取得する。
+ *
+ * 記事ページの本体とgenerateMetadataの両方から呼ぶ。同じURL・オプションのfetchは
+ * 1回の表示の中で結果が共有されるため、APIへのリクエストは1回で済む。
+ * 存在しない記事や下書き（APIが404を返す）はエラー画面ではなく404にする。
+ */
+export async function fetchArticle(id: string): Promise<ArticleDetail> {
+  // idはURLから来る値。「../tags」のような値をそのままパスに入れるとAPIの別の口を呼べてしまうので、
+  // 数字だけを通す（APIも数字以外は404にしている）
+  if (!/^\d+$/.test(id)) {
+    notFound();
+  }
+
+  const res = await fetch(`${getApiBaseUrl()}/api/articles/${id}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  if (res.status === 404) {
+    notFound();
+  }
+  if (!res.ok) {
+    throw new Error(`記事の取得に失敗しました。(status: ${res.status})`);
+  }
+  return (await res.json()).data;
 }

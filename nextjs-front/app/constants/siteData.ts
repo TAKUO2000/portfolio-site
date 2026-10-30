@@ -1,3 +1,24 @@
+/** フッターにアイコンを出すサービス。増やすときはFooterのICON_MAPにもアイコンを足す */
+export type AccountService = "X" | "Qiita" | "GitHub";
+
+const FOOTER_ACCOUNTS: {
+  service: AccountService;
+  handle: string;
+  href: string;
+}[] = [
+  { service: "X", handle: "@TAKUO2000", href: "https://x.com/TAKUO2000" },
+  {
+    service: "Qiita",
+    handle: "@TAKUO2000",
+    href: "https://qiita.com/TAKUO2000",
+  },
+  {
+    service: "GitHub",
+    handle: "@TAKUO2000",
+    href: "https://github.com/TAKUO2000",
+  },
+];
+
 export const SITE_DATA = {
   title: "TAKUO_Log",
   description: "TAKUO2000が読んだ本と、学んだ技術の保管庫。",
@@ -26,8 +47,7 @@ export const SITE_DATA = {
 
   footer: {
     name: "TAKUO2000",
-    email: "hello@example.com",
-    phone: "+123-456-7890",
-    url: "www.example.com",
+    email: "contact@takuosblog.com",
+    accounts: FOOTER_ACCOUNTS,
   },
 };
