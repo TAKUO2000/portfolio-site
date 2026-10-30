@@ -53,6 +53,32 @@ function something()
 }
 
 /**
+ * 以降のリクエストを、SPA（FE）からブラウザで呼んだときと同じ形にする。
+ * Sanctum は stateful なドメインの Origin・Referer が付いたリクエストにだけセッションを使うため、
+ * ログインのようにセッションが要る API はこれを通して呼ぶ。
+ * FE と同じく先に /sanctum/csrf-cookie を呼び、受け取った Cookie と XSRF-TOKEN を付ける。
+ */
+function asSpa(): TestCase
+{
+    config(['sanctum.stateful' => ['localhost:3000']]);
+
+    $test = test()->withHeaders([
+        'Origin'  => 'http://localhost:3000',
+        'Referer' => 'http://localhost:3000/',
+    ]);
+
+    $response = $test->get('/sanctum/csrf-cookie');
+    $xsrfToken = $response->getCookie('XSRF-TOKEN', decrypt: false)->getValue();
+
+    // レスポンスの Cookie は暗号化済みなので、ブラウザと同じくそのまま送り返す
+    return $test->withHeader('X-XSRF-TOKEN', $xsrfToken)
+        ->withUnencryptedCookies([
+            'XSRF-TOKEN'             => $xsrfToken,
+            config('session.cookie') => $response->getCookie(config('session.cookie'), decrypt: false)->getValue(),
+        ]);
+}
+
+/**
  * 画像ストレージをローカル開発と同じMinIO構成にする。
  * 本番の実AWS S3はエンドポイントの設定値が違うだけで、通る処理は同じ。
  */
