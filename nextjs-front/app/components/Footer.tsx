@@ -2,11 +2,11 @@ import type { FC, SVGProps } from "react";
 import X from "@/public/X.svg";
 import Qiita from "@/public/Qiita.svg";
 import GitHub from "@/public/GitHub.svg";
-import { SITE_DATA } from "@/app/constants/siteData";
+import { type AccountService, SITE_DATA } from "@/app/constants/siteData";
 
 // Qiitaは横長の文字ロゴなので、ほかのアイコンと同じ高さだと大きく見える。高さを下げてそろえる
 const ICON_MAP: Record<
-  string,
+  AccountService,
   { Icon: FC<SVGProps<SVGSVGElement>>; className: string }
 > = {
   X: { Icon: X, className: "h-6 w-auto" },

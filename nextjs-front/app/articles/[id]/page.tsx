@@ -7,23 +7,11 @@ import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
 import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
 import TableOfContents from "@/app/components/ui/TableOfContents";
-import type { ArticleDetail } from "@/app/types/models";
 import {
   articleRehypePlugins,
   extractHeadings,
 } from "@/app/lib/articleMarkdown";
-import { getApiBaseUrl } from "@/app/lib/apiBaseUrl";
-
-async function fetchArticle(id: string): Promise<ArticleDetail> {
-  const res = await fetch(`${getApiBaseUrl()}/api/articles/${id}`, {
-    headers: { Accept: "application/json" },
-  });
-
-  if (!res.ok) {
-    throw new Error("記事の取得に失敗しました。");
-  }
-  return (await res.json()).data;
-}
+import { fetchArticle } from "@/app/lib/articles";
 
 // fetchArticleはページ本体と同じURL・オプションで呼ぶため、1回の表示の中では結果が共有され、APIへのリクエストは増えない
 export async function generateMetadata({
