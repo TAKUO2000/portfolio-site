@@ -63,6 +63,12 @@ export async function fetchArticles({
  * 存在しない記事や下書き（APIが404を返す）はエラー画面ではなく404にする。
  */
 export async function fetchArticle(id: string): Promise<ArticleDetail> {
+  // idはURLから来る値。「../tags」のような値をそのままパスに入れるとAPIの別の口を呼べてしまうので、
+  // 数字だけを通す（APIも数字以外は404にしている）
+  if (!/^\d+$/.test(id)) {
+    notFound();
+  }
+
   const res = await fetch(`${getApiBaseUrl()}/api/articles/${id}`, {
     headers: { Accept: "application/json" },
   });

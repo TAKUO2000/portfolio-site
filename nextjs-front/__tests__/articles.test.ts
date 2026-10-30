@@ -54,6 +54,19 @@ describe("fetchArticle", () => {
     expect(notFound).toHaveBeenCalled();
   });
 
+  it.each(["../tags", "..%2Ftags", "1/../../tags", "abc", ""])(
+    "数字でないid（%s）はAPIを呼ばずに404にする",
+    async (id) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(fetchArticle(id)).rejects.toThrow(
+        "NEXT_HTTP_ERROR_FALLBACK;404",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("APIの障害（5xx）は404にせず、エラーにする", async () => {
     vi.stubGlobal(
       "fetch",
