@@ -5,8 +5,7 @@ import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import CategoryBox from "@/app/components/ui/CategoryBox";
 import TagBox from "@/app/components/ui/TagBox";
-import ArticleActionButtons from "@/app/components/ui/ArticleActionButtons";
-import TableOfContents from "@/app/components/ui/TableOfContents";
+import ArticleSidebar from "@/app/components/ui/ArticleSidebar";
 import {
   articleRehypePlugins,
   extractHeadings,
@@ -40,8 +39,8 @@ export default async function ArticlePage({
     <>
       <Header />
       <main className="w-full max-w-5xl mx-auto px-4 py-8">
-        {/* md以上は本文と目次の横並び。md未満は縦に並べ、目次→本文→いいねの順にする */}
-        <div className="flex flex-col gap-6 md:flex-row md:gap-8 md:items-start">
+        {/* md以上は本文と目次の横並び */}
+        <div className="flex gap-8 items-start">
           {/* 本文エリア (md以上で8割) */}
           <article className="min-w-0 md:w-4/5 bg-black/10 rounded-xl p-4 md:p-6">
             {headerImage && (
@@ -73,20 +72,21 @@ export default async function ArticlePage({
             </div>
           </article>
 
-          {/* 目次エリア (md以上で2割)。md未満はasideの箱を無くし、目次だけを本文の上へ出す */}
-          <aside className="contents md:w-1/5 md:shrink-0 md:sticky md:top-8 md:flex md:flex-col md:gap-4">
-            <TableOfContents
-              headings={headings}
-              className="order-first md:order-none"
-            />
-            <ArticleActionButtons
-              articleId={article.id}
-              likeCount={article.like_count}
-            />
-          </aside>
+          {/* 目次・いいね (md以上で2割)。md未満は画面の下に固定する */}
+          <ArticleSidebar
+            headings={headings}
+            articleId={article.id}
+            likeCount={article.like_count}
+          />
         </div>
       </main>
       <Footer />
+      {/* md未満は画面下に目次・いいねのバーが重なるので、フッターの末尾が隠れないよう高さ分を空ける。
+          バーの高さと少しずれても隙間に見えないよう、フッターと同じ黒で塗る */}
+      <div
+        className="h-[calc(4rem+env(safe-area-inset-bottom))] bg-black md:hidden"
+        aria-hidden="true"
+      />
     </>
   );
 }
