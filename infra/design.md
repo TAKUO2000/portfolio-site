@@ -301,7 +301,7 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 | `AWS_ENDPOINT` / `AWS_PUBLIC_ENDPOINT` | 空にする |
 | `AWS_USE_PATH_STYLE_ENDPOINT` | `false` |
 
-本番のバケット名は `nextjs-front/next.config.ts` の `images.remotePatterns` にも追加する（今は開発用のバケットだけが入っている）。
+Vercel の環境変数 `S3_IMAGE_HOST` に本番のバケットのホスト名を入れる（`nextjs-front/next.config.ts` が `images.remotePatterns` に追加する）。
 
 **`tmp/*` を公開しない理由**
 
@@ -325,7 +325,7 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 | Root Directory | `nextjs-front` |
 | Functions のリージョン | `hnd1`（東京）。EC2 と同じリージョンにして、SSR の往復を短くする |
 | 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコードを作る（[DNS（Cloudflare）](#dnscloudflare)） |
-| 環境変数 | `NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`REVALIDATE_SECRET`（秘密。下記） |
+| 環境変数 | `NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`S3_IMAGE_HOST=<本番のバケット名>.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（秘密。下記） |
 
 `REVALIDATE_SECRET` は、記事の変更時に API が `/api/revalidate` を呼ぶときのシークレットです（`nextjs-front/app/api/revalidate/route.ts`）。トップページは記事一覧を静的なページとしてキャッシュし、記事が変わったときと1時間ごとに作り直します。API 側の `FRONTEND_REVALIDATE_SECRET` と同じ値にし、Production（本番）と Preview（`develop` のステージング）で別の値を入れます。
 
@@ -333,7 +333,9 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 `/api/revalidate` はインターネットから呼べます。シークレットが違えば何もせずに 401 を返すだけなので、レート制限は置いていません。不正なリクエストが目立つようなら、Vercel の Firewall でこのパスを制限します。
 
-`API_INTERNAL_BASE_URL` は設定しません。`app/lib/apiBaseUrl.ts` は、これが無ければ `NEXT_PUBLIC_API_BASE_URL` を使います。
+`NEXT_PUBLIC_API_BASE_URL` と `S3_IMAGE_HOST` が無いと、本番のビルドは失敗します（`next.config.ts`）。
+
+`API_INTERNAL_BASE_URL` は設定しません。`app/lib/apiBaseUrl.ts` は、これが無ければ `NEXT_PUBLIC_API_BASE_URL` を使います。`S3_PUBLIC_ENDPOINT` も設定しません（MinIO 用で、設定すると画像最適化が無効になります）。
 
 Hobby プランでは、画像最適化（`next/image`）の回数に月ごとの上限があります。超えそうな場合は `unoptimized` にするか、S3 の前に CloudFront を置きます。
 
@@ -425,7 +427,7 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 | VPC | `10.0.0.0/16` | `10.1.0.0/16`（本番とは別の VPC） |
 | EC2 | t4g.micro + Elastic IP | t4g.micro。**Elastic IP は使わず**、自動で割り当てられるパブリック IP を apply のたびに Cloudflare の DNS へ登録する |
 | DB | データ用 EBS に保存して残す | データ用 EBS は作らず、ルートの `/data` に置く。作るたびに空。管理者をコマンドで作り、サンプルデータをシーダーで入れる |
-| S3 | 本番用バケット（CORS は `https://takuosblog.com`） | stg 用バケット（CORS は `https://stg.takuosblog.com`）。`force_destroy` で destroy のときに中身ごと消す。`next.config.ts` の `remotePatterns` にも追加する |
+| S3 | 本番用バケット（CORS は `https://takuosblog.com`） | stg 用バケット（CORS は `https://stg.takuosblog.com`）。`force_destroy` で destroy のときに中身ごと消す。Vercel の Preview 環境の `S3_IMAGE_HOST` に入れる |
 | ECR | 共有（`envs/shared`） | 共有。本番と同じイメージを使う |
 | Parameter Store | `/portfolio/prod/*` | `/portfolio/stg/*`（`envs/shared` で管理し、destroy しても残す） |
 | バックアップ・監視 | DLM・`mysqldump`・CloudWatch アラーム | なし（AWS Budgets はアカウント全体なので、ステージングの費用も対象になる） |
@@ -450,7 +452,7 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 | `SESSION_DOMAIN` | `.stg.takuosblog.com` |
 | `SESSION_COOKIE` | `portfolio_stg_session`（本番のセッション Cookie と名前を変える） |
 
-Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com` を設定します。
+Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com` と、stg バケットのホスト名の `S3_IMAGE_HOST` を設定します。
 
 ### 注意点
 
@@ -512,7 +514,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [x] `php artisan user:create-admin` を作る（#80、[管理者アカウントの作成](#管理者アカウントの作成)）
 - [x] `DatabaseSeeder` が `local` と `testing` 以外で `UserSeeder` を呼ばないようにする（#80）
 - [ ] `config('app.frontend_url')` を定義し、S3 の認証情報をインスタンスロールで取れるようにする（`ImageStorage` がアクセスキーを常に渡している）。本番用の環境変数の雛形を作る（#79）
-- [ ] 本番のバケットを `next.config.ts` の `remotePatterns` に追加できるようにする。`NEXT_PUBLIC_API_BASE_URL` の未設定を本番のビルドで検出する（#85）
+- [x] 本番のバケットを `next.config.ts` の `remotePatterns` に追加できるようにする。`NEXT_PUBLIC_API_BASE_URL` の未設定を本番のビルドで検出する（#85）
 - [ ] API の全ルートで `StartSession` が動き、ログインと関係ない応答にもセッション Cookie が付く件（#87）
 - [ ] メール送信の扱いを決める。`routes/auth.php` にはパスワードリセットとメール認証のルートがあるが、`MAIL_MAILER` は `log` のまま。本番で使うなら SES などを用意する（#81 で方針を決める）
 
