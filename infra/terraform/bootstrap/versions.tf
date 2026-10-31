@@ -28,7 +28,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project   = "portfolio"
-      Env       = "shared"
+      Env       = "bootstrap"
       ManagedBy = "terraform"
     }
   }

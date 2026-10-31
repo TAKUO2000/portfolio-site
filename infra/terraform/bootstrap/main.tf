@@ -42,7 +42,7 @@ resource "aws_s3_bucket_ownership_controls" "tfstate" {
   }
 }
 
-# 古い版が増え続けないよう、上書きされた版は90日で消す
+# 古い版が増え続けないよう、上書きされた版は90日で消す。途中で止まったアップロードの断片も7日で消す
 resource "aws_s3_bucket_lifecycle_configuration" "tfstate" {
   bucket = aws_s3_bucket.tfstate.id
 
