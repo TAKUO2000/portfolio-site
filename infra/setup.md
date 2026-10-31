@@ -128,7 +128,7 @@ GitHub Actions のロールに、自分の環境のキー（`stg/` など）だ�
 
 | リソース | 内容 |
 | --- | --- |
-| ECR | リポジトリ `portfolio/app`。タグの上書きを禁止し、プッシュ時にスキャンする。タグなしは1日、それ以外は直近の20個だけ残す |
+| ECR | リポジトリ `portfolio/app`。タグの上書きを禁止し、プッシュ時にスキャンする。タグなしは1日で消し、`main-` は直近の20個、`develop-` は直近の10個だけ残す |
 | GitHub の OIDC プロバイダー | GitHub Actions がアクセスキーなしでロールを引き受けるため。ロールは #115・#116 で作る |
 | AWS Budgets | 月 $20。実績が 80%、月末の予測が 100% を超えたらメールで知らせる。クレジットを差し引く前の金額で比べる |
 
@@ -143,7 +143,19 @@ terraform plan
 terraform apply
 ```
 
-apply のあとに、Budgets の通知先のアドレスに AWS から確認のメールが届いていないか確かめます。
+apply のあとに、Budgets の2つの通知に通知先のアドレスが登録されているか確かめます。通知先にメールアドレスを直接指定した場合、AWS から確認のメールは届きません（届くのは予算を超えたときだけ）。
+
+```bash
+for n in "NotificationType=ACTUAL,ComparisonOperator=GREATER_THAN,Threshold=80,ThresholdType=PERCENTAGE" \
+         "NotificationType=FORECASTED,ComparisonOperator=GREATER_THAN,Threshold=100,ThresholdType=PERCENTAGE"; do
+  aws budgets describe-subscribers-for-notification \
+    --account-id "$(aws sts get-caller-identity --query Account --output text)" \
+    --budget-name portfolio-monthly --notification "$n" \
+    --query 'Subscribers[].Address' --output text
+done
+```
+
+コンソールでは「請求とコスト管理」→「予算」→ `portfolio-monthly` のアラートの欄で見られます。
 
 ---
 
@@ -168,7 +180,7 @@ DB のパスワードを16進数にするのは、`.env` や compose で特別�
 
 ### 入れ方
 
-値を画面に出さず、シェルの履歴にも残さないよう、乱数をその場で作ってそのまま渡します（履歴に残るのは `$(...)` の式だけです）。
+値を画面に出さず、シェルの履歴にも残さないよう、乱数をその場で作ってそのまま渡します（履歴に残るのは `$(...)` の式だけです）。初めて作るときは `--overwrite` は要りません（既にある名前に付けずに実行すると、上書きせずにエラーになるので、誤って替えることがありません）。
 
 ```bash
 export AWS_PROFILE=portfolio
@@ -204,7 +216,18 @@ unset VALUE
 # 名前の一覧（値は出ない）
 aws ssm get-parameters-by-path --path /portfolio/prod/ --query 'Parameters[].[Name,Type]' --output table
 
-# 状態に秘密が入っていないこと（何も出なければよい）
-cd infra/terraform/envs/shared
-terraform state pull | grep -E 'APP_KEY|DB_PASSWORD|DB_ROOT_PASSWORD|REVALIDATE_SECRET'
 ```
+
+Terraform の状態に秘密の値が入っていないことは、Parameter Store の値を読む環境（`envs/prod`・`envs/stg`）を作ったあとに、その環境の状態で確かめます。誤って `aws_ssm_parameter` などで値を扱っていると、ここに出ます。
+
+```bash
+cd infra/terraform/envs/prod   # stg も同じ
+# 0 と出ればよい（見つかった行の数だけを出し、値は画面に出さない）
+terraform state pull | grep -cF -f <(
+  for n in APP_KEY DB_PASSWORD DB_ROOT_PASSWORD FRONTEND_REVALIDATE_SECRET; do
+    aws ssm get-parameter --name "/portfolio/prod/$n" --with-decryption --query Parameter.Value --output text
+  done
+)
+```
+
+名前ではなく値そのもので探すので、値が別の属性名で入っていても見つかります。

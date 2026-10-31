@@ -102,7 +102,7 @@ tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）
 | S3 | 画像バケット | [S3（画像）](#s3画像)を参照 |
 | | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する |
 | | tfstate バケット | Terraform の状態を保存する。`bootstrap/` で作る。バージョニング、SSE-S3 の暗号化、パブリックアクセスのブロック、HTTPS 以外の拒否。ロックは `use_lockfile`（DynamoDB は使わない） |
-| ECR | リポジトリ | `portfolio/app`。古いイメージはライフサイクルルールで消す |
+| ECR | リポジトリ | `portfolio/app`（本番とステージングで共有）。タグは `main-<SHA>` / `develop-<SHA>` で、上書きを禁止する。ライフサイクルルールで、タグなしは1日、`main-` は直近の20個、`develop-` は直近の10個だけ残す（接頭辞ごとに数えるので、ステージングへの push が続いても本番のイメージは消えない） |
 | SSM | Parameter Store | 秘密情報（SecureString）を置く。**Terraform では管理せず**、AWS CLI で入れる（[環境変数と秘密情報](#環境変数と秘密情報)） |
 | DLM | ライフサイクルポリシー | データ用 EBS の日次スナップショットを7世代残す |
 | CloudWatch | アラーム | ステータスチェックの失敗と CPU クレジット残高。通知先は SNS からメールに送る |
@@ -159,6 +159,11 @@ resource "aws_budgets_budget" "monthly" {
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
 
+  # クレジットを差し引く前の金額で比べる（クレジットで請求が $0 の間も気づけるように）
+  cost_types {
+    include_credit = false
+  }
+
   # 実績が 80% を超えたら
   notification {
     comparison_operator        = "GREATER_THAN"
@@ -179,7 +184,7 @@ resource "aws_budgets_budget" "monthly" {
 }
 ```
 
-- 予算は見積もり（月 $14〜15.5）に余裕を持たせて $20 にする。このアカウントはこのアプリ専用で使う前提で、タグでは絞り込まない
+- 予算は見積もり（月 $14〜15.5）に余裕を持たせて $20 にする。税込みの金額で比べるので（消費税 10%）、月によっては 80% の通知が届くことがある。このアカウントはこのアプリ専用で使う前提で、タグでは絞り込まない
 - Budgets は通知するだけで、リソースは止めない（Budget actions は使わない）。費用のデータは1日に数回の更新なので、通知は数時間から半日ほど遅れることがある
 - 予測の通知は、使い始めはデータが足りず動かないことがある
 - 通知が来たら、Cost Explorer をサービス別に表示し、何が増えたかを確かめる
@@ -401,7 +406,7 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 **バックエンド**：GitHub Actions で行う。
 
 1. OIDC で AWS のロール（本番は `github-deploy-prod`）を引き受ける（長期のアクセスキーは使わない）
-2. `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、コミットの SHA をタグにして ECR へ push する
+2. `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、`main-<コミットの SHA>`（ステージングは `develop-<SHA>`）をタグにして ECR へ push する。buildx の provenance は付けない（`provenance: false`。付けるとタグなしのマニフェストができ、ECR のライフサイクルルールで消されてイメージが壊れるため）
 3. SSM Run Command で、デプロイ用の SSM ドキュメント（`portfolio-deploy`）を EC2 に実行させる。ドキュメントの中身は次のとおり
    - Parameter Store から `.env` を作り直す
    - `docker compose -f docker-compose.prod.yml pull`
@@ -409,7 +414,7 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 
 `up -d` でコンテナが入れ替わる間、数秒だけ API が止まります。個人開発なので許容します。
 
-**ロールバック**：前のコミットの SHA のイメージを指定して `up -d` し直す。マイグレーションは後方互換を保つように書く。
+**ロールバック**：前のコミットのタグ（`main-<SHA>`。直近の20個が残っている）を指定して `up -d` し直す。マイグレーションは後方互換を保つように書く。
 
 ---
 
@@ -429,7 +434,7 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 | EC2 | t4g.micro + Elastic IP | t4g.micro。**Elastic IP は使わず**、自動で割り当てられるパブリック IP を apply のたびに Cloudflare の DNS へ登録する |
 | DB | データ用 EBS に保存して残す | データ用 EBS は作らず、ルートの `/data` に置く。作るたびに空。管理者をコマンドで作り、サンプルデータをシーダーで入れる |
 | S3 | 本番用バケット（CORS は `https://takuosblog.com`） | stg 用バケット（CORS は `https://stg.takuosblog.com`）。`force_destroy` で destroy のときに中身ごと消す。Vercel の Preview 環境の `S3_IMAGE_HOST` に入れる |
-| ECR | 共有（`envs/shared`） | 共有。本番と同じイメージを使う |
+| ECR | 共有（`envs/shared`）。タグは `main-<SHA>` | 共有。タグは `develop-<SHA>` |
 | Parameter Store | `/portfolio/prod/*` | `/portfolio/stg/*`（Terraform の管理の外に置き、destroy しても残す） |
 | バックアップ・監視 | DLM・`mysqldump`・CloudWatch アラーム | なし（AWS Budgets はアカウント全体なので、ステージングの費用も対象になる） |
 
@@ -506,7 +511,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] データ用 EBS のマウント（`user_data`）と、`mysqldump` の systemd timer を作る。`mysqldump` から復元する手順を一度試して、この設計書に書く（#53）
 - [ ] Terraform のコード化（#53）
 - [x] tfstate のバケットの作り方を決める。`bootstrap/` で Terraform で作り、状態は作ったバケットへ移す（#110）
-- [ ] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#53）
+- [x] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#110）
 - [ ] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions のシークレットに登録する（#53）
 - [ ] GitHub Actions のデプロイワークフローを作る（#53）
 - [ ] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#53）
