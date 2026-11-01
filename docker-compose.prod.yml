@@ -74,7 +74,8 @@ services:
     # 長い間隔にして、確かめるための接続でワーカーが居座らないようにする
     healthcheck:
       test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
-      start_period: 120s
+      # マイグレーションが長くかかっても unhealthy にならないよう長めにする（早く終われば、その時点で healthy になる）
+      start_period: 300s
       start_interval: 2s
       interval: 60s
       timeout: 5s
