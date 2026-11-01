@@ -207,10 +207,10 @@ CPU を使いやすい場面と、その対策：
 
 | ファイル | 中身 | 渡す先 | 雛形 |
 | --- | --- | --- | --- |
-| `.env` | 使うイメージ（`APP_IMAGE`）、API のドメイン（`API_DOMAIN`）、MySQL の初期化に使う値（`DB_ROOT_PASSWORD` など） | compose の変数の置き換えだけ（コンテナには渡らない） | `docker-compose.prod.env.example` |
+| `.env` | 使うイメージ（`APP_IMAGE`）、API のドメイン（`API_DOMAIN`）、DB の値（`DB_DATABASE`・`DB_USERNAME`・`DB_PASSWORD`・`DB_ROOT_PASSWORD`） | compose の変数の置き換え。DB の値のうち `DB_ROOT_PASSWORD` 以外は、compose が `app` と `scheduler` にも渡す | `docker-compose.prod.env.example` |
 | `.env.production` | Laravel の設定 | `app` と `scheduler` | `laravel-back/.env.production.example` |
 
-MySQL の root のパスワードは `.env` にだけ置き、`app` と `scheduler` には渡しません。アプリが乗っ取られても、DB の root まで奪われないようにするためです。
+MySQL の root のパスワードは `.env` にだけ置き、`app` と `scheduler` には渡しません。アプリが乗っ取られても、DB の root まで奪われないようにするためです。DB の接続情報は `.env` の1か所に置き、MySQL の初期化と `app`・`scheduler` の両方で使います（2か所に書くと値がずれ、MySQL は初期化済みのデータのパスワードを変えないので、原因も追いにくいため）。
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d
@@ -227,6 +227,7 @@ docker compose -f docker-compose.prod.yml up -d
 - ログは json-file でコンテナごとに 10MB × 3 世代までにし、ルートの EBS を埋めないようにする
 - `app` は `mem_limit: 768m`、`scheduler` は `256m`。PHP がメモリを使いすぎても、同じインスタンスの MySQL を巻き添えにしない
 - 起動の順番：`mysql` が healthy → `app` がマイグレーションと optimize を終えて php-fpm が待ち受けを始める（healthy）→ `scheduler` と `nginx`。マイグレーションの前に scheduler のタスクが動かないようにするため
+- `app` の healthcheck は、起動中だけ2秒おきに確かめ、そのあとは60秒おきにする。`pm = ondemand` は接続のたびにワーカーを起動するので、`pm.process_idle_timeout`（10秒）より短い間隔だと、確かめるための接続でワーカーが居座ってしまうため
 - `app` は再起動のたびに `migrate --force` を流す。済んだマイグレーションは流れないので害はない。マイグレーションが失敗すると、`app` は起動を繰り返すので、`docker compose logs app` で原因を確かめる
 - MySQL の healthcheck は TCP で ping する。初回の初期化中はネットワークを閉じた一時サーバーが動くので、ソケットで確かめると早く成功してしまい、`app` のマイグレーションが接続に失敗するため
 
@@ -244,6 +245,7 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 - `Strict-Transport-Security`（HSTS）と `X-Content-Type-Options: nosniff` を付ける。HSTS は証明書の更新が安定するまで `max-age=86400`（1日）にし、確かめてから1年に伸ばす
 - `client_max_body_size 12M` は開発用と同じにする
 - 開発用と同じく、`fastcgi_pass` は変数と `resolver 127.0.0.11` で都度解決する（app コンテナを入れ替えると IP が変わるため）
+- テンプレートで置き換える環境変数は `NGINX_ENVSUBST_FILTER` で `API_DOMAIN` だけにする
 
 ### 証明書（certbot）
 
@@ -392,7 +394,7 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 ## 環境変数と秘密情報
 
 - 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。Terraform の `aws_ssm_parameter` では作らず、AWS CLI で入れる（値が tfstate に平文で残るため。手順は [構築手順](setup.md#秘密情報を-parameter-store-に入れる)）。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
-- EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env` と `.env.production`（どちらもパーミッション 600）に書き出す。compose はそこから読む。`DB_ROOT_PASSWORD` は `.env` にだけ書く（[EC2 上のコンテナ構成](#ec2-上のコンテナ構成)）
+- EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env` と `.env.production`（どちらもパーミッション 600）に書き出す。compose はそこから読む。DB の値（`DB_PASSWORD`・`DB_ROOT_PASSWORD`）は `.env` にだけ書く（[EC2 上のコンテナ構成](#ec2-上のコンテナ構成)）
 - 秘密でない値（`APP_ENV=production`、`APP_DEBUG=false`、`LOG_LEVEL=warning` など）も同じ `.env.production` にまとめる
 - `.env` も秘密情報もリポジトリには入れない
 

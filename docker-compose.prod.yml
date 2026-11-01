@@ -23,6 +23,11 @@ x-app: &app
   restart: unless-stopped
   env_file:
     - .env.production
+  # DB の接続情報は MySQL の初期化と同じ値を使うので、.env の1か所から渡す（.env.production には書かない）
+  environment:
+    DB_DATABASE: ${DB_DATABASE:?DB_DATABASE を指定してください}
+    DB_USERNAME: ${DB_USERNAME:?DB_USERNAME を指定してください}
+    DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD を指定してください}
   # php-fpm のワーカーがメモリを使いすぎても、同じインスタンスの MySQL を巻き添えにしない
   # （php.prod.ini の memory_limit 128M × pm.max_children 5 に、master と OPcache の共有メモリ（64M）の分を足す）
   mem_limit: 768m
@@ -64,13 +69,16 @@ services:
       mysql:
         condition: service_healthy
     # php-fpm は entrypoint のマイグレーションと optimize が終わってから 9000 番で待ち受ける。
-    # 待ち受けを始めたら healthy にし、scheduler と nginx はそれを待って起動する
+    # 待ち受けを始めたら healthy にし、scheduler と nginx はそれを待って起動する。
+    # pm = ondemand は接続のたびにワーカーを起動するので、起動後は pm.process_idle_timeout（10s）より
+    # 長い間隔にして、確かめるための接続でワーカーが居座らないようにする
     healthcheck:
       test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
-      interval: 5s
+      start_period: 120s
+      start_interval: 2s
+      interval: 60s
       timeout: 5s
-      retries: 30
-      start_period: 30s
+      retries: 3
 
   # schedule:work で images:prune などを動かす。マイグレーションは app でだけ流す（entrypoint.prod.sh）
   scheduler:
@@ -91,6 +99,8 @@ services:
     environment:
       # prod.conf の ${API_DOMAIN} を置き換える（api.takuosblog.com / api.stg.takuosblog.com）
       API_DOMAIN: ${API_DOMAIN:?API_DOMAIN に API のドメインを指定してください}
+      # テンプレートで置き換える環境変数を API_DOMAIN だけにする（ほかの環境変数を足しても、nginx の $変数 と衝突しないように）
+      NGINX_ENVSUBST_FILTER: ^API_DOMAIN$
     volumes:
       - ./laravel-back/docker/nginx/prod.conf:/etc/nginx/templates/default.conf.template:ro
       - ${LETSENCRYPT_DIR:-/data/letsencrypt}:/etc/letsencrypt:ro
