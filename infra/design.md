@@ -120,7 +120,7 @@ DB だけをプライベートサブネットに分ける構成は採らない�
 | `github-deploy-stg` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/develop` | ECR への push。`Env=stg` タグの EC2 に、デプロイ用の SSM ドキュメントだけを実行する。ステージングの有無を確かめるための `ec2:DescribeInstances` |
 | `github-terraform-stg` | `repo:TAKUO2000/portfolio-site:environment:staging` | `envs/stg` の apply / destroy に必要な権限（VPC・EC2・S3 の stg バケット・IAM など）。作る IAM ロールには permissions boundary を必須にし、自分より強い権限のロールを作れないようにする |
 
-- **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
+- **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env` と `.env.production` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
 - `github-terraform-stg` は、GitHub の Environment（`staging`）に結び付ける。Environment の設定で、実行できるブランチを `main` だけに限定する。`workflow_dispatch` で手動実行したときだけ使う
 - **`envs/shared` と `envs/prod` は GitHub Actions から apply しない**。手元から、MFA を付けた管理用のユーザーで apply する。この2つを Actions から apply できるロールを作ると、ワークフローを書き換えられただけでアカウント全体を奪われるため
 - Cloudflare の API トークンも、ステージングの DNS レコードを作るために GitHub Actions のシークレットに置く。対象ゾーンの DNS 編集権限だけに絞る
@@ -201,27 +201,52 @@ CPU を使いやすい場面と、その対策：
 
 ## EC2 上のコンテナ構成
 
-本番用の `docker-compose.prod.yml` を EC2 に置き、docker compose で動かします。
+本番用の `docker-compose.prod.yml`（リポジトリの直下）を EC2 に置き、docker compose で動かします。nginx の設定（`laravel-back/docker/nginx/prod.conf`）も、同じ相対パスで置きます。
+
+環境変数は、compose と同じディレクトリの2つのファイル（どちらもパーミッション 600）に分けます。
+
+| ファイル | 中身 | 渡す先 | 雛形 |
+| --- | --- | --- | --- |
+| `.env` | 使うイメージ（`APP_IMAGE`）、API のドメイン（`API_DOMAIN`）、DB の値（`DB_DATABASE`・`DB_USERNAME`・`DB_PASSWORD`・`DB_ROOT_PASSWORD`） | compose の変数の置き換え。DB の値のうち `DB_ROOT_PASSWORD` 以外は、compose が `app` と `scheduler` にも渡す | `docker-compose.prod.env.example` |
+| `.env.production` | Laravel の設定 | `app` と `scheduler` | `laravel-back/.env.production.example` |
+
+MySQL の root のパスワードは `.env` にだけ置き、`app` と `scheduler` には渡しません。アプリが乗っ取られても、DB の root まで奪われないようにするためです。DB の接続情報は `.env` の1か所に置き、MySQL の初期化と `app`・`scheduler` の両方で使います（2か所に書くと値がずれ、MySQL は初期化済みのデータのパスワードを変えないので、原因も追いにくいため）。
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
 
 | コンテナ | イメージ | 役割 | メモリの目安 |
 | --- | --- | --- | --- |
-| `nginx` | `nginx:stable-alpine` | TLS 終端、FastCGI で php-fpm へ渡す、HTTP から HTTPS へのリダイレクト | 約 10MB |
+| `nginx` | `nginx:stable-alpine` | TLS 終端、FastCGI で php-fpm へ渡す、HTTP から HTTPS へのリダイレクト | 約 10MB（ローカルの計測で 7MB） |
 | `certbot` | `certbot/certbot` | Let's Encrypt の証明書の取得と更新。常駐させず、更新するときだけ `docker compose run --rm` で動かす | 0MB（実行中だけ約 50MB） |
-| `app` | ECR の `portfolio/app` | php-fpm（Laravel）。起動時に migrate と optimize を実行する | 約 150MB |
-| `scheduler` | `app` と同じイメージ | `php artisan schedule:work`（`images:prune` などを実行） | 約 60MB |
-| `mysql` | `mysql:8.0` | DB。データはデータ用 EBS の `/data/mysql` に置く | 約 250MB |
+| `app` | ECR の `portfolio/app` | php-fpm（Laravel）。起動時に migrate と optimize を実行する | 約 150MB（待機中は 35MB。ワーカー1つあたり数十MB増える） |
+| `scheduler` | `app` と同じイメージ | `php artisan schedule:work`（`images:prune` などを実行） | 約 60MB（ローカルの計測で 34MB） |
+| `mysql` | `mysql:8.4` | DB（8.0 は 2026年4月にサポートが終わったので、LTS の 8.4）。データはデータ用 EBS の `/data/mysql` に置く | 約 250MB（ローカルの計測で 160MB） |
+
+- ログは json-file でコンテナごとに 10MB × 3 世代までにし、ルートの EBS を埋めないようにする
+- `app` は `mem_limit: 768m`、`scheduler` は `256m`。PHP がメモリを使いすぎても、同じインスタンスの MySQL を巻き添えにしない
+- 起動の順番：`mysql` が healthy → `app` がマイグレーションと optimize を終えて php-fpm が待ち受けを始める（healthy）→ `scheduler` と `nginx`。マイグレーションの前に scheduler のタスクが動かないようにするため
+- `app` の healthcheck は、起動中だけ2秒おきに確かめ、そのあとは60秒おきにする。`pm = ondemand` は接続のたびにワーカーを起動するので、`pm.process_idle_timeout`（10秒）より短い間隔だと、確かめるための接続でワーカーが居座ってしまうため
+- `app` は再起動のたびに `migrate --force` を流す。済んだマイグレーションは流れないので害はない。マイグレーションが失敗すると、`app` は起動を繰り返すので、`docker compose logs app` で原因を確かめる
+- MySQL の healthcheck は TCP で ping する。初回の初期化中はネットワークを閉じた一時サーバーが動くので、ソケットで確かめると早く成功してしまい、`app` のマイグレーションが接続に失敗するため
 
 Web サーバーは開発環境と同じ nginx にします。証明書の取得と更新は certbot で行います。Caddy（証明書を自動で管理する Web サーバー）とも比べましたが、開発環境とそろえることと、証明書の発行と更新の仕組みを学ぶことを優先しました。メモリの差は 10〜30MB ほどで、判断には影響しません。
 
 ### nginx の設定
 
-開発用の `laravel-back/docker/nginx/default.conf` をもとに、本番用の設定（`laravel-back/docker/nginx/prod.conf`（予定））を作ります。
+開発用の `laravel-back/docker/nginx/default.conf` をもとに、本番用の設定（`laravel-back/docker/nginx/prod.conf`）を作ります。nginx の公式イメージのテンプレートの機能（`/etc/nginx/templates/*.template`）で読み込み、起動時に `${API_DOMAIN}` を環境変数の値に置き換えます。本番とステージングで同じファイルを使えます。
 
-- **80 番**：`/.well-known/acme-challenge/` だけは certbot の webroot（共有ボリューム）から返し、それ以外は HTTPS へリダイレクトする
+- **80 番**：`/.well-known/acme-challenge/` だけは certbot の webroot（共有ボリューム）から返し、それ以外は HTTPS へリダイレクトする。リダイレクト先は `https://<API_DOMAIN>` に固定し、送られてきた `Host` をそのまま使わない
+- **443 番の既定のサーバー**：API のドメイン以外の名前（IP アドレスへのスキャンや偽の SNI）で来た接続は、`ssl_reject_handshake on;` で TLS の段階で断る
 - **443 番**：`/etc/letsencrypt/live/<ドメイン>/` の `fullchain.pem` と `privkey.pem` を使う
 - **すべてのリクエストを `public/index.php` に渡す**。`SCRIPT_FILENAME` を `/var/www/html/public/index.php` に固定する。API サーバーなので配信する静的ファイルはなく（画像は S3）、nginx のコンテナにソースを置く必要がなくなる。nginx のイメージを自分でビルドしたり、app のイメージから `public/` を共有したりしなくて済む
+- `include fastcgi_params;` を外さない。`HTTPS=on` が php-fpm に届き、Laravel が https と判定する（外すと生成する URL が http になり、署名付き URL の検証も失敗する）
+- バージョンを応答に出さない：`server_tokens off;`、`fastcgi_hide_header X-Powered-By;`（php.ini の `expose_php = Off` と二重に止める）
+- `Strict-Transport-Security`（HSTS）と `X-Content-Type-Options: nosniff` を付ける。HSTS は証明書の更新が安定するまで `max-age=86400`（1日）にし、確かめてから1年に伸ばす
 - `client_max_body_size 12M` は開発用と同じにする
 - 開発用と同じく、`fastcgi_pass` は変数と `resolver 127.0.0.11` で都度解決する（app コンテナを入れ替えると IP が変わるため）
+- テンプレートで置き換える環境変数は `NGINX_ENVSUBST_FILTER` で `API_DOMAIN` だけにする
 
 ### 証明書（certbot）
 
@@ -243,7 +268,7 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 - 合計は OS を含めて約 700MB。余裕を持たせるため、**swap を 2GB 作る**
 - MySQL：`innodb_buffer_pool_size=128M`、`performance_schema=OFF`
-- php-fpm：`pm=ondemand`、`pm.max_children=5`
+- php-fpm：`pm=ondemand`、`pm.max_children=5`、`memory_limit=128M`（画像の加工はしないので足りる。最悪でも 640MB）
 - メモリ不足で落ちるようなら t4g.small（2GB、月 +$8 程度）に上げる。Terraform の変数を1つ変えるだけで済むようにしておく（停止して変えるだけで、作り直しにはならない。[データの置き場所](#データの置き場所)）
 - **イメージは EC2 上でビルドしない**（GitHub Actions でビルドする）
 
@@ -264,10 +289,12 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 本番用の entrypoint で行うこと（開発用の `entrypoint.sh` とは分ける）：
 
-1. `composer install` はしない（ビルド時に `--no-dev --optimize-autoloader` で済ませておく）
+1. `composer install` はしない（ビルド時に `--no-dev --optimize-autoloader` で済ませておく）。`key:generate` もしない（`APP_KEY` は環境変数で渡す）
 2. `app` コンテナでだけ `php artisan migrate --force` を実行する（`scheduler` では実行しない）
 3. `php artisan optimize`
 4. `exec php-fpm`（`scheduler` は `exec php artisan schedule:work`）
+
+イメージは php-fpm も artisan も `www-data` で動かします。書き込めるのは `storage/` と `bootstrap/cache/` だけにし、ソースは root の持ち物のまま読み取り専用にします。php.ini は公式の `php.ini-production` を土台にし（`display_errors = Off` など）、差分だけを `php.prod.ini` で上書きします。
 
 ---
 
@@ -368,8 +395,8 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 ## 環境変数と秘密情報
 
 - 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。Terraform の `aws_ssm_parameter` では作らず、AWS CLI で入れる（値が tfstate に平文で残るため。手順は [構築手順](setup.md#秘密情報を-parameter-store-に入れる)）。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
-- EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env`（パーミッション 600）に書き出す。compose はそこから読む
-- 秘密でない値（`APP_ENV=production`、`APP_DEBUG=false`、`LOG_LEVEL=warning` など）も同じ `.env` にまとめる
+- EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env` と `.env.production`（どちらもパーミッション 600）に書き出す。compose はそこから読む。DB の値（`DB_PASSWORD`・`DB_ROOT_PASSWORD`）は `.env` にだけ書く（[EC2 上のコンテナ構成](#ec2-上のコンテナ構成)）
+- 秘密でない値（`APP_ENV=production`、`APP_DEBUG=false`、`LOG_LEVEL=warning` など）も同じ `.env.production` にまとめる
 - `.env` も秘密情報もリポジトリには入れない
 
 ---
@@ -408,13 +435,23 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 1. OIDC で AWS のロール（本番は `github-deploy-prod`）を引き受ける（長期のアクセスキーは使わない）
 2. `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、`main-<コミットの SHA>`（ステージングは `develop-<SHA>`）をタグにして ECR へ push する。buildx の provenance は付けない（`provenance: false`。付けるとタグなしのマニフェストができ、ECR のライフサイクルルールで消されてイメージが壊れるため）
 3. SSM Run Command で、デプロイ用の SSM ドキュメント（`portfolio-deploy`）を EC2 に実行させる。ドキュメントの中身は次のとおり
-   - Parameter Store から `.env` を作り直す
+   - Parameter Store から `.env` と `.env.production` を作り直す（`.env` の `APP_IMAGE` を今回のタグにする）
    - `docker compose -f docker-compose.prod.yml pull`
    - `docker compose -f docker-compose.prod.yml up -d`
 
 `up -d` でコンテナが入れ替わる間、数秒だけ API が止まります。個人開発なので許容します。
 
 **ロールバック**：前のコミットのタグ（`main-<SHA>`。直近の20個が残っている）を指定して `up -d` し直す。マイグレーションは後方互換を保つように書く。
+
+**マイグレーション**：`app` が起動のたびに `migrate --force` を流すので、デプロイがそのまま本番の DB の変更になります。前のイメージに戻しても動くよう、破壊的な変更は2回のデプロイに分けます。
+
+| 変更 | 1回目のデプロイ | 2回目のデプロイ |
+| --- | --- | --- |
+| 列を消す | コードからその列を使うのをやめる | 列を消すマイグレーション |
+| 列の名前を変える | 新しい列を足し、両方に書き、古い列から写す | コードを新しい列だけにし、古い列を消す |
+| NOT NULL の列を足す | NULL を許す（または既定値のある）列として足す | 値を埋めてから NOT NULL にする |
+
+マイグレーションが `start_period`（300秒）を超えて終わらないと、`app` が unhealthy になり、`scheduler` と `nginx` が起動しません。大きなテーブルを書き換えるマイグレーションは、時間を見積もってから入れます。
 
 ---
 
@@ -506,7 +543,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 
 **インフラ（#53）**
 
-- [ ] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#53）
+- [x] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#109）
 - [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
 - [ ] データ用 EBS のマウント（`user_data`）と、`mysqldump` の systemd timer を作る。`mysqldump` から復元する手順を一度試して、この設計書に書く（#53）
 - [ ] Terraform のコード化（#53）
@@ -526,5 +563,8 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] メール送信の扱いを決める。`routes/auth.php` にはパスワードリセットとメール認証のルートがあるが、`MAIL_MAILER` は `log` のまま。本番で使うなら SES などを用意する（#81 で方針を決める）
 
 **デプロイ後**
+
+- [ ] nginx の HSTS の `max-age` を、証明書の更新が一度成功したのを確かめてから1年（`31536000`）に伸ばす（issue なし）
+- [ ] 開発環境の MySQL を本番と同じ 8.4 に上げる（issue なし）
 
 - [ ] アクセスが増えたら CloudFront を前に置く（画像の配信と API の保護のため）（issue なし）

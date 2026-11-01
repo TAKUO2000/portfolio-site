@@ -1,0 +1,125 @@
+# 本番（とステージング）の EC2 で動かす構成。infra/design.md の「EC2 上のコンテナ構成」
+#
+# 環境変数は、同じディレクトリの2つのファイル（どちらもパーミッション 600、リポジトリには入れない）から読む:
+#   .env            compose の変数の置き換えに使う（イメージ、ドメイン、MySQL の初期化に使う DB の秘密）。
+#                   コンテナには渡らない。雛形は docker-compose.prod.env.example
+#   .env.production app と scheduler に渡す Laravel の設定。雛形は laravel-back/.env.production.example。
+#                   MySQL の root のパスワードは入れない（アプリが乗っ取られても DB の root を渡さないため）
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# 初回は証明書が無いので、nginx は 443 番の設定を読めずに起動できない（再起動を繰り返す）。
+# 先に certbot の standalone で証明書を取ってから起動する（infra/design.md の「証明書（certbot）」）
+
+# ログがルートの EBS を埋めないよう、コンテナごとに 10MB × 3 世代までにする
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-app: &app
+  image: ${APP_IMAGE:?APP_IMAGE に ECR のイメージ（<リポジトリの URL>:main-<SHA>）を指定してください}
+  restart: unless-stopped
+  env_file:
+    - .env.production
+  # DB の接続情報は MySQL の初期化と同じ値を使うので、.env の1か所から渡す（.env.production には書かない）
+  environment:
+    DB_DATABASE: ${DB_DATABASE:?DB_DATABASE を指定してください}
+    DB_USERNAME: ${DB_USERNAME:?DB_USERNAME を指定してください}
+    DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD を指定してください}
+  # php-fpm のワーカーがメモリを使いすぎても、同じインスタンスの MySQL を巻き添えにしない
+  # （php.prod.ini の memory_limit 128M × pm.max_children 5 に、master と OPcache の共有メモリ（64M）の分を足す）
+  mem_limit: 768m
+  logging: *logging
+
+services:
+  mysql:
+    # 8.0 は 2026年4月にサポートが終わったので、LTS の 8.4 にする
+    image: mysql:8.4
+    restart: unless-stopped
+    # 1GB のインスタンスに収めるため、バッファプールを小さくし、performance_schema を切る
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --performance-schema=OFF
+    environment:
+      # 空のまま起動すると、パスワードの無いユーザーが作られたり、初回の起動が失敗したりするので、未設定なら止める
+      MYSQL_DATABASE: ${DB_DATABASE:?DB_DATABASE を指定してください}
+      MYSQL_USER: ${DB_USERNAME:?DB_USERNAME を指定してください}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD を指定してください}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD を指定してください}
+    # ポートはホストに公開しない（app と scheduler からだけ、compose のネットワークで使う）
+    volumes:
+      # データ用 EBS（/data）に置き、インスタンスを作り直しても残す
+      - ${MYSQL_DATA_DIR:-/data/mysql}:/var/lib/mysql
+    healthcheck:
+      # ping は認証に失敗しても、サーバーが動いていれば成功を返す。パスワードをコマンドに書かずに済む。
+      # TCP で確かめる（初回の初期化中はネットワークを閉じた一時サーバーが動くので、ソケットだと早く成功してしまう）
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--protocol=tcp", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  app:
+    <<: *app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # php-fpm は entrypoint のマイグレーションと optimize が終わってから 9000 番で待ち受ける。
+    # 待ち受けを始めたら healthy にし、scheduler と nginx はそれを待って起動する。
+    # pm = ondemand は接続のたびにワーカーを起動するので、起動後は pm.process_idle_timeout（10s）より
+    # 長い間隔にして、確かめるための接続でワーカーが居座らないようにする
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      # マイグレーションが長くかかっても unhealthy にならないよう長めにする（早く終われば、その時点で healthy になる）
+      start_period: 300s
+      start_interval: 2s
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # schedule:work で images:prune などを動かす。マイグレーションは app でだけ流す（entrypoint.prod.sh）
+  scheduler:
+    <<: *app
+    command: ["php", "artisan", "schedule:work"]
+    mem_limit: 256m
+    # マイグレーションが終わる前にタスクを動かさないよう、app が healthy になるのを待つ
+    depends_on:
+      app:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      # prod.conf の ${API_DOMAIN} を置き換える（api.takuosblog.com / api.stg.takuosblog.com）
+      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN に API のドメインを指定してください}
+      # テンプレートで置き換える環境変数を API_DOMAIN だけにする（ほかの環境変数を足しても、nginx の $変数 と衝突しないように）。
+      # compose は $ を変数の置き換えに使うので、正規表現の末尾の $ は $$ と書く
+      NGINX_ENVSUBST_FILTER: ^API_DOMAIN$$
+    volumes:
+      - ./laravel-back/docker/nginx/prod.conf:/etc/nginx/templates/default.conf.template:ro
+      - ${LETSENCRYPT_DIR:-/data/letsencrypt}:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    logging: *logging
+
+  # 証明書の取得と更新のときだけ docker compose run --rm certbot ... で動かす（常駐させない）
+  certbot:
+    image: certbot/certbot
+    profiles: ["certbot"]
+    volumes:
+      - ${LETSENCRYPT_DIR:-/data/letsencrypt}:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    logging: *logging
+
+volumes:
+  certbot_webroot:

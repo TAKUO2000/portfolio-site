@@ -1,0 +1,54 @@
+# 本番用のイメージ。開発用（Dockerfile）と違い、ソースと vendor をイメージに含める。
+# 設定（.env）は含めず、実行時に環境変数で渡す（infra/design.md の「Laravel の実行性能」）
+
+FROM php:8.4.27-fpm AS base
+
+# mbstring / curl / xml は公式の php イメージに組み込み済みなのでビルド対象から除外している
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpng-dev \
+        libjpeg62-turbo-dev \
+        libfreetype6-dev \
+        libzip-dev \
+        libicu-dev \
+        unzip \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" pdo_mysql exif pcntl bcmath gd zip intl opcache \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /var/www/html
+
+
+FROM base AS build
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# 依存だけを先に入れ、ソースを変えても vendor のレイヤーを使い回せるようにする
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-interaction --no-progress
+
+COPY . .
+# post-autoload-dump の package:discover で、dev 依存を除いたパッケージの一覧（bootstrap/cache/packages.php）を作る
+RUN composer dump-autoload --optimize --no-dev --no-interaction
+
+
+FROM base
+
+# 本番用の php.ini を土台にし、差分だけを上書きする
+RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+COPY docker/php/php.prod.ini /usr/local/etc/php/conf.d/zz-prod.ini
+COPY docker/php/php-fpm.prod.conf /usr/local/etc/php-fpm.d/zz-prod.conf
+
+COPY --from=build /var/www/html /var/www/html
+
+# 書き込むのはキャッシュとログの置き場だけにし、ソースは root の持ち物のまま読み取り専用にする。
+# 置き場のディレクトリは .dockerignore の書き方に左右されないよう、ここで作っておく
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache
+
+# php-fpm も artisan も www-data で動かす（root で動かさない）
+USER www-data
+
+EXPOSE 9000
+
+ENTRYPOINT ["sh", "docker/php/entrypoint.prod.sh"]
+CMD ["php-fpm"]

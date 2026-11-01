@@ -1,1 +1,3 @@
 .env
+# 本番（EC2）で docker-compose.prod.yml が読む環境変数。雛形は laravel-back/.env.production.example
+.env.production

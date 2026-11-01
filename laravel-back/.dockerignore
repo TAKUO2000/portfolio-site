@@ -5,6 +5,16 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+storage/framework/testing/*
+storage/app/private/*
+storage/app/public/*
 .env
 .env.*
 !.env.example
+
+# 手元の dev 依存を含むパッケージの一覧。本番用のイメージではビルド時に作り直す（Dockerfile.prod）
+bootstrap/cache/*.php
+
+# 本番用のイメージに要らないもの（開発用のイメージはソースをマウントするので、ここで除いても影響しない）
+tests
+phpunit.xml
