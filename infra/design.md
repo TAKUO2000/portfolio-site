@@ -237,7 +237,8 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 開発用の `laravel-back/docker/nginx/default.conf` をもとに、本番用の設定（`laravel-back/docker/nginx/prod.conf`）を作ります。nginx の公式イメージのテンプレートの機能（`/etc/nginx/templates/*.template`）で読み込み、起動時に `${API_DOMAIN}` を環境変数の値に置き換えます。本番とステージングで同じファイルを使えます。
 
-- **80 番**：`/.well-known/acme-challenge/` だけは certbot の webroot（共有ボリューム）から返し、それ以外は HTTPS へリダイレクトする
+- **80 番**：`/.well-known/acme-challenge/` だけは certbot の webroot（共有ボリューム）から返し、それ以外は HTTPS へリダイレクトする。リダイレクト先は `https://<API_DOMAIN>` に固定し、送られてきた `Host` をそのまま使わない
+- **443 番の既定のサーバー**：API のドメイン以外の名前（IP アドレスへのスキャンや偽の SNI）で来た接続は、`ssl_reject_handshake on;` で TLS の段階で断る
 - **443 番**：`/etc/letsencrypt/live/<ドメイン>/` の `fullchain.pem` と `privkey.pem` を使う
 - **すべてのリクエストを `public/index.php` に渡す**。`SCRIPT_FILENAME` を `/var/www/html/public/index.php` に固定する。API サーバーなので配信する静的ファイルはなく（画像は S3）、nginx のコンテナにソースを置く必要がなくなる。nginx のイメージを自分でビルドしたり、app のイメージから `public/` を共有したりしなくて済む
 - `include fastcgi_params;` を外さない。`HTTPS=on` が php-fpm に届き、Laravel が https と判定する（外すと生成する URL が http になり、署名付き URL の検証も失敗する）

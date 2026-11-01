@@ -99,8 +99,9 @@ services:
     environment:
       # prod.conf の ${API_DOMAIN} を置き換える（api.takuosblog.com / api.stg.takuosblog.com）
       API_DOMAIN: ${API_DOMAIN:?API_DOMAIN に API のドメインを指定してください}
-      # テンプレートで置き換える環境変数を API_DOMAIN だけにする（ほかの環境変数を足しても、nginx の $変数 と衝突しないように）
-      NGINX_ENVSUBST_FILTER: ^API_DOMAIN$
+      # テンプレートで置き換える環境変数を API_DOMAIN だけにする（ほかの環境変数を足しても、nginx の $変数 と衝突しないように）。
+      # compose は $ を変数の置き換えに使うので、正規表現の末尾の $ は $$ と書く
+      NGINX_ENVSUBST_FILTER: ^API_DOMAIN$$
     volumes:
       - ./laravel-back/docker/nginx/prod.conf:/etc/nginx/templates/default.conf.template:ro
       - ${LETSENCRYPT_DIR:-/data/letsencrypt}:/etc/letsencrypt:ro
