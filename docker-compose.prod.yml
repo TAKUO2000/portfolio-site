@@ -24,11 +24,8 @@ x-app: &app
   env_file:
     - .env.production
   # php-fpm のワーカーがメモリを使いすぎても、同じインスタンスの MySQL を巻き添えにしない
-  # （php.prod.ini の memory_limit 128M × pm.max_children 5 が上限の目安）
-  mem_limit: 640m
-  depends_on:
-    mysql:
-      condition: service_healthy
+  # （php.prod.ini の memory_limit 128M × pm.max_children 5 に、master と OPcache の共有メモリ（64M）の分を足す）
+  mem_limit: 768m
   logging: *logging
 
 services:
@@ -43,10 +40,11 @@ services:
       - --innodb-buffer-pool-size=128M
       - --performance-schema=OFF
     environment:
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      # 空のまま起動すると、パスワードの無いユーザーが作られたり、初回の起動が失敗したりするので、未設定なら止める
+      MYSQL_DATABASE: ${DB_DATABASE:?DB_DATABASE を指定してください}
+      MYSQL_USER: ${DB_USERNAME:?DB_USERNAME を指定してください}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD を指定してください}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD を指定してください}
     # ポートはホストに公開しない（app と scheduler からだけ、compose のネットワークで使う）
     volumes:
       # データ用 EBS（/data）に置き、インスタンスを作り直しても残す
@@ -62,12 +60,27 @@ services:
 
   app:
     <<: *app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # php-fpm は entrypoint のマイグレーションと optimize が終わってから 9000 番で待ち受ける。
+    # 待ち受けを始めたら healthy にし、scheduler と nginx はそれを待って起動する
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   # schedule:work で images:prune などを動かす。マイグレーションは app でだけ流す（entrypoint.prod.sh）
   scheduler:
     <<: *app
     command: ["php", "artisan", "schedule:work"]
     mem_limit: 256m
+    # マイグレーションが終わる前にタスクを動かさないよう、app が healthy になるのを待つ
+    depends_on:
+      app:
+        condition: service_healthy
 
   nginx:
     image: nginx:stable-alpine
@@ -83,7 +96,8 @@ services:
       - ${LETSENCRYPT_DIR:-/data/letsencrypt}:/etc/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:ro
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     logging: *logging
 
   # 証明書の取得と更新のときだけ docker compose run --rm certbot ... で動かす（常駐させない）

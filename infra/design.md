@@ -225,7 +225,9 @@ docker compose -f docker-compose.prod.yml up -d
 | `mysql` | `mysql:8.4` | DB（8.0 は 2026年4月にサポートが終わったので、LTS の 8.4）。データはデータ用 EBS の `/data/mysql` に置く | 約 250MB（ローカルの計測で 160MB） |
 
 - ログは json-file でコンテナごとに 10MB × 3 世代までにし、ルートの EBS を埋めないようにする
-- `app` は `mem_limit: 640m`、`scheduler` は `256m`。PHP がメモリを使いすぎても、同じインスタンスの MySQL を巻き添えにしない
+- `app` は `mem_limit: 768m`、`scheduler` は `256m`。PHP がメモリを使いすぎても、同じインスタンスの MySQL を巻き添えにしない
+- 起動の順番：`mysql` が healthy → `app` がマイグレーションと optimize を終えて php-fpm が待ち受けを始める（healthy）→ `scheduler` と `nginx`。マイグレーションの前に scheduler のタスクが動かないようにするため
+- `app` は再起動のたびに `migrate --force` を流す。済んだマイグレーションは流れないので害はない。マイグレーションが失敗すると、`app` は起動を繰り返すので、`docker compose logs app` で原因を確かめる
 - MySQL の healthcheck は TCP で ping する。初回の初期化中はネットワークを閉じた一時サーバーが動くので、ソケットで確かめると早く成功してしまい、`app` のマイグレーションが接続に失敗するため
 
 Web サーバーは開発環境と同じ nginx にします。証明書の取得と更新は certbot で行います。Caddy（証明書を自動で管理する Web サーバー）とも比べましたが、開発環境とそろえることと、証明書の発行と更新の仕組みを学ぶことを優先しました。メモリの差は 10〜30MB ほどで、判断には影響しません。

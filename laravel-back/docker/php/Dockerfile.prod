@@ -40,8 +40,10 @@ COPY docker/php/php-fpm.prod.conf /usr/local/etc/php-fpm.d/zz-prod.conf
 
 COPY --from=build /var/www/html /var/www/html
 
-# 書き込むのはキャッシュとログの置き場だけにし、ソースは root の持ち物のまま読み取り専用にする
-RUN chown -R www-data:www-data storage bootstrap/cache
+# 書き込むのはキャッシュとログの置き場だけにし、ソースは root の持ち物のまま読み取り専用にする。
+# 置き場のディレクトリは .dockerignore の書き方に左右されないよう、ここで作っておく
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache
 
 # php-fpm も artisan も www-data で動かす（root で動かさない）
 USER www-data
