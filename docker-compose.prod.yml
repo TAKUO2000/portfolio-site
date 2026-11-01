@@ -1,8 +1,15 @@
 # 本番（とステージング）の EC2 で動かす構成。infra/design.md の「EC2 上のコンテナ構成」
 #
-# 環境変数は、同じディレクトリの .env.production（パーミッション 600、リポジトリには入れない）から読む。
-# 雛形は laravel-back/.env.production.example。compose の変数の置き換えにも使うので、毎回 --env-file で渡す:
-#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+# 環境変数は、同じディレクトリの2つのファイル（どちらもパーミッション 600、リポジトリには入れない）から読む:
+#   .env            compose の変数の置き換えに使う（イメージ、ドメイン、MySQL の初期化に使う DB の秘密）。
+#                   コンテナには渡らない。雛形は docker-compose.prod.env.example
+#   .env.production app と scheduler に渡す Laravel の設定。雛形は laravel-back/.env.production.example。
+#                   MySQL の root のパスワードは入れない（アプリが乗っ取られても DB の root を渡さないため）
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# 初回は証明書が無いので、nginx は 443 番の設定を読めずに起動できない（再起動を繰り返す）。
+# 先に certbot の standalone で証明書を取ってから起動する（infra/design.md の「証明書（certbot）」）
 
 # ログがルートの EBS を埋めないよう、コンテナごとに 10MB × 3 世代までにする
 x-logging: &logging
@@ -16,6 +23,9 @@ x-app: &app
   restart: unless-stopped
   env_file:
     - .env.production
+  # php-fpm のワーカーがメモリを使いすぎても、同じインスタンスの MySQL を巻き添えにしない
+  # （php.prod.ini の memory_limit 128M × pm.max_children 5 が上限の目安）
+  mem_limit: 640m
   depends_on:
     mysql:
       condition: service_healthy
@@ -23,7 +33,8 @@ x-app: &app
 
 services:
   mysql:
-    image: mysql:8.0
+    # 8.0 は 2026年4月にサポートが終わったので、LTS の 8.4 にする
+    image: mysql:8.4
     restart: unless-stopped
     # 1GB のインスタンスに収めるため、バッファプールを小さくし、performance_schema を切る
     command:
@@ -56,6 +67,7 @@ services:
   scheduler:
     <<: *app
     command: ["php", "artisan", "schedule:work"]
+    mem_limit: 256m
 
   nginx:
     image: nginx:stable-alpine
