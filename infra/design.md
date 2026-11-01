@@ -120,7 +120,7 @@ DB だけをプライベートサブネットに分ける構成は採らない�
 | `github-deploy-stg` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/develop` | ECR への push。`Env=stg` タグの EC2 に、デプロイ用の SSM ドキュメントだけを実行する。ステージングの有無を確かめるための `ec2:DescribeInstances` |
 | `github-terraform-stg` | `repo:TAKUO2000/portfolio-site:environment:staging` | `envs/stg` の apply / destroy に必要な権限（VPC・EC2・S3 の stg バケット・IAM など）。作る IAM ロールには permissions boundary を必須にし、自分より強い権限のロールを作れないようにする |
 
-- **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
+- **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env.production` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
 - `github-terraform-stg` は、GitHub の Environment（`staging`）に結び付ける。Environment の設定で、実行できるブランチを `main` だけに限定する。`workflow_dispatch` で手動実行したときだけ使う
 - **`envs/shared` と `envs/prod` は GitHub Actions から apply しない**。手元から、MFA を付けた管理用のユーザーで apply する。この2つを Actions から apply できるロールを作ると、ワークフローを書き換えられただけでアカウント全体を奪われるため
 - Cloudflare の API トークンも、ステージングの DNS レコードを作るために GitHub Actions のシークレットに置く。対象ゾーンの DNS 編集権限だけに絞る
@@ -201,25 +201,36 @@ CPU を使いやすい場面と、その対策：
 
 ## EC2 上のコンテナ構成
 
-本番用の `docker-compose.prod.yml` を EC2 に置き、docker compose で動かします。
+本番用の `docker-compose.prod.yml`（リポジトリの直下）を EC2 に置き、docker compose で動かします。nginx の設定（`laravel-back/docker/nginx/prod.conf`）も、同じ相対パスで置きます。
+
+環境変数は、compose と同じディレクトリの `.env.production`（パーミッション 600、雛形は `laravel-back/.env.production.example`）にまとめます。Laravel の設定に加えて、compose が使う値（使うイメージの `APP_IMAGE`、API のドメインの `API_DOMAIN`）も入れます。compose の変数の置き換えにも使うので、コマンドには毎回 `--env-file` を付けます。
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+```
 
 | コンテナ | イメージ | 役割 | メモリの目安 |
 | --- | --- | --- | --- |
-| `nginx` | `nginx:stable-alpine` | TLS 終端、FastCGI で php-fpm へ渡す、HTTP から HTTPS へのリダイレクト | 約 10MB |
+| `nginx` | `nginx:stable-alpine` | TLS 終端、FastCGI で php-fpm へ渡す、HTTP から HTTPS へのリダイレクト | 約 10MB（ローカルの計測で 7MB） |
 | `certbot` | `certbot/certbot` | Let's Encrypt の証明書の取得と更新。常駐させず、更新するときだけ `docker compose run --rm` で動かす | 0MB（実行中だけ約 50MB） |
-| `app` | ECR の `portfolio/app` | php-fpm（Laravel）。起動時に migrate と optimize を実行する | 約 150MB |
-| `scheduler` | `app` と同じイメージ | `php artisan schedule:work`（`images:prune` などを実行） | 約 60MB |
-| `mysql` | `mysql:8.0` | DB。データはデータ用 EBS の `/data/mysql` に置く | 約 250MB |
+| `app` | ECR の `portfolio/app` | php-fpm（Laravel）。起動時に migrate と optimize を実行する | 約 150MB（待機中は 35MB。ワーカー1つあたり数十MB増える） |
+| `scheduler` | `app` と同じイメージ | `php artisan schedule:work`（`images:prune` などを実行） | 約 60MB（ローカルの計測で 34MB） |
+| `mysql` | `mysql:8.0` | DB。データはデータ用 EBS の `/data/mysql` に置く | 約 250MB（ローカルの計測で 160MB） |
+
+- ログは json-file でコンテナごとに 10MB × 3 世代までにし、ルートの EBS を埋めないようにする
+- MySQL の healthcheck は TCP で ping する。初回の初期化中はネットワークを閉じた一時サーバーが動くので、ソケットで確かめると早く成功してしまい、`app` のマイグレーションが接続に失敗するため
 
 Web サーバーは開発環境と同じ nginx にします。証明書の取得と更新は certbot で行います。Caddy（証明書を自動で管理する Web サーバー）とも比べましたが、開発環境とそろえることと、証明書の発行と更新の仕組みを学ぶことを優先しました。メモリの差は 10〜30MB ほどで、判断には影響しません。
 
 ### nginx の設定
 
-開発用の `laravel-back/docker/nginx/default.conf` をもとに、本番用の設定（`laravel-back/docker/nginx/prod.conf`（予定））を作ります。
+開発用の `laravel-back/docker/nginx/default.conf` をもとに、本番用の設定（`laravel-back/docker/nginx/prod.conf`）を作ります。nginx の公式イメージのテンプレートの機能（`/etc/nginx/templates/*.template`）で読み込み、起動時に `${API_DOMAIN}` を環境変数の値に置き換えます。本番とステージングで同じファイルを使えます。
 
 - **80 番**：`/.well-known/acme-challenge/` だけは certbot の webroot（共有ボリューム）から返し、それ以外は HTTPS へリダイレクトする
 - **443 番**：`/etc/letsencrypt/live/<ドメイン>/` の `fullchain.pem` と `privkey.pem` を使う
 - **すべてのリクエストを `public/index.php` に渡す**。`SCRIPT_FILENAME` を `/var/www/html/public/index.php` に固定する。API サーバーなので配信する静的ファイルはなく（画像は S3）、nginx のコンテナにソースを置く必要がなくなる。nginx のイメージを自分でビルドしたり、app のイメージから `public/` を共有したりしなくて済む
+- `include fastcgi_params;` を外さない。`HTTPS=on` が php-fpm に届き、Laravel が https と判定する（外すと生成する URL が http になり、署名付き URL の検証も失敗する）
+- バージョンを応答に出さない：`server_tokens off;`、`fastcgi_hide_header X-Powered-By;`（php.ini の `expose_php = Off` と二重に止める）
 - `client_max_body_size 12M` は開発用と同じにする
 - 開発用と同じく、`fastcgi_pass` は変数と `resolver 127.0.0.11` で都度解決する（app コンテナを入れ替えると IP が変わるため）
 
@@ -230,8 +241,8 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 - **更新**：systemd timer で1日2回、次のように実行する。certbot は期限が残り30日を切った証明書だけを更新する。Amazon Linux 2023 には cron が入っていないので、systemd timer を使う
 
   ```bash
-  docker compose -f docker-compose.prod.yml run --rm certbot renew --webroot -w /var/www/certbot
-  docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  docker compose --env-file .env.production -f docker-compose.prod.yml run --rm certbot renew --webroot -w /var/www/certbot
+  docker compose --env-file .env.production -f docker-compose.prod.yml exec nginx nginx -s reload
   ```
 
 - **更新の認証方法を必ず指定する**：初回に `--standalone` で取った証明書は、更新の設定（`/etc/letsencrypt/renewal/<ドメイン>.conf`）に `authenticator = standalone` が記録される。そのまま `renew` すると certbot が 80 番を開こうとして nginx とぶつかり、90日後に初めて更新の失敗に気づくことになる。`--webroot -w /var/www/certbot` を渡すと webroot で更新され、成功すると設定も webroot に書き換わる
@@ -264,10 +275,12 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 本番用の entrypoint で行うこと（開発用の `entrypoint.sh` とは分ける）：
 
-1. `composer install` はしない（ビルド時に `--no-dev --optimize-autoloader` で済ませておく）
+1. `composer install` はしない（ビルド時に `--no-dev --optimize-autoloader` で済ませておく）。`key:generate` もしない（`APP_KEY` は環境変数で渡す）
 2. `app` コンテナでだけ `php artisan migrate --force` を実行する（`scheduler` では実行しない）
 3. `php artisan optimize`
 4. `exec php-fpm`（`scheduler` は `exec php artisan schedule:work`）
+
+イメージは php-fpm も artisan も `www-data` で動かします。書き込めるのは `storage/` と `bootstrap/cache/` だけにし、ソースは root の持ち物のまま読み取り専用にします。php.ini は公式の `php.ini-production` を土台にし（`display_errors = Off` など）、差分だけを `php.prod.ini` で上書きします。
 
 ---
 
@@ -368,8 +381,8 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 ## 環境変数と秘密情報
 
 - 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。Terraform の `aws_ssm_parameter` では作らず、AWS CLI で入れる（値が tfstate に平文で残るため。手順は [構築手順](setup.md#秘密情報を-parameter-store-に入れる)）。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
-- EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env`（パーミッション 600）に書き出す。compose はそこから読む
-- 秘密でない値（`APP_ENV=production`、`APP_DEBUG=false`、`LOG_LEVEL=warning` など）も同じ `.env` にまとめる
+- EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env.production`（パーミッション 600）に書き出す。compose はそこから読む
+- 秘密でない値（`APP_ENV=production`、`APP_DEBUG=false`、`LOG_LEVEL=warning` など）も同じ `.env.production` にまとめる
 - `.env` も秘密情報もリポジトリには入れない
 
 ---
@@ -381,7 +394,7 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 
 ```bash
 # Session Manager で EC2 に接続してから実行する
-docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
+docker compose --env-file .env.production -f docker-compose.prod.yml exec app php artisan user:create-admin
 ```
 
 `user:create-admin` の仕様：
@@ -408,9 +421,9 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 1. OIDC で AWS のロール（本番は `github-deploy-prod`）を引き受ける（長期のアクセスキーは使わない）
 2. `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、`main-<コミットの SHA>`（ステージングは `develop-<SHA>`）をタグにして ECR へ push する。buildx の provenance は付けない（`provenance: false`。付けるとタグなしのマニフェストができ、ECR のライフサイクルルールで消されてイメージが壊れるため）
 3. SSM Run Command で、デプロイ用の SSM ドキュメント（`portfolio-deploy`）を EC2 に実行させる。ドキュメントの中身は次のとおり
-   - Parameter Store から `.env` を作り直す
-   - `docker compose -f docker-compose.prod.yml pull`
-   - `docker compose -f docker-compose.prod.yml up -d`
+   - Parameter Store から `.env.production` を作り直す（`APP_IMAGE` を今回のタグにする）
+   - `docker compose --env-file .env.production -f docker-compose.prod.yml pull`
+   - `docker compose --env-file .env.production -f docker-compose.prod.yml up -d`
 
 `up -d` でコンテナが入れ替わる間、数秒だけ API が止まります。個人開発なので許容します。
 
@@ -506,7 +519,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 
 **インフラ（#53）**
 
-- [ ] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#53）
+- [x] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#109）
 - [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
 - [ ] データ用 EBS のマウント（`user_data`）と、`mysqldump` の systemd timer を作る。`mysqldump` から復元する手順を一度試して、この設計書に書く（#53）
 - [ ] Terraform のコード化（#53）
