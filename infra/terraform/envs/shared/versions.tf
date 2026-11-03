@@ -6,6 +6,11 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    # DNS は Cloudflare にある（infra/design.md の「DNS（Cloudflare）」）
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.28"
+    }
   }
 
   backend "s3" {
@@ -31,3 +36,6 @@ provider "aws" {
     }
   }
 }
+
+# API トークンは環境変数 CLOUDFLARE_API_TOKEN で渡す（takuosblog.com ゾーンの DNS 編集権限だけのもの。infra/setup.md）
+provider "cloudflare" {}

@@ -15,6 +15,7 @@ Terraform のコードは #53 で `infra/terraform/` に追加する予定です
 - [S3（画像）](#s3画像)
 - [Vercel](#vercel)
 - [DNS（Cloudflare）](#dnscloudflare)
+- [メール送信（SES）](#メール送信ses)
 - [環境変数と秘密情報](#環境変数と秘密情報)
 - [管理者アカウントの作成](#管理者アカウントの作成)
 - [デプロイ](#デプロイ)
@@ -59,6 +60,7 @@ Terraform のコードは #53 で `infra/terraform/` に追加する予定です
 | S3（バックアップ） | `mysqldump` を30日分 | 〜$0.1 |
 | ECR | イメージ数百MB | 〜$0.1 |
 | S3 | 画像の保存と転送（小規模） | 〜$0.5 |
+| SES | パスワード再設定とメールアドレスの確認（多くても週に数通） | 〜$0 |
 | Vercel | Hobby プラン | $0 |
 | **合計** | | **約 $14〜15.5** |
 
@@ -77,9 +79,9 @@ infra/terraform/
 ├── bootstrap/     # tfstate のバケット（最初に1回だけ apply する）
 ├── modules/app/   # VPC・SG・EC2・IAM ロール・S3 の画像バケットなど、環境ごとに作るもの
 └── envs/
-    ├── shared/    # ECR、GitHub OIDC プロバイダー、AWS Budgets
-    ├── prod/      # modules/app を本番の値で呼ぶ。データ用 EBS・バックアップ用バケット・DLM・CloudWatch アラーム・Elastic IP・Cloudflare の DNS レコードもここ
-    └── stg/       # modules/app をステージングの値で呼ぶ（必要なときだけ apply / destroy）。Cloudflare の DNS レコードもここ
+    ├── shared/    # ECR、GitHub OIDC プロバイダー、AWS Budgets、SES の送信元ドメインの ID とメール用の DNS レコード
+    ├── prod/      # modules/app を本番の値で呼ぶ。データ用 EBS・バックアップ用バケット・DLM・CloudWatch アラーム・Elastic IP・Cloudflare の DNS レコード（`api`）もここ
+    └── stg/       # modules/app をステージングの値で呼ぶ（必要なときだけ apply / destroy）。Cloudflare の DNS レコード（`api.stg`）もここ
 ```
 
 tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）に置き、キーを環境ごとに分けます（`bootstrap/`、`shared/`、`prod/`、`stg/`）。作り方とバケットの設定は [構築手順](setup.md#tfstate-のバケットを作るbootstrap) を参照。DNS レコードは AWS ではなく Cloudflare にあるので、Terraform の Cloudflare プロバイダーで管理します。
@@ -97,12 +99,13 @@ tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）
 | | Elastic IP | `api.takuosblog.com` の向き先 |
 | | EBS（ルート） | gp3 12GB、暗号化する。OS と Docker のイメージを置く。インスタンスを作り直すと消えてよいものだけを置く |
 | | EBS（データ用） | gp3 10GB、暗号化する。`/data` にマウントし、MySQL のデータと証明書を置く。**`envs/prod` に置き、`prevent_destroy = true` にする**（[データの置き場所](#データの置き場所)） |
-| IAM | インスタンスプロファイル | **自分の環境のものだけ**に絞る。S3 は自分の環境の画像バケットの読み書き（本番はバックアップ用バケットへの `s3:PutObject` も）、Parameter Store は `arn:aws:ssm:ap-northeast-1:<アカウント ID>:parameter/portfolio/<env>/*` の読み取りだけ。ほかに ECR の pull と SSM（`AmazonSSMManagedInstanceCore`）。`modules/app` に `env` 変数を渡して ARN を組み立てる |
+| IAM | インスタンスプロファイル | **自分の環境のものだけ**に絞る。S3 は自分の環境の画像バケットの読み書き（本番はバックアップ用バケットへの `s3:PutObject` も）、Parameter Store は `arn:aws:ssm:ap-northeast-1:<アカウント ID>:parameter/portfolio/<env>/*` の読み取りだけ。ほかに ECR の pull と SSM（`AmazonSSMManagedInstanceCore`）、SES の `ses:SendRawEmail`（[メール送信（SES）](#メール送信ses)の「送信の権限」）。`modules/app` に `env` 変数を渡して ARN を組み立てる |
 | | GitHub Actions 用のロール | 用途ごとに3つに分ける（[GitHub Actions のロール](#github-actions-のロール)） |
 | S3 | 画像バケット | [S3（画像）](#s3画像)を参照 |
 | | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する |
 | | tfstate バケット | Terraform の状態を保存する。`bootstrap/` で作る。バージョニング、SSE-S3 の暗号化、パブリックアクセスのブロック、HTTPS 以外の拒否。ロックは `use_lockfile`（DynamoDB は使わない） |
 | ECR | リポジトリ | `portfolio/app`（本番とステージングで共有）。タグは `main-<SHA>` / `develop-<SHA>` で、上書きを禁止する。ライフサイクルルールで、タグなしは1日、`main-` は直近の20個、`develop-` は直近の10個だけ残す（接頭辞ごとに数えるので、ステージングへの push が続いても本番のイメージは消えない） |
+| SES | 送信元ドメインの ID（`envs/shared`） | `takuosblog.com`。本番とステージングで共有する（[メール送信（SES）](#メール送信ses)） |
 | SSM | Parameter Store | 秘密情報（SecureString）を置く。**Terraform では管理せず**、AWS CLI で入れる（[環境変数と秘密情報](#環境変数と秘密情報)） |
 | DLM | ライフサイクルポリシー | データ用 EBS の日次スナップショットを7世代残す |
 | CloudWatch | アラーム | ステータスチェックの失敗と CPU クレジット残高。通知先は SNS からメールに送る |
@@ -123,7 +126,7 @@ DB だけをプライベートサブネットに分ける構成は採らない�
 - **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env` と `.env.production` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
 - `github-terraform-stg` は、GitHub の Environment（`staging`）に結び付ける。Environment の設定で、実行できるブランチを `main` だけに限定する。`workflow_dispatch` で手動実行したときだけ使う
 - **`envs/shared` と `envs/prod` は GitHub Actions から apply しない**。手元から、MFA を付けた管理用のユーザーで apply する。この2つを Actions から apply できるロールを作ると、ワークフローを書き換えられただけでアカウント全体を奪われるため
-- Cloudflare の API トークンも、ステージングの DNS レコードを作るために GitHub Actions のシークレットに置く。対象ゾーンの DNS 編集権限だけに絞る
+- Cloudflare の API トークンも、ステージングの DNS レコードを作るために GitHub Actions のシークレットに置く。対象ゾーンの DNS 編集権限だけに絞り、リポジトリ全体ではなく Environment（`staging`）のシークレットにする（`github-terraform-stg` と同じ Environment のジョブからしか読めない）
 
 ### データの置き場所
 
@@ -385,10 +388,45 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 | `stg.takuosblog.com` | CNAME | Vercel（`develop` ブランチ） | **オフ（DNS only）** |
 | `api.stg.takuosblog.com` | A | ステージングの EC2 のパブリック IP（apply のたびに登録） | **オフ（DNS only）** |
 
+メール用のレコードは [メール送信（SES）](#メール送信ses) にまとめています。
+
 - **プロキシ（オレンジの雲）は使わない**。Vercel は Cloudflare のプロキシを通さない設定を推奨している。API 側も、certbot が Let's Encrypt の証明書を直接取得できるように（HTTP-01 の確認が EC2 に届くように）、まずは DNS only にする
 - Cloudflare のプロキシで API を守る構成（DDoS 対策・キャッシュ・オリジン証明書）は、必要になったら検討する
-- Terraform の Cloudflare プロバイダーで `api` と `api.stg` のレコードを作る。Cloudflare の API トークンは、対象ゾーンの DNS 編集権限だけに絞り、GitHub Actions のシークレットに置く
+- Terraform の Cloudflare プロバイダーで `api` と `api.stg` のレコードを作る（`envs/prod`・`envs/stg`）。Cloudflare の API トークンは、対象ゾーンの DNS 編集権限だけに絞り、GitHub Actions の Environment（`staging`）のシークレットに置く
 - Vercel 向けのレコード（`takuosblog.com` と `stg.takuosblog.com`）は、Vercel の画面に表示される値を見て手で作ってもよい
+
+---
+
+## メール送信（SES）
+
+パスワード再設定とメールアドレスの確認のメールを、Amazon SES（東京リージョン）から送ります（#81 で一般ユーザーの登録を公開すると決めたため）。送るのはユーザー自身の操作をきっかけにしたメールだけで、宣伝や一斉配信には使いません。
+
+| 項目 | 設定 |
+| --- | --- |
+| 送信元ドメインの ID | `takuosblog.com`。**`envs/shared` に置く**。本番とステージングで共有し、環境を作り直しても DKIM の鍵と DNS レコードが変わらないようにするため |
+| 送信元のアドレス | `no-reply@takuosblog.com`（Laravel の `MAIL_FROM_ADDRESS`） |
+| DKIM | Easy DKIM（RSA 2048）。鍵は SES が作り、定期的に入れ替える |
+| MAIL FROM | `mail.takuosblog.com`。MX が引けないときは SES の既定の MAIL FROM で送る（Behavior on MX failure は「Use default MAIL FROM domain」） |
+| DMARC | `p=none`。レポート（`rua`）は `contact@takuosblog.com` で受け取る |
+| バウンスと苦情 | アカウント単位の抑制リスト（BOUNCE と COMPLAINT。最初から有効）。一度届かなかったアドレスや迷惑メールと報告したアドレスには、二度と送らない |
+| 送信の権限 | 各環境のインスタンスロールに `ses:SendRawEmail` を付ける（[AWS リソース](#aws-リソース)）。アクセスキーは使わない。Resource は `arn:aws:ses:ap-northeast-1:<アカウント ID>:identity/*` にし、条件 `ses:FromAddress` で送信元を `no-reply@takuosblog.com` に絞る（下の注意） |
+
+DNS のレコードは Terraform の Cloudflare プロバイダーで作ります（`envs/shared/ses.tf`）。プロキシはすべてオフです。
+
+| レコード | 種類 | 値 | 管理 |
+| --- | --- | --- | --- |
+| `<トークン>._domainkey.takuosblog.com`（3つ） | CNAME | `<トークン>.dkim.amazonses.com` | Terraform（`envs/shared`） |
+| `mail.takuosblog.com` | MX | `10 feedback-smtp.ap-northeast-1.amazonses.com` | Terraform（`envs/shared`） |
+| `mail.takuosblog.com` | TXT | `"v=spf1 include:amazonses.com ~all"` | Terraform（`envs/shared`） |
+| `_dmarc.takuosblog.com` | TXT | `"v=DMARC1; p=none; rua=mailto:contact@takuosblog.com"` | Terraform（`envs/shared`） |
+| `takuosblog.com` | MX | `route1〜3.mx.cloudflare.net` | Cloudflare の Email Routing（手作業） |
+| `takuosblog.com` | TXT | `"v=spf1 include:_spf.mx.cloudflare.net ~all"` | Cloudflare の Email Routing（手作業） |
+
+- ルートの MX と SPF は、`contact@takuosblog.com` を Gmail へ転送する Cloudflare の Email Routing が使っている。SES の MAIL FROM はサブドメイン（`mail`）に分けたので、これらには触れない。Terraform でも管理しない
+- **サンドボックスの中では、送信元の ID だけでなく宛先の ID（検証済みのアドレス）も認可の対象になる**。Resource を送信元ドメインの ID だけにすると、サンドボックスの中で試したときに `AccessDenied` になる。そのため Resource は `identity/*` にし、送信元のアドレスは条件 `ses:FromAddress` で絞る。こうすれば、本番アクセスが通ったあとも同じポリシーのままでよい
+- DMARC の一致は relaxed（既定）なので、`mail.takuosblog.com` の SPF と `takuosblog.com` の DKIM のどちらでも合格になる
+- DMARC は、レポートで SPF と DKIM が通り続けているのを確かめてから、`p=quarantine` などに上げる
+- 新しいアカウントの SES はサンドボックスの中にある（1日200通、検証済みのアドレスにしか送れない）。本番アクセスの申請が通るまでは、本番で登録の導線を出さない（またはデプロイを待つ）。申請の手順は [構築手順](setup.md#ses-の本番アクセスを申請する) を参照
 
 ---
 
@@ -549,7 +587,11 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] Terraform のコード化（#53）
 - [x] tfstate のバケットの作り方を決める。`bootstrap/` で Terraform で作り、状態は作ったバケットへ移す（#110）
 - [x] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#110）
-- [ ] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions のシークレットに登録する（#53）
+- [x] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions の Environment（`staging`）のシークレットに登録する（#111）
+- [x] SES の送信元ドメインの ID、DKIM・MAIL FROM・DMARC の DNS レコードを作る（#111）
+- [ ] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
+- [ ] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#53 の `envs/prod`）
+- [ ] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#53 の `envs/prod`）
 - [ ] GitHub Actions のデプロイワークフローを作る（#53）
 - [ ] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#53）
 
@@ -560,10 +602,11 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] `config('app.frontend_url')` を定義し、S3 の認証情報をインスタンスロールで取れるようにする（`ImageStorage` がアクセスキーを常に渡している）。本番用の環境変数の雛形を作る（#79）
 - [x] 本番のバケットを `next.config.ts` の `remotePatterns` に追加できるようにする。`NEXT_PUBLIC_API_BASE_URL` の未設定を本番のビルドで検出する（#85）
 - [ ] API の全ルートで `StartSession` が動き、ログインと関係ない応答にもセッション Cookie が付く件（#87）
-- [ ] メール送信の扱いを決める。`routes/auth.php` にはパスワードリセットとメール認証のルートがあるが、`MAIL_MAILER` は `log` のまま。本番で使うなら SES などを用意する（#81 で方針を決める）
+- [x] メール送信の扱いを決める。本番は SES から送る（#81 で決め、#111 で用意した。[メール送信（SES）](#メール送信ses)）
 
 **デプロイ後**
 
+- [ ] DMARC のレポートで SPF と DKIM が通り続けているのを確かめてから、`p=none` を `p=quarantine` に上げる（issue なし）
 - [ ] nginx の HSTS の `max-age` を、証明書の更新が一度成功したのを確かめてから1年（`31536000`）に伸ばす（issue なし）
 - [ ] 開発環境の MySQL を本番と同じ 8.4 に上げる（issue なし）
 
