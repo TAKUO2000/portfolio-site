@@ -88,6 +88,10 @@ resource "aws_volume_attachment" "data" {
   device_name = "/dev/sdf"
   volume_id   = aws_ebs_volume.data.id
   instance_id = module.app.instance_id
+
+  # EC2 を作り直すときは、先にこのアタッチメントが消される。/data をマウントして MySQL が書き込んでいる最中に
+  # 外すと、デタッチが終わらなかったり、データが壊れたりするので、EC2 を止めてから外す
+  stop_instance_before_detaching = true
 }
 
 # api.takuosblog.com の向き先。インスタンスを作り直しても IP が変わらないようにする

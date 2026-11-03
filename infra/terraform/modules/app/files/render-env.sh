@@ -34,6 +34,22 @@ line() {
   printf "%s='%s'\n" "$1" "$2"
 }
 
+# 先にすべての値を変数に取り出す。`line X "$(secret X)"` のように引数の中で取り出すと、取り出しに失敗しても
+# set -e が効かず、空の値で既存の .env を上書きしてしまうため（代入なら失敗した時点で止まる）
+compose_config=$(params_by_path "/portfolio/$PORTFOLIO_ENV/config/compose")
+app_config=$(params_by_path "/portfolio/$PORTFOLIO_ENV/config/app")
+DB_PASSWORD=$(secret DB_PASSWORD)
+DB_ROOT_PASSWORD=$(secret DB_ROOT_PASSWORD)
+APP_KEY=$(secret APP_KEY)
+FRONTEND_REVALIDATE_SECRET=$(secret FRONTEND_REVALIDATE_SECRET)
+
+for name in compose_config app_config DB_PASSWORD DB_ROOT_PASSWORD APP_KEY FRONTEND_REVALIDATE_SECRET; do
+  if [ -z "${!name}" ]; then
+    echo "$name が空です。Parameter Store の値を確かめてください（既存の .env は変えません）" >&2
+    exit 1
+  fi
+done
+
 umask 077
 tmp_env=$(mktemp "$DIR/.env.XXXXXX")
 tmp_app=$(mktemp "$DIR/.env.production.XXXXXX")
@@ -41,15 +57,15 @@ trap 'rm -f "$tmp_env" "$tmp_app"' EXIT
 
 {
   line APP_IMAGE "$APP_IMAGE"
-  params_by_path "/portfolio/$PORTFOLIO_ENV/config/compose" | while IFS=$'\t' read -r name value; do line "$name" "$value"; done
-  line DB_PASSWORD "$(secret DB_PASSWORD)"
-  line DB_ROOT_PASSWORD "$(secret DB_ROOT_PASSWORD)"
+  while IFS=$'\t' read -r name value; do line "$name" "$value"; done <<< "$compose_config"
+  line DB_PASSWORD "$DB_PASSWORD"
+  line DB_ROOT_PASSWORD "$DB_ROOT_PASSWORD"
 } > "$tmp_env"
 
 {
-  params_by_path "/portfolio/$PORTFOLIO_ENV/config/app" | while IFS=$'\t' read -r name value; do line "$name" "$value"; done
-  line APP_KEY "$(secret APP_KEY)"
-  line FRONTEND_REVALIDATE_SECRET "$(secret FRONTEND_REVALIDATE_SECRET)"
+  while IFS=$'\t' read -r name value; do line "$name" "$value"; done <<< "$app_config"
+  line APP_KEY "$APP_KEY"
+  line FRONTEND_REVALIDATE_SECRET "$FRONTEND_REVALIDATE_SECRET"
 } > "$tmp_app"
 
 mv "$tmp_env" "$DIR/.env"

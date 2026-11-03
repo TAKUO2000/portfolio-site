@@ -139,6 +139,7 @@ MySQL のデータと証明書は、ルートとは別の EBS（データ用）�
 | データ用 EBS を分ける | `aws_ebs_volume` と `aws_volume_attachment` で作り、`user_data` で `/data` にマウントする。compose は名前付きボリュームではなく `/data/mysql`、`/data/letsencrypt` をマウントする |
 | 消せないようにする | データ用 EBS は `envs/prod` に置き、`lifecycle { prevent_destroy = true }` を付ける。`prevent_destroy` には変数を使えないので、ステージングと共有する `modules/app` には置かない（ステージングは DB を毎回空にするので、ルートの `/data` ディレクトリで足りる） |
 | 作り直しを起こしにくくする | `aws_instance` に `lifecycle { ignore_changes = [ami, user_data] }` を付ける。AMI を新しくするときは、意図して作り直す |
+| EC2 の作り直し | データ用 EBS のアタッチメントに `stop_instance_before_detaching = true` を付け、EC2 を止めてから EBS を外す。`/data` をマウントして MySQL が書き込んでいる最中に外すと、デタッチが終わらなかったり、データが壊れたりするため |
 | インスタンスタイプの変更 | t4g.small などへの変更は、停止して変えるだけで作り直しにならない（Terraform も停止・起動で変更する）。plan で `must be replaced` と出ていないかを確かめてから apply する |
 
 ### CPU クレジットと費用の監視
@@ -438,6 +439,8 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
   - `.env`：`APP_IMAGE`（引数）、`config/compose/*`、`DB_PASSWORD`・`DB_ROOT_PASSWORD`
   - `.env.production`：`config/app/*`、`APP_KEY`・`FRONTEND_REVALIDATE_SECRET`
   - 値は単一引用符で囲んで書く（compose が `$` などを置き換えずにそのまま渡すように）。Parameter Store は空の値を置けないので、空にしたい変数（`AWS_ENDPOINT` など）は書かない
+  - 値はすべて先に変数へ取り出し、取り出しに失敗したり空だったりしたら、既存の `.env` を変えずに止まる（`line X "$(secret X)"` のように引数の中で取り出すと、失敗しても `set -e` が効かず、空の秘密で上書きしてしまうため）
+  - **`user_data` が置くのは最初の起動のときだけ**。`render-env.sh` を直しても今の EC2 には届かない（`terraform plan` にも差分は出ない）ので、SSM Run Command で置き直す。デプロイのたびに最新を置く仕組みは #115 のデプロイ用の SSM ドキュメントで作る
 - `.env` も秘密情報もリポジトリには入れない
 
 ---
