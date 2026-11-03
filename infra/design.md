@@ -1,7 +1,7 @@
 # インフラ設計書
 
 本アプリを本番公開するためのインフラ設計です。構成図は [architecture.md](./architecture.md) を参照してください。
-Terraform のコードは #53 で `infra/terraform/` に追加する予定です。
+Terraform のコードは `infra/terraform/` にあります。作る手順は [構築手順](./setup.md) を参照してください。
 
 ## 目次
 
@@ -86,6 +86,8 @@ infra/terraform/
 
 tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）に置き、キーを環境ごとに分けます（`bootstrap/`、`shared/`、`prod/`、`stg/`）。作り方とバケットの設定は [構築手順](setup.md#tfstate-のバケットを作るbootstrap) を参照。DNS レコードは AWS ではなく Cloudflare にあるので、Terraform の Cloudflare プロバイダーで管理します。
 
+#112 では、ネットワーク・EC2・データ用 EBS・Elastic IP・IAM・画像バケットを作りました。バックアップ（DLM・バックアップ用バケット）と監視（CloudWatch）は #114 で作ります。それまでのデータ用 EBS は `prevent_destroy` だけで守られているので、#114 を終えるまでは本番に大事なデータを入れません（MySQL を動かすのも #115 から）。
+
 以下の表は本番の構成です。ステージングとの違いは [ステージング環境](#ステージング環境) にまとめています。
 
 | 区分 | リソース | 設定 |
@@ -94,21 +96,21 @@ tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）
 | | パブリックサブネット | `10.0.1.0/24`（1つの AZ） |
 | | インターネットゲートウェイ / ルートテーブル | `0.0.0.0/0` を IGW へ |
 | | NAT Gateway | **作らない**（月 $45 前後かかるため） |
-| セキュリティグループ | EC2 用 | インバウンドは 80 / 443 を `0.0.0.0/0` と `::/0` から許可するだけ。22 は開けない |
-| EC2 | インスタンス | t4g.micro、Amazon Linux 2023（arm64）、IMDSv2 を必須にする。CPU クレジットは **Standard モード**（[CPU クレジットと費用の監視](#cpu-クレジットと費用の監視)） |
+| セキュリティグループ | EC2 用 | インバウンドは 80 / 443 を `0.0.0.0/0` から許可するだけ。22 は開けない。**IPv4 だけ**にし、VPC に IPv6 は割り当てない（IPv6 だけの回線からも、通信会社の NAT64 などで IPv4 に届く。フロントの Vercel は IPv6 に対応している） |
+| EC2 | インスタンス | t4g.micro、Amazon Linux 2023（arm64）、IMDSv2 を必須にし、応答のホップ数の上限を 2 にする（コンテナからインスタンスロールを使うため。[セキュリティ](#セキュリティ)）。CPU クレジットは **Standard モード**（[CPU クレジットと費用の監視](#cpu-クレジットと費用の監視)） |
 | | Elastic IP | `api.takuosblog.com` の向き先 |
 | | EBS（ルート） | gp3 12GB、暗号化する。OS と Docker のイメージを置く。インスタンスを作り直すと消えてよいものだけを置く |
 | | EBS（データ用） | gp3 10GB、暗号化する。`/data` にマウントし、MySQL のデータと証明書を置く。**`envs/prod` に置き、`prevent_destroy = true` にする**（[データの置き場所](#データの置き場所)） |
-| IAM | インスタンスプロファイル | **自分の環境のものだけ**に絞る。S3 は自分の環境の画像バケットの読み書き（本番はバックアップ用バケットへの `s3:PutObject` も）、Parameter Store は `arn:aws:ssm:ap-northeast-1:<アカウント ID>:parameter/portfolio/<env>/*` の読み取りだけ。ほかに ECR の pull と SSM（`AmazonSSMManagedInstanceCore`）、SES の `ses:SendRawEmail`（[メール送信（SES）](#メール送信ses)の「送信の権限」）。`modules/app` に `env` 変数を渡して ARN を組み立てる |
+| IAM | インスタンスプロファイル | **自分の環境のものだけ**に絞る。S3 は自分の環境の画像バケットの読み書き（本番はバックアップ用バケットへの `s3:PutObject` も）、Parameter Store は `arn:aws:ssm:ap-northeast-1:<アカウント ID>:parameter/portfolio/<env>/*` の読み取りだけ。ほかに ECR の pull と SSM（`AmazonSSMManagedInstanceCore`）、SES の `ses:SendRawEmail`（[メール送信（SES）](#メール送信ses)の「送信の権限」）。`modules/app` に `env` 変数を渡して ARN を組み立てる。**`AmazonSSMManagedInstanceCore` は `ssm:GetParameter(s)` を `Resource: "*"` で許可しているので、自分の環境のパス以外のパラメーターの読み取りを明示的に拒否（Deny）する**（付けないと、ステージングの EC2 から本番の秘密が読める） |
 | | GitHub Actions 用のロール | 用途ごとに3つに分ける（[GitHub Actions のロール](#github-actions-のロール)） |
 | S3 | 画像バケット | [S3（画像）](#s3画像)を参照 |
-| | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する |
+| | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する。**未作成（#114）** |
 | | tfstate バケット | Terraform の状態を保存する。`bootstrap/` で作る。バージョニング、SSE-S3 の暗号化、パブリックアクセスのブロック、HTTPS 以外の拒否。ロックは `use_lockfile`（DynamoDB は使わない） |
 | ECR | リポジトリ | `portfolio/app`（本番とステージングで共有）。タグは `main-<SHA>` / `develop-<SHA>` で、上書きを禁止する。ライフサイクルルールで、タグなしは1日、`main-` は直近の20個、`develop-` は直近の10個だけ残す（接頭辞ごとに数えるので、ステージングへの push が続いても本番のイメージは消えない） |
 | SES | 送信元ドメインの ID（`envs/shared`） | `takuosblog.com`。本番とステージングで共有する（[メール送信（SES）](#メール送信ses)） |
 | SSM | Parameter Store | 秘密情報（SecureString）を置く。**Terraform では管理せず**、AWS CLI で入れる（[環境変数と秘密情報](#環境変数と秘密情報)） |
-| DLM | ライフサイクルポリシー | データ用 EBS の日次スナップショットを7世代残す |
-| CloudWatch | アラーム | ステータスチェックの失敗と CPU クレジット残高。通知先は SNS からメールに送る |
+| DLM | ライフサイクルポリシー | データ用 EBS の日次スナップショットを7世代残す。**未作成（#114）** |
+| CloudWatch | アラーム | ステータスチェックの失敗と CPU クレジット残高。通知先は SNS からメールに送る。**未作成（#114）** |
 | Budgets | 月の予算（`envs/shared`） | アカウント全体で月 $20。実績が 80% を超えたとき、月末の予測が 100% を超えそうなときにメールで知らせる |
 
 DB だけをプライベートサブネットに分ける構成は採らない。プライベートサブネットから外に出るには NAT Gateway が必要で、高くつくからです。MySQL は EC2 内のコンテナで動かし、ポートを外に公開しないことで守ります。
@@ -139,6 +141,7 @@ MySQL のデータと証明書は、ルートとは別の EBS（データ用）�
 | データ用 EBS を分ける | `aws_ebs_volume` と `aws_volume_attachment` で作り、`user_data` で `/data` にマウントする。compose は名前付きボリュームではなく `/data/mysql`、`/data/letsencrypt` をマウントする |
 | 消せないようにする | データ用 EBS は `envs/prod` に置き、`lifecycle { prevent_destroy = true }` を付ける。`prevent_destroy` には変数を使えないので、ステージングと共有する `modules/app` には置かない（ステージングは DB を毎回空にするので、ルートの `/data` ディレクトリで足りる） |
 | 作り直しを起こしにくくする | `aws_instance` に `lifecycle { ignore_changes = [ami, user_data] }` を付ける。AMI を新しくするときは、意図して作り直す |
+| EC2 の作り直し | データ用 EBS のアタッチメントに `stop_instance_before_detaching = true` を付け、EC2 を止めてから EBS を外す。`/data` をマウントして MySQL が書き込んでいる最中に外すと、デタッチが終わらなかったり、データが壊れたりするため |
 | インスタンスタイプの変更 | t4g.small などへの変更は、停止して変えるだけで作り直しにならない（Terraform も停止・起動で変更する）。plan で `must be replaced` と出ていないかを確かめてから apply する |
 
 ### CPU クレジットと費用の監視
@@ -210,10 +213,16 @@ CPU を使いやすい場面と、その対策：
 
 | ファイル | 中身 | 渡す先 | 雛形 |
 | --- | --- | --- | --- |
-| `.env` | 使うイメージ（`APP_IMAGE`）、API のドメイン（`API_DOMAIN`）、DB の値（`DB_DATABASE`・`DB_USERNAME`・`DB_PASSWORD`・`DB_ROOT_PASSWORD`） | compose の変数の置き換え。DB の値のうち `DB_ROOT_PASSWORD` 以外は、compose が `app` と `scheduler` にも渡す | `docker-compose.prod.env.example` |
+| `.env` | 使うイメージ（`APP_IMAGE`）、API のドメイン（`API_DOMAIN`）、DB の値（`DB_DATABASE`・`DB_USERNAME`・`DB_PASSWORD`） | compose の変数の置き換え。DB の値は、compose が `app` と `scheduler` にも渡す | `docker-compose.prod.env.example` |
 | `.env.production` | Laravel の設定 | `app` と `scheduler` | `laravel-back/.env.production.example` |
 
-MySQL の root のパスワードは `.env` にだけ置き、`app` と `scheduler` には渡しません。アプリが乗っ取られても、DB の root まで奪われないようにするためです。DB の接続情報は `.env` の1か所に置き、MySQL の初期化と `app`・`scheduler` の両方で使います（2か所に書くと値がずれ、MySQL は初期化済みのデータのパスワードを変えないので、原因も追いにくいため）。
+MySQL の root のパスワードは、**誰も持ちません**。`MYSQL_RANDOM_ROOT_PASSWORD=yes` で、MySQL が初期化のときに乱数で作ります。アプリが乗っ取られても、DB の root まで奪われないようにするためです。コンテナからもインスタンスロールを使えるので（IMDS のホップ数 2。[セキュリティ](#セキュリティ)）、root のパスワードを Parameter Store に置くと、`app` に渡さなくても、乗っ取られたアプリが Parameter Store から読めてしまいます。
+
+- 作られたパスワードは、初回の起動のときに mysql コンテナのログに `GENERATED ROOT PASSWORD:` として1回だけ出ます。控えずに、ログが回って消えるのに任せます
+- root でしかできない作業が要るときは、MySQL を止め、`--skip-grant-tables` を付けて起動してパスワードを設定し直します
+- `mysqldump`（#114）は、アプリ用のユーザー（`DB_USERNAME`）で取ります。このユーザーは `DB_DATABASE` のすべての権限を持つので足ります（`--no-tablespaces` を付ける）
+
+DB の接続情報は `.env` の1か所に置き、MySQL の初期化と `app`・`scheduler` の両方で使います（2か所に書くと値がずれ、MySQL は初期化済みのデータのパスワードを変えないので、原因も追いにくいため）。
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d
@@ -432,9 +441,14 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
 
 ## 環境変数と秘密情報
 
-- 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。Terraform の `aws_ssm_parameter` では作らず、AWS CLI で入れる（値が tfstate に平文で残るため。手順は [構築手順](setup.md#秘密情報を-parameter-store-に入れる)）。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
-- EC2 の起動時とデプロイ時に Parameter Store から取り出し、EC2 上の `.env` と `.env.production`（どちらもパーミッション 600）に書き出す。compose はそこから読む。DB の値（`DB_PASSWORD`・`DB_ROOT_PASSWORD`）は `.env` にだけ書く（[EC2 上のコンテナ構成](#ec2-上のコンテナ構成)）
-- 秘密でない値（`APP_ENV=production`、`APP_DEBUG=false`、`LOG_LEVEL=warning` など）も同じ `.env.production` にまとめる
+- 秘密情報（`APP_KEY`、`DB_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。Terraform の `aws_ssm_parameter` では作らず、AWS CLI で入れる（値が tfstate に平文で残るため。手順は [構築手順](setup.md#秘密情報を-parameter-store-に入れる)）。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
+- 秘密でない値（`APP_URL`、`APP_DEBUG=false`、`AWS_BUCKET` など）は、Terraform のコード（`envs/<env>/main.tf` の `app_config`・`compose_config`）に書き、Terraform が Parameter Store に String で作る（`/portfolio/<env>/config/app/*`・`/portfolio/<env>/config/compose/*`）。秘密ではないので tfstate に載ってよい。`user_data` に埋め込まないのは、`ignore_changes = [user_data]` のため、あとから値を変えても EC2 に届かないから
+- デプロイ時に、EC2 上の `portfolio-render-env <APP_IMAGE>`（`modules/app/files/render-env.sh`。`user_data` が置く）が Parameter Store から秘密と設定をまとめて取り出し、`/opt/portfolio/.env` と `.env.production`（どちらもパーミッション 600）に書き出す。compose はそこから読む
+  - `.env`：`APP_IMAGE`（引数）、`config/compose/*`、`DB_PASSWORD`
+  - `.env.production`：`config/app/*`、`APP_KEY`・`FRONTEND_REVALIDATE_SECRET`
+  - 値は単一引用符で囲んで書く（compose が `$` などを置き換えずにそのまま渡すように）。Parameter Store は空の値を置けないので、空にしたい変数（`AWS_ENDPOINT` など）は書かない
+  - 値はすべて先に変数へ取り出し、取り出しに失敗したり空だったりしたら、既存の `.env` を変えずに止まる（`line X "$(secret X)"` のように引数の中で取り出すと、失敗しても `set -e` が効かず、空の秘密で上書きしてしまうため）
+  - **`user_data` が置くのは最初の起動のときだけ**。`render-env.sh` を直しても今の EC2 には届かない（`terraform plan` にも差分は出ない）ので、SSM Run Command で置き直す。デプロイのたびに最新を置く仕組みは #115 のデプロイ用の SSM ドキュメントで作る
 - `.env` も秘密情報もリポジトリには入れない
 
 ---
@@ -567,6 +581,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - IAM の権限は環境ごとに分ける。ステージングの EC2 やロールから、本番の Parameter Store・S3・EC2 に届かないようにする（[GitHub Actions のロール](#github-actions-のロール)）
 - `envs/shared` と `envs/prod` は GitHub Actions から apply せず、手元から MFA 付きのユーザーで apply する
 - IMDSv2 を必須にする
+- **IMDS の応答のホップ数の上限を 2 にしているので、コンテナの中からもインスタンスロールの認証情報を取れる**（S3 と SES に認証するため。既定の 1 だと Docker の bridge ネットワークから届かない）。そのため Laravel に SSRF（利用者が渡した URL をサーバーが読みに行く処理の穴）があると、`169.254.169.254` から認証情報を盗まれ、画像バケットと `/portfolio/<env>/*` の秘密（`APP_KEY`・DB のパスワード）まで読まれる。**利用者が指定した URL をサーバーから取得する処理（URL のプレビュー、外部の画像の取り込みなど）を作るときは、宛先を許可したものだけに絞り、`169.254.169.254` などの内部のアドレスを拒否する**。今のコードでサーバーから外へリクエストを送るのは、記事を変えたときに `FRONTEND_URL` の `/api/revalidate` を呼ぶ処理（`app/Services/FrontendCache.php`）だけで、宛先は設定で決まっており、利用者は変えられない
 - EBS を暗号化する
 - MySQL のポートはホストに公開しない（compose の `ports` を書かない）
 - API には Laravel のレート制限をかける（いいね API には実装済み）
@@ -583,15 +598,16 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 
 - [x] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#109）
 - [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
-- [ ] データ用 EBS のマウント（`user_data`）と、`mysqldump` の systemd timer を作る。`mysqldump` から復元する手順を一度試して、この設計書に書く（#53）
-- [ ] Terraform のコード化（#53）
+- [x] データ用 EBS のマウント（`user_data`）を作る（#112）
+- [ ] `mysqldump` の systemd timer を作る。`mysqldump` から復元する手順を一度試して、この設計書に書く（#114）
+- [x] 本番の AWS リソース（`modules/app`・`envs/prod`）の Terraform のコード化（#112）
 - [x] tfstate のバケットの作り方を決める。`bootstrap/` で Terraform で作り、状態は作ったバケットへ移す（#110）
 - [x] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#110）
 - [x] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions の Environment（`staging`）のシークレットに登録する（#111）
 - [x] SES の送信元ドメインの ID、DKIM・MAIL FROM・DMARC の DNS レコードを作る（#111）
 - [ ] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
 - [ ] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#53 の `envs/prod`）
-- [ ] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#53 の `envs/prod`）
+- [ ] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#114）
 - [ ] GitHub Actions のデプロイワークフローを作る（#53）
 - [ ] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#53）
 

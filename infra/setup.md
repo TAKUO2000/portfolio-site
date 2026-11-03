@@ -14,6 +14,7 @@
 6. [共有のリソースを作る（envs/shared）](#共有のリソースを作るenvsshared)
 7. [SES の本番アクセスを申請する](#ses-の本番アクセスを申請する)
 8. [秘密情報を Parameter Store に入れる](#秘密情報を-parameter-store-に入れる)
+9. [本番のリソースを作る（envs/prod）](#本番のリソースを作るenvsprod)
 
 ---
 
@@ -285,7 +286,7 @@ aws sesv2 get-account --query '{prod:ProductionAccessEnabled,review:Details.Revi
 
 秘密情報は SSM Parameter Store に SecureString で置きます。**Terraform の `aws_ssm_parameter` では作りません**。Terraform は作ったリソースの属性を tfstate に平文で残すため、変数に `sensitive = true` を付けても、値は状態に入ります。
 
-Terraform 側では、インスタンスプロファイルのポリシーで `/portfolio/<env>/*` の ARN を指定するだけにします（#112）。
+Terraform 側では、インスタンスプロファイルのポリシーで `/portfolio/<env>/*` の ARN を指定するだけにします。秘密でない設定（`/portfolio/<env>/config/*`）は Terraform が作るので、ここでは入れません（[環境変数と秘密情報](design.md#環境変数と秘密情報)）。
 
 ### 入れるもの
 
@@ -293,10 +294,11 @@ Terraform 側では、インスタンスプロファイルのポリシーで `/p
 | --- | --- |
 | `/portfolio/prod/APP_KEY` | `base64:` ＋ 32バイトの乱数を base64 にしたもの（`php artisan key:generate --show` と同じ形） |
 | `/portfolio/prod/DB_PASSWORD` | 32バイトの乱数を16進数にしたもの |
-| `/portfolio/prod/DB_ROOT_PASSWORD` | 同上 |
 | `/portfolio/prod/FRONTEND_REVALIDATE_SECRET` | 同上。Vercel の `REVALIDATE_SECRET` にも同じ値を入れる |
 
-DB のパスワードを16進数にするのは、`.env` や compose で特別な意味を持つ記号（`$`・`#`・引用符など）を含めないためです。
+DB のパスワードを16進数にするのは、`.env` や compose で特別な意味を持つ記号（`$`・`#`・引用符など）を含めないためです。**どの値も、単一引用符（`'`）・改行・タブを含めないでください**。EC2 の上で `.env` を作る `portfolio-render-env` が、値を単一引用符で囲んで1行に1つずつ書くので、含まれていると止まります（上の作り方なら含まれません）。
+
+MySQL の root のパスワードは置きません。初期化のときに MySQL が乱数で作り、どこにも保存しません（[EC2 上のコンテナ構成](design.md#ec2-上のコンテナ構成)）。
 
 ステージングは `/portfolio/stg/*` に同じ名前で、本番とは別の値を入れます（#116）。ステージングを destroy しても消えないよう、Terraform の管理の外に置きます。
 
@@ -313,9 +315,6 @@ aws ssm put-parameter --name /portfolio/prod/APP_KEY --type SecureString \
 aws ssm put-parameter --name /portfolio/prod/DB_PASSWORD --type SecureString \
   --value "$(openssl rand -hex 32)"
 
-aws ssm put-parameter --name /portfolio/prod/DB_ROOT_PASSWORD --type SecureString \
-  --value "$(openssl rand -hex 32)"
-
 aws ssm put-parameter --name /portfolio/prod/FRONTEND_REVALIDATE_SECRET --type SecureString \
   --value "$(openssl rand -hex 32)"
 ```
@@ -330,7 +329,7 @@ unset VALUE
 
 - 値を見るときは `aws ssm get-parameter --name <名前> --with-decryption --query Parameter.Value --output text`（Vercel に `FRONTEND_REVALIDATE_SECRET` を入れるときなど）
 - 値を替えるときは `--overwrite` を付けます。替えたあとは、デプロイ（`.env` の作り直しとコンテナの再起動）をしないと反映されません
-- `APP_KEY` を替えると、セッションと暗号化した値がすべて無効になります。`DB_PASSWORD` は、MySQL 側のユーザーのパスワードも合わせて替えます（`DB_ROOT_PASSWORD` と `DB_PASSWORD` は、mysql コンテナがデータを初めて作るときにだけ使われます）
+- `APP_KEY` を替えると、セッションと暗号化した値がすべて無効になります。`DB_PASSWORD` は、MySQL 側のユーザーのパスワードも合わせて替えます（`DB_PASSWORD` は、mysql コンテナがデータを初めて作るときにユーザーを作るのにも使われ、そのあとは MySQL 側で変えないかぎり変わりません）
 
 ### 確かめる
 
@@ -346,10 +345,152 @@ Terraform の状態に秘密の値が入っていないことは、Parameter Sto
 cd infra/terraform/envs/prod   # stg も同じ
 # 0 と出ればよい（見つかった行の数だけを出し、値は画面に出さない）
 terraform state pull | grep -cF -f <(
-  for n in APP_KEY DB_PASSWORD DB_ROOT_PASSWORD FRONTEND_REVALIDATE_SECRET; do
+  for n in APP_KEY DB_PASSWORD FRONTEND_REVALIDATE_SECRET; do
     aws ssm get-parameter --name "/portfolio/prod/$n" --with-decryption --query Parameter.Value --output text
   done
 )
 ```
 
 名前ではなく値そのもので探すので、値が別の属性名で入っていても見つかります。
+
+---
+
+## 本番のリソースを作る（envs/prod）
+
+`modules/app`（ステージングと共有）を本番の値で呼び、本番だけのもの（データ用 EBS・Elastic IP・`api.takuosblog.com` のレコード）を足します。**apply した時点から、EC2 と Elastic IP の課金が始まります。** 先に、上の手順で `/portfolio/prod/*` の秘密を入れておきます（EC2 の上で `.env` を作るときに使う）。
+
+| リソース | 内容 |
+| --- | --- |
+| ネットワーク | VPC `10.0.0.0/16`、パブリックサブネット `10.0.1.0/24`（`ap-northeast-1a`）、IGW、ルートテーブル。セキュリティグループは 80 / 443（IPv4）だけ |
+| EC2 | t4g.micro、Amazon Linux 2023（arm64）、IMDSv2 だけ（ホップ数の上限 2）、CPU クレジットは Standard、ルートは gp3 12GB 暗号化、`Env=prod` タグ |
+| データ用 EBS | gp3 10GB 暗号化。`/data` にマウントする。`prevent_destroy` |
+| Elastic IP | EC2 に付ける。`api.takuosblog.com` の向き先 |
+| IAM | インスタンスロール `portfolio-prod-app`（画像バケット、`/portfolio/prod/*` の読み取り、ECR の pull、SSM、SES） |
+| 画像バケット | `takuosblog-images-prod`。`images/*` だけ公開、HTTPS 以外は拒否、CORS は `https://takuosblog.com`、`tmp/` は1日で削除 |
+| Parameter Store | 秘密でない設定（`/portfolio/prod/config/*`） |
+| Cloudflare | `api.takuosblog.com` の A レコード（DNS only） |
+
+```bash
+cd infra/terraform/envs/prod
+
+cp terraform.tfvars.example terraform.tfvars
+# terraform.tfvars の aws_account_id と cloudflare_zone_id を入れる（envs/shared と同じ値。コミットしない）
+
+export CLOUDFLARE_API_TOKEN="$(cat ~/.config/portfolio/cloudflare-api-token)"
+
+terraform init
+terraform plan
+terraform apply
+```
+
+EC2 は最初の起動で `user_data`（`modules/app/user_data.sh.tftpl`）を実行します。swap 2GB、Docker と compose、データ用 EBS の `/data` へのマウント（ファイルシステムが無いときだけフォーマットする）、`/usr/local/bin/portfolio-render-env` の配置です。t4g.micro では終わるまでに5分ほどかかります。`user_data` は最初の起動でしか実行されず、`ignore_changes` で固定しているので、あとから直しても今の EC2 には反映されません。直したときは、下の「[user_data で置いたものを直したとき](#user_data-で置いたものを直したとき)」の手順で、今の EC2 にも反映します。
+
+### EC2 に接続する
+
+SSH は開けていないので、Session Manager で接続します。手元に [Session Manager のプラグイン](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) を入れておきます。
+
+```bash
+aws ssm start-session --target "$(terraform output -raw instance_id)"
+```
+
+### 本番のリソースを確かめる
+
+EC2 の中で：
+
+```bash
+cloud-init status                 # done になればよい（ログは /var/log/cloud-init-output.log）
+findmnt /data                     # データ用 EBS（xfs）がマウントされている
+swapon --show                     # /swapfile 2G
+docker compose version
+sudo aws ssm get-parameter --region ap-northeast-1 --name /portfolio/prod/APP_KEY --query Parameter.Name --output text  # 読める
+sudo aws ssm get-parameter --region ap-northeast-1 --name /portfolio/stg/APP_KEY   # AccessDenied になればよい（ParameterNotFound なら権限が広すぎる）
+sudo portfolio-render-env <APP_IMAGE> && sudo ls -l /opt/portfolio   # .env と .env.production が 600 でできる
+```
+
+手元で：
+
+```bash
+# images/ は誰でも読め（200）、tmp/ は読めない（403）
+B=takuosblog-images-prod
+echo check | aws s3 cp - "s3://$B/images/verify.txt"
+echo check | aws s3 cp - "s3://$B/tmp/verify.txt"
+curl -s -o /dev/null -w '%{http_code}\n' "https://$B.s3.ap-northeast-1.amazonaws.com/images/verify.txt"
+curl -s -o /dev/null -w '%{http_code}\n' "https://$B.s3.ap-northeast-1.amazonaws.com/tmp/verify.txt"
+aws s3 rm "s3://$B/images/verify.txt" && aws s3 rm "s3://$B/tmp/verify.txt"
+
+terraform plan   # 変更なし。aws_instance が must be replaced になっていないこと
+```
+
+tfstate に秘密が入っていないことは、[上の手順](#確かめる)の `terraform state pull` の確認で確かめます（0 と出ればよい）。
+
+### MySQL の root で作業するとき
+
+MySQL の root のパスワードは誰も持ちません（`MYSQL_RANDOM_ROOT_PASSWORD`。[EC2 上のコンテナ構成](design.md#ec2-上のコンテナ構成)）。ふだんの作業は、アプリ用のユーザー（`.env` の `DB_USERNAME`。`DB_DATABASE` のすべての権限を持つ）で行います。
+
+```bash
+cd /opt/portfolio
+# アプリ用のユーザーで入る（パスワードは .env の DB_PASSWORD）
+sudo docker compose -f docker-compose.prod.yml exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'
+
+# バックアップもアプリ用のユーザーで取る。PROCESS の権限が無いので --no-tablespaces を付ける（#114 で timer にする）
+sudo docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
+  'mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --single-transaction --no-tablespaces "$MYSQL_DATABASE"' > dump.sql
+```
+
+ユーザーの作り直しや権限の付け直しなど、root でしかできない作業が要るときは、MySQL を権限の確認なしで起動し直して、root のパスワードを設定します。その間は（コンテナの中からなら）誰でも DB に入れるので、API を止めてから行い、終わったら元に戻します。動いている `mysql` も止めます（同じ `/data/mysql` を2つの mysqld が開くと、InnoDB のロックが取れずに起動できない）。
+
+```bash
+cd /opt/portfolio
+sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx mysql
+sudo docker compose -f docker-compose.prod.yml run --rm -d --name mysql-recovery mysql \
+  --skip-grant-tables --skip-networking
+sudo docker exec -it mysql-recovery mysql   # 中で FLUSH PRIVILEGES; のあと ALTER USER 'root'@'localhost' IDENTIFIED BY '...'; など
+sudo docker stop mysql-recovery
+sudo docker ps --filter name=mysql-recovery --format '{{.Names}}'   # 何も出ないこと（止まっている）
+sudo docker compose -f docker-compose.prod.yml up -d
+```
+
+root のパスワードを設定した場合は、作業が終わったら `ALTER USER 'root'@'localhost' ACCOUNT LOCK;` で使えなくするか、値を Parameter Store に置かずに控えないでおきます。
+
+### user_data が途中で失敗したとき
+
+`cloud-init status` が `error` のときは、`/var/log/cloud-init-output.log` の最後で、どこで止まったかを見ます（`set -x` なので、実行したコマンドが順に出ています）。たとえばデータ用 EBS が5分たっても見えなかった、`blkid` が失敗した、などです。`user_data` は最初の起動でしか実行されないので、そのままでは Docker や `portfolio-render-env` が入らないまま残ります。
+
+原因を取り除いたら、Session Manager で入って、同じスクリプトをもう一度実行します。どの処理も2回目に実行しても壊れないように書いてあります（swap と fstab は済んでいれば足さない、データ用 EBS はファイルシステムがあればフォーマットしない）。
+
+```bash
+sudo bash -x /var/lib/cloud/instance/scripts/part-001
+```
+
+### user_data で置いたものを直したとき
+
+`user_data`（`modules/app/user_data.sh.tftpl`・`envs/prod/mount-data.sh.tftpl`）と、それが置く `portfolio-render-env`（`modules/app/files/render-env.sh`）を直しても、今の EC2 には届きません。`terraform plan` にも差分は出ないので、リポジトリと EC2 が気づかないうちにずれます。直したら、SSM Run Command で同じ変更を EC2 にも行います（デプロイのたびに `portfolio-render-env` を最新にする仕組みは #115 で作る）。
+
+`portfolio-render-env` を置き直して、ハッシュが一致するのを確かめる：
+
+```bash
+cd infra/terraform/envs/prod
+I=$(terraform output -raw instance_id)
+S=../../modules/app/files/render-env.sh
+PARAMS=$(python3 - "$S" <<'PY'
+import base64, hashlib, json, sys
+data = open(sys.argv[1], "rb").read()
+b64, sha = base64.b64encode(data).decode(), hashlib.sha256(data).hexdigest()
+dst = "/usr/local/bin/portfolio-render-env"
+print(json.dumps({"commands": [
+    f"echo {b64} | base64 -d > {dst}.new",
+    f"echo '{sha}  {dst}.new' | sha256sum -c -",
+    f"chmod 700 {dst}.new",
+    f"mv {dst}.new {dst}",
+]}))
+PY
+)
+CID=$(aws ssm send-command --instance-ids "$I" --document-name AWS-RunShellScript \
+  --parameters "$PARAMS" --query Command.CommandId --output text)
+aws ssm wait command-executed --command-id "$CID" --instance-id "$I"
+aws ssm get-command-invocation --command-id "$CID" --instance-id "$I" \
+  --query '[Status,StandardOutputContent]' --output text   # Success と「OK」が出ればよい
+```
+
+ずれていないかだけを確かめるときは、EC2 の中の `sha256sum /usr/local/bin/portfolio-render-env` と、手元の `sha256sum infra/terraform/modules/app/files/render-env.sh` を比べます。
+

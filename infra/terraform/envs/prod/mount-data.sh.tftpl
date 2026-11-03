@@ -1,0 +1,33 @@
+# データ用 EBS（${volume_id}）を /data にマウントする。アタッチは EC2 が起動したあとなので、現れるまで待つ。
+# Nitro のインスタンスでは NVMe として見え、by-id の名前にボリューム ID（ハイフンなし）が入る
+DATA_DEV=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${replace(volume_id, "-", "")}
+for _ in $(seq 1 60); do
+  [ -e "$DATA_DEV" ] && break
+  sleep 5
+done
+[ -e "$DATA_DEV" ]
+
+# ファイルシステムが無いとき（初めてつないだとき）だけフォーマットする。作り直した EC2 につなぎ直したときは消さない。
+# blkid -p は、読み取りに失敗したときも「見つからない」と同じ終了コードを返すので、それだけでは決めない。
+# 新しい EBS は先頭がすべてゼロなので、先頭 1MiB がゼロだと読めたときだけフォーマットする（読めなければ cmp が失敗して止まる）
+if blkid -p "$DATA_DEV"; then
+  : # ファイルシステムがある
+elif cmp -s -n 1048576 "$DATA_DEV" /dev/zero; then
+  mkfs.xfs "$DATA_DEV"
+else
+  echo "$DATA_DEV にファイルシステムが見つからないが、空でもない（または読めない）。フォーマットせずに止めます" >&2
+  exit 1
+fi
+
+# /data がマウントできなかったときは Docker を起動させない。nofail のままだと、/data はルートの上の空のディレクトリになり、
+# MySQL が空のデータで初期化して書き込み始めてしまう（本物のデータは EBS に残ったまま、サイトからは消えたように見える）。
+# マウントより先に置き、この先で止まっても効くようにする
+mkdir -p /etc/systemd/system/docker.service.d
+printf '[Unit]\nRequiresMountsFor=/data\n' > /etc/systemd/system/docker.service.d/require-data-mount.conf
+systemctl daemon-reload
+
+DATA_UUID=$(blkid -s UUID -o value "$DATA_DEV")
+mkdir -p /data
+# nofail：EBS が見えなくても OS の起動は止めない（Session Manager で入って直せるように）。待つのは30秒まで
+grep -q "UUID=$DATA_UUID" /etc/fstab || echo "UUID=$DATA_UUID /data xfs defaults,nofail,x-systemd.device-timeout=30 0 2" >> /etc/fstab
+mount /data
