@@ -10,8 +10,10 @@
 2. [管理用のユーザーを作る](#管理用のユーザーを作る)
 3. [Terraform を実行するときの認証](#terraform-を実行するときの認証)
 4. [tfstate のバケットを作る（bootstrap）](#tfstate-のバケットを作るbootstrap)
-5. [共有のリソースを作る（envs/shared）](#共有のリソースを作るenvsshared)
-6. [秘密情報を Parameter Store に入れる](#秘密情報を-parameter-store-に入れる)
+5. [Cloudflare の API トークンを作る](#cloudflare-の-api-トークンを作る)
+6. [共有のリソースを作る（envs/shared）](#共有のリソースを作るenvsshared)
+7. [SES の本番アクセスを申請する](#ses-の本番アクセスを申請する)
+8. [秘密情報を Parameter Store に入れる](#秘密情報を-parameter-store-に入れる)
 
 ---
 
@@ -122,6 +124,43 @@ GitHub Actions のロールに、自分の環境のキー（`stg/` など）だ�
 
 ---
 
+## Cloudflare の API トークンを作る
+
+DNS は Cloudflare にあるので、Terraform の Cloudflare プロバイダーでレコードを作ります（[DNS（Cloudflare）](design.md#dnscloudflare)）。そのための API トークンを、`takuosblog.com` ゾーンの DNS 編集権限だけに絞って作ります。手元の Terraform と、GitHub Actions（ステージングの DNS レコード）の両方で使います。
+
+1. Cloudflare のダッシュボードの右上の人のアイコン → **My Profile** → **API Tokens** → **Create Token**
+   - 「Global API Key」はアカウント全体の権限を持つので使わない
+2. テンプレートの **Edit zone DNS** を選び、次のようにする
+
+| 項目 | 設定 |
+| --- | --- |
+| Token name | `portfolio-terraform-dns` |
+| Permissions | `Zone` / `DNS` / `Edit` だけ |
+| Zone Resources | `Include` / `Specific zone` / `takuosblog.com` |
+| Client IP Address Filtering | 空（GitHub Actions の IP は決まらない） |
+| TTL | 空（期限なし） |
+
+3. **Continue to summary** で「takuosblog.com - DNS:Edit」だけになっているのを確かめ、**Create Token**。トークンは一度しか表示されない
+
+トークンはチャットやリポジトリに貼らず、リポジトリの外のファイルに置きます。手元のターミナルで実行し、トークンを貼り付けて Enter を押します（画面には出ない）。
+
+```bash
+mkdir -p ~/.config/portfolio && chmod 700 ~/.config/portfolio
+read -rs CF && printf '%s' "$CF" > ~/.config/portfolio/cloudflare-api-token && unset CF
+chmod 600 ~/.config/portfolio/cloudflare-api-token
+
+# "status":"active" と出ればよい
+curl -s -H "Authorization: Bearer $(cat ~/.config/portfolio/cloudflare-api-token)" \
+  https://api.cloudflare.com/client/v4/user/tokens/verify
+
+# GitHub Actions のシークレットに登録する（値は画面に出ない）
+gh secret set CLOUDFLARE_API_TOKEN < ~/.config/portfolio/cloudflare-api-token
+```
+
+ゾーンの ID は、ダッシュボードで `takuosblog.com` を開き、**Overview** の右下の「API」の欄の **Zone ID** を控えます。トークンにゾーンを読む権限を与えないため、Terraform にはドメイン名から引かせず、`terraform.tfvars` で直接渡します。
+
+---
+
 ## 共有のリソースを作る（envs/shared）
 
 本番とステージングで共有し、ずっと残すリソースを作ります。
@@ -131,12 +170,17 @@ GitHub Actions のロールに、自分の環境のキー（`stg/` など）だ�
 | ECR | リポジトリ `portfolio/app`。タグの上書きを禁止し、プッシュ時にスキャンする。タグなしは1日で消し、`main-` は直近の20個、`develop-` は直近の10個だけ残す |
 | GitHub の OIDC プロバイダー | GitHub Actions がアクセスキーなしでロールを引き受けるため。ロールは #115・#116 で作る |
 | AWS Budgets | 月 $20。実績が 80%、月末の予測が 100% を超えたらメールで知らせる。クレジットを差し引く前の金額で比べる |
+| SES | 送信元ドメイン `takuosblog.com` の ID（Easy DKIM）と、MAIL FROM の `mail.takuosblog.com` |
+| Cloudflare の DNS レコード | DKIM の CNAME 3つ、`mail` の MX と SPF、`_dmarc` の TXT（[メール送信（SES）](design.md#メール送信ses)） |
 
 ```bash
 cd infra/terraform/envs/shared
 
 cp terraform.tfvars.example terraform.tfvars
-# terraform.tfvars の aws_account_id と alert_email を入れる（コミットしない）
+# terraform.tfvars の aws_account_id、alert_email、cloudflare_zone_id、dmarc_report_email を入れる（コミットしない）
+
+# Cloudflare のトークンは環境変数で渡す
+export CLOUDFLARE_API_TOKEN="$(cat ~/.config/portfolio/cloudflare-api-token)"
 
 terraform init
 terraform plan
@@ -156,6 +200,66 @@ done
 ```
 
 コンソールでは「請求とコスト管理」→「予算」→ `portfolio-monthly` のアラートの欄で見られます。
+
+### SES の ID を確かめる
+
+SES が DNS を確かめると、ID が検証済みになります。数分から、長いと72時間かかります。
+
+```bash
+# verified が true、dkim と mailfrom が SUCCESS になればよい
+aws sesv2 get-email-identity --email-identity takuosblog.com \
+  --query '{verified:VerifiedForSendingStatus,dkim:DkimAttributes.Status,mailfrom:MailFromAttributes.MailFromDomainStatus}'
+
+dig +short TXT _dmarc.takuosblog.com
+dig +short MX mail.takuosblog.com
+dig +short TXT mail.takuosblog.com
+```
+
+コンソールでは「Amazon SES」→「ID」→ `takuosblog.com` で、ID が「検証済み」、DKIM と MAIL FROM が「成功」になっているのを見られます。
+
+---
+
+## SES の本番アクセスを申請する
+
+新しいアカウントの SES はサンドボックスの中にあり、検証済みのアドレスにしか送れません（1日200通、毎秒1通）。本番アクセスを申請して外してもらいます。**AWS の担当者の審査に時間がかかるので、ID を作ったらすぐに出します。** 説明が空のまま出すと、すぐに却下されます。
+
+用途の説明には、どんなメールを、誰に、どれくらい送るかと、バウンスと苦情の扱いを書きます。英語のほうが審査が早く進みやすいです。
+
+```text
+takuosblog.com is my personal blog and portfolio site (Laravel API + Next.js).
+The site is under construction and not yet public; the source code is public at
+https://github.com/TAKUO2000/portfolio-site.
+
+We will send only transactional emails triggered by a user's own action:
+- email address verification when a user registers
+- password reset links when a user requests one
+We never send marketing or bulk email, and we never send to purchased or third-party lists.
+Every recipient is a user who entered their own address on the site.
+
+Expected volume is very low: at most a few emails per week.
+
+Bounces and complaints: the SES account-level suppression list is enabled for
+BOUNCE and COMPLAINT, so we never send again to an address that bounced or complained.
+Registration requires email verification, so invalid addresses do not stay active.
+The domain is authenticated with Easy DKIM, a custom MAIL FROM domain
+(mail.takuosblog.com, SPF), and DMARC.
+```
+
+コンソールの「Amazon SES」→「アカウントダッシュボード」→「本番アクセスをリクエスト」から出すか、説明をファイルに保存して CLI で出します。
+
+```bash
+aws sesv2 put-account-details \
+  --production-access-enabled \
+  --mail-type TRANSACTIONAL \
+  --website-url https://github.com/TAKUO2000/portfolio-site \
+  --contact-language EN \
+  --use-case-description "$(cat <説明のファイル>)"
+
+# 審査の状態（PENDING → GRANTED。DENIED ならサポートセンターのケースを見る）
+aws sesv2 get-account --query '{prod:ProductionAccessEnabled,review:Details.ReviewDetails}'
+```
+
+却下されたら、サポートセンターのケース（`CaseId`）に返信して説明を補います。無料のサポートプランでは、ケースへの返信はコンソールから行います。通ると `ProductionAccessEnabled` が `true` になり、送信の上限が上がります。料金のプランは「アカウントダッシュボード」で確かめます。
 
 ---
 
