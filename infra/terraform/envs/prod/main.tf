@@ -70,7 +70,9 @@ module "app" {
 }
 
 # MySQL のデータと証明書を置く。インスタンスを作り直しても残す（infra/design.md の「データの置き場所」）。
-# prevent_destroy には変数を使えないので、ステージングと共有する modules/app には置かない
+# prevent_destroy には変数を使えないので、ステージングと共有する modules/app には置かない。
+# prevent_destroy は terraform destroy から守るだけなので、日次のスナップショット（DLM）と mysqldump を #114 で作る。
+# それまでは本番に大事なデータを入れない（infra/design.md の「AWS リソース」）
 resource "aws_ebs_volume" "data" {
   availability_zone = local.availability_zone
   type              = "gp3"

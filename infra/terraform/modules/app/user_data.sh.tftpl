@@ -13,8 +13,9 @@ if [ ! -f /swapfile ]; then
 fi
 
 # --- Docker と compose のプラグイン ---
+# 起動は最後（/data を用意したあと）。先に起動すると、/data のマウントに失敗して止まったときに、
+# Docker だけが動いたまま残り、MySQL がルートの上の空の /data で初期化されうるため
 dnf install -y docker
-systemctl enable --now docker
 
 # Amazon Linux 2023 のリポジトリには compose のプラグインが無いので、バージョンを固定して GitHub のリリースから入れる
 COMPOSE_VERSION=v5.6.1
@@ -39,3 +40,6 @@ ${render_env}
 RENDER_ENV
 chmod 700 /usr/local/bin/portfolio-render-env
 echo 'PORTFOLIO_ENV=${env}' > /etc/portfolio-env
+
+# --- ここまで成功したときだけ Docker を起動する ---
+systemctl enable --now docker

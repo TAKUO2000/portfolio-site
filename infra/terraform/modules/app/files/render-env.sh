@@ -6,6 +6,10 @@
 # - .env            compose の変数の置き換え：APP_IMAGE、/portfolio/<env>/config/compose/*、DB_PASSWORD
 # - .env.production Laravel の設定：/portfolio/<env>/config/app/*、APP_KEY、FRONTEND_REVALIDATE_SECRET
 # どちらもパーミッション 600。値は単一引用符で囲む（compose は中身を置き換えずにそのまま渡す）
+#
+# このファイルは user_data が最初の起動のときに /usr/local/bin/portfolio-render-env に置く。直しても、動いている EC2 には
+# 自動では届かない（terraform plan にも差分は出ない）。infra/setup.md の「user_data で置いたものを直したとき」の手順で
+# 置き直す（デプロイのたびに最新を置く仕組みは #115 で作る）
 set -euo pipefail
 
 APP_IMAGE=${1:?usage: portfolio-render-env <APP_IMAGE>}

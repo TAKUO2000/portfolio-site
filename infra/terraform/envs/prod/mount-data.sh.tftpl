@@ -19,14 +19,15 @@ else
   exit 1
 fi
 
+# /data がマウントできなかったときは Docker を起動させない。nofail のままだと、/data はルートの上の空のディレクトリになり、
+# MySQL が空のデータで初期化して書き込み始めてしまう（本物のデータは EBS に残ったまま、サイトからは消えたように見える）。
+# マウントより先に置き、この先で止まっても効くようにする
+mkdir -p /etc/systemd/system/docker.service.d
+printf '[Unit]\nRequiresMountsFor=/data\n' > /etc/systemd/system/docker.service.d/require-data-mount.conf
+systemctl daemon-reload
+
 DATA_UUID=$(blkid -s UUID -o value "$DATA_DEV")
 mkdir -p /data
 # nofail：EBS が見えなくても OS の起動は止めない（Session Manager で入って直せるように）。待つのは30秒まで
 grep -q "UUID=$DATA_UUID" /etc/fstab || echo "UUID=$DATA_UUID /data xfs defaults,nofail,x-systemd.device-timeout=30 0 2" >> /etc/fstab
 mount /data
-
-# /data がマウントできなかったときは Docker を起動させない。nofail のままだと、/data はルートの上の空のディレクトリになり、
-# MySQL が空のデータで初期化して書き込み始めてしまう（本物のデータは EBS に残ったまま、サイトからは消えたように見える）
-mkdir -p /etc/systemd/system/docker.service.d
-printf '[Unit]\nRequiresMountsFor=/data\n' > /etc/systemd/system/docker.service.d/require-data-mount.conf
-systemctl daemon-reload
