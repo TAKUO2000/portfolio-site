@@ -71,9 +71,13 @@ variable "app_config" {
   type        = map(string)
 
   validation {
-    # render-env.sh は値を単一引用符で囲んで書く。Parameter Store は空の値を置けないので、空にしたい変数は書かない
-    condition     = alltrue([for v in values(merge(var.app_config, var.compose_config)) : v != "" && !strcontains(v, "'")])
-    error_message = "app_config と compose_config の値は、空にせず、単一引用符（'）を含めないでください。"
+    # render-env.sh は値を単一引用符で囲み、1行に1つずつ書く（Parameter Store からはタブ区切りで読む）。
+    # Parameter Store は空の値を置けないので、空にしたい変数は書かない
+    condition = alltrue([
+      for v in values(merge(var.app_config, var.compose_config)) :
+      v != "" && !strcontains(v, "'") && !strcontains(v, "\n") && !strcontains(v, "\t")
+    ])
+    error_message = "app_config と compose_config の値は、空にせず、単一引用符（'）・改行・タブを含めないでください。"
   }
 }
 

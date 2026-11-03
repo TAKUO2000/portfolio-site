@@ -95,7 +95,7 @@ tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）
 | | インターネットゲートウェイ / ルートテーブル | `0.0.0.0/0` を IGW へ |
 | | NAT Gateway | **作らない**（月 $45 前後かかるため） |
 | セキュリティグループ | EC2 用 | インバウンドは 80 / 443 を `0.0.0.0/0` から許可するだけ。22 は開けない。**IPv4 だけ**にし、VPC に IPv6 は割り当てない（IPv6 だけの回線からも、通信会社の NAT64 などで IPv4 に届く。フロントの Vercel は IPv6 に対応している） |
-| EC2 | インスタンス | t4g.micro、Amazon Linux 2023（arm64）、IMDSv2 を必須にする。CPU クレジットは **Standard モード**（[CPU クレジットと費用の監視](#cpu-クレジットと費用の監視)） |
+| EC2 | インスタンス | t4g.micro、Amazon Linux 2023（arm64）、IMDSv2 を必須にし、応答のホップ数の上限を 2 にする（コンテナからインスタンスロールを使うため。[セキュリティ](#セキュリティ)）。CPU クレジットは **Standard モード**（[CPU クレジットと費用の監視](#cpu-クレジットと費用の監視)） |
 | | Elastic IP | `api.takuosblog.com` の向き先 |
 | | EBS（ルート） | gp3 12GB、暗号化する。OS と Docker のイメージを置く。インスタンスを作り直すと消えてよいものだけを置く |
 | | EBS（データ用） | gp3 10GB、暗号化する。`/data` にマウントし、MySQL のデータと証明書を置く。**`envs/prod` に置き、`prevent_destroy = true` にする**（[データの置き場所](#データの置き場所)） |
@@ -573,6 +573,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - IAM の権限は環境ごとに分ける。ステージングの EC2 やロールから、本番の Parameter Store・S3・EC2 に届かないようにする（[GitHub Actions のロール](#github-actions-のロール)）
 - `envs/shared` と `envs/prod` は GitHub Actions から apply せず、手元から MFA 付きのユーザーで apply する
 - IMDSv2 を必須にする
+- **IMDS の応答のホップ数の上限を 2 にしているので、コンテナの中からもインスタンスロールの認証情報を取れる**（S3 と SES に認証するため。既定の 1 だと Docker の bridge ネットワークから届かない）。そのため Laravel に SSRF（利用者が渡した URL をサーバーが読みに行く処理の穴）があると、`169.254.169.254` から認証情報を盗まれ、画像バケットと `/portfolio/<env>/*` の秘密（`APP_KEY`・DB のパスワード）まで読まれる。**利用者が指定した URL をサーバーから取得する処理（URL のプレビュー、外部の画像の取り込みなど）を作るときは、宛先を許可したものだけに絞り、`169.254.169.254` などの内部のアドレスを拒否する**。今のコードでサーバーから外へリクエストを送るのは、記事を変えたときに `FRONTEND_URL` の `/api/revalidate` を呼ぶ処理（`app/Services/FrontendCache.php`）だけで、宛先は設定で決まっており、利用者は変えられない
 - EBS を暗号化する
 - MySQL のポートはホストに公開しない（compose の `ports` を書かない）
 - API には Laravel のレート制限をかける（いいね API には実装済み）
