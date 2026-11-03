@@ -437,15 +437,16 @@ sudo docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
   'mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --single-transaction --no-tablespaces "$MYSQL_DATABASE"' > dump.sql
 ```
 
-ユーザーの作り直しや権限の付け直しなど、root でしかできない作業が要るときは、MySQL を権限の確認なしで起動し直して、root のパスワードを設定します。その間は誰でも DB に入れるので、API を止めてから行い、終わったら元に戻します。
+ユーザーの作り直しや権限の付け直しなど、root でしかできない作業が要るときは、MySQL を権限の確認なしで起動し直して、root のパスワードを設定します。その間は（コンテナの中からなら）誰でも DB に入れるので、API を止めてから行い、終わったら元に戻します。動いている `mysql` も止めます（同じ `/data/mysql` を2つの mysqld が開くと、InnoDB のロックが取れずに起動できない）。
 
 ```bash
 cd /opt/portfolio
-sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx
+sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx mysql
 sudo docker compose -f docker-compose.prod.yml run --rm -d --name mysql-recovery mysql \
   --skip-grant-tables --skip-networking
 sudo docker exec -it mysql-recovery mysql   # 中で FLUSH PRIVILEGES; のあと ALTER USER 'root'@'localhost' IDENTIFIED BY '...'; など
 sudo docker stop mysql-recovery
+sudo docker ps --filter name=mysql-recovery --format '{{.Names}}'   # 何も出ないこと（止まっている）
 sudo docker compose -f docker-compose.prod.yml up -d
 ```
 

@@ -1,8 +1,14 @@
 locals {
   availability_zone = "ap-northeast-1a"
-  api_domain        = "api.takuosblog.com"
-  frontend_origin   = "https://takuosblog.com"
+
+  # フロントエンドのドメイン。API・CORS・Cookie・Sanctum の値はここから組み立てる（1か所だけ直し忘れると、
+  # ログインや CSRF が壊れるため）。ステージングでは stg.takuosblog.com にする
+  site_domain     = "takuosblog.com"
+  api_domain      = "api.${local.site_domain}"
+  frontend_origin = "https://${local.site_domain}"
+
   image_bucket_name = "takuosblog-images-prod"
+  # SES の送信元ドメインの ID（envs/shared）は環境によらず takuosblog.com
   mail_from_address = "no-reply@takuosblog.com"
 }
 
@@ -52,9 +58,9 @@ module "app" {
     DB_CONNECTION               = "mysql"
     DB_HOST                     = "mysql"
     DB_PORT                     = "3306"
-    SANCTUM_STATEFUL_DOMAINS    = "takuosblog.com"
+    SANCTUM_STATEFUL_DOMAINS    = local.site_domain
     SESSION_DRIVER              = "database"
-    SESSION_DOMAIN              = ".takuosblog.com"
+    SESSION_DOMAIN              = ".${local.site_domain}"
     SESSION_SECURE_COOKIE       = "true"
     SESSION_COOKIE              = "portfolio_session"
     CACHE_STORE                 = "database"
