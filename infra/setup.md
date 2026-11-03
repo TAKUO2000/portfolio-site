@@ -14,6 +14,7 @@
 6. [共有のリソースを作る（envs/shared）](#共有のリソースを作るenvsshared)
 7. [SES の本番アクセスを申請する](#ses-の本番アクセスを申請する)
 8. [秘密情報を Parameter Store に入れる](#秘密情報を-parameter-store-に入れる)
+9. [本番のリソースを作る（envs/prod）](#本番のリソースを作るenvsprod)
 
 ---
 
@@ -285,7 +286,7 @@ aws sesv2 get-account --query '{prod:ProductionAccessEnabled,review:Details.Revi
 
 秘密情報は SSM Parameter Store に SecureString で置きます。**Terraform の `aws_ssm_parameter` では作りません**。Terraform は作ったリソースの属性を tfstate に平文で残すため、変数に `sensitive = true` を付けても、値は状態に入ります。
 
-Terraform 側では、インスタンスプロファイルのポリシーで `/portfolio/<env>/*` の ARN を指定するだけにします（#112）。
+Terraform 側では、インスタンスプロファイルのポリシーで `/portfolio/<env>/*` の ARN を指定するだけにします。秘密でない設定（`/portfolio/<env>/config/*`）は Terraform が作るので、ここでは入れません（[環境変数と秘密情報](design.md#環境変数と秘密情報)）。
 
 ### 入れるもの
 
@@ -353,3 +354,74 @@ terraform state pull | grep -cF -f <(
 ```
 
 名前ではなく値そのもので探すので、値が別の属性名で入っていても見つかります。
+
+---
+
+## 本番のリソースを作る（envs/prod）
+
+`modules/app`（ステージングと共有）を本番の値で呼び、本番だけのもの（データ用 EBS・Elastic IP・`api.takuosblog.com` のレコード）を足します。**apply した時点から、EC2 と Elastic IP の課金が始まります。** 先に、上の手順で `/portfolio/prod/*` の秘密を入れておきます（EC2 の上で `.env` を作るときに使う）。
+
+| リソース | 内容 |
+| --- | --- |
+| ネットワーク | VPC `10.0.0.0/16`、パブリックサブネット `10.0.1.0/24`（`ap-northeast-1a`）、IGW、ルートテーブル。セキュリティグループは 80 / 443（IPv4）だけ |
+| EC2 | t4g.micro、Amazon Linux 2023（arm64）、IMDSv2 だけ（ホップ数の上限 2）、CPU クレジットは Standard、ルートは gp3 12GB 暗号化、`Env=prod` タグ |
+| データ用 EBS | gp3 10GB 暗号化。`/data` にマウントする。`prevent_destroy` |
+| Elastic IP | EC2 に付ける。`api.takuosblog.com` の向き先 |
+| IAM | インスタンスロール `portfolio-prod-app`（画像バケット、`/portfolio/prod/*` の読み取り、ECR の pull、SSM、SES） |
+| 画像バケット | `takuosblog-images-prod`。`images/*` だけ公開、HTTPS 以外は拒否、CORS は `https://takuosblog.com`、`tmp/` は1日で削除 |
+| Parameter Store | 秘密でない設定（`/portfolio/prod/config/*`） |
+| Cloudflare | `api.takuosblog.com` の A レコード（DNS only） |
+
+```bash
+cd infra/terraform/envs/prod
+
+cp terraform.tfvars.example terraform.tfvars
+# terraform.tfvars の aws_account_id と cloudflare_zone_id を入れる（envs/shared と同じ値。コミットしない）
+
+export CLOUDFLARE_API_TOKEN="$(cat ~/.config/portfolio/cloudflare-api-token)"
+
+terraform init
+terraform plan
+terraform apply
+```
+
+EC2 は最初の起動で `user_data`（`modules/app/user_data.sh.tftpl`）を実行します。swap 2GB、Docker と compose、データ用 EBS の `/data` へのマウント（ファイルシステムが無いときだけフォーマットする）、`/usr/local/bin/portfolio-render-env` の配置です。t4g.micro では終わるまでに5分ほどかかります。`user_data` は最初の起動でしか実行されず、`ignore_changes` で固定しているので、あとから直しても今の EC2 には反映されません。
+
+### EC2 に接続する
+
+SSH は開けていないので、Session Manager で接続します。手元に [Session Manager のプラグイン](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) を入れておきます。
+
+```bash
+aws ssm start-session --target "$(terraform output -raw instance_id)"
+```
+
+### 本番のリソースを確かめる
+
+EC2 の中で：
+
+```bash
+cloud-init status                 # done になればよい（ログは /var/log/cloud-init-output.log）
+findmnt /data                     # データ用 EBS（xfs）がマウントされている
+swapon --show                     # /swapfile 2G
+docker compose version
+sudo aws ssm get-parameter --region ap-northeast-1 --name /portfolio/prod/APP_KEY --query Parameter.Name --output text  # 読める
+sudo aws ssm get-parameter --region ap-northeast-1 --name /portfolio/stg/APP_KEY   # AccessDenied になればよい（ParameterNotFound なら権限が広すぎる）
+sudo portfolio-render-env <APP_IMAGE> && sudo ls -l /opt/portfolio   # .env と .env.production が 600 でできる
+```
+
+手元で：
+
+```bash
+# images/ は誰でも読め（200）、tmp/ は読めない（403）
+B=takuosblog-images-prod
+echo check | aws s3 cp - "s3://$B/images/verify.txt"
+echo check | aws s3 cp - "s3://$B/tmp/verify.txt"
+curl -s -o /dev/null -w '%{http_code}\n' "https://$B.s3.ap-northeast-1.amazonaws.com/images/verify.txt"
+curl -s -o /dev/null -w '%{http_code}\n' "https://$B.s3.ap-northeast-1.amazonaws.com/tmp/verify.txt"
+aws s3 rm "s3://$B/images/verify.txt" && aws s3 rm "s3://$B/tmp/verify.txt"
+
+terraform plan   # 変更なし。aws_instance が must be replaced になっていないこと
+```
+
+tfstate に秘密が入っていないことは、[上の手順](#確かめる)の `terraform state pull` の確認で確かめます（0 と出ればよい）。
+
