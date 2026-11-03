@@ -86,6 +86,8 @@ infra/terraform/
 
 tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）に置き、キーを環境ごとに分けます（`bootstrap/`、`shared/`、`prod/`、`stg/`）。作り方とバケットの設定は [構築手順](setup.md#tfstate-のバケットを作るbootstrap) を参照。DNS レコードは AWS ではなく Cloudflare にあるので、Terraform の Cloudflare プロバイダーで管理します。
 
+#112 では、ネットワーク・EC2・データ用 EBS・Elastic IP・IAM・画像バケットを作りました。バックアップ（DLM・バックアップ用バケット）と監視（CloudWatch）は #114 で作ります。それまでのデータ用 EBS は `prevent_destroy` だけで守られているので、#114 を終えるまでは本番に大事なデータを入れません（MySQL を動かすのも #115 から）。
+
 以下の表は本番の構成です。ステージングとの違いは [ステージング環境](#ステージング環境) にまとめています。
 
 | 区分 | リソース | 設定 |
@@ -102,13 +104,13 @@ tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）
 | IAM | インスタンスプロファイル | **自分の環境のものだけ**に絞る。S3 は自分の環境の画像バケットの読み書き（本番はバックアップ用バケットへの `s3:PutObject` も）、Parameter Store は `arn:aws:ssm:ap-northeast-1:<アカウント ID>:parameter/portfolio/<env>/*` の読み取りだけ。ほかに ECR の pull と SSM（`AmazonSSMManagedInstanceCore`）、SES の `ses:SendRawEmail`（[メール送信（SES）](#メール送信ses)の「送信の権限」）。`modules/app` に `env` 変数を渡して ARN を組み立てる。**`AmazonSSMManagedInstanceCore` は `ssm:GetParameter(s)` を `Resource: "*"` で許可しているので、自分の環境のパス以外のパラメーターの読み取りを明示的に拒否（Deny）する**（付けないと、ステージングの EC2 から本番の秘密が読める） |
 | | GitHub Actions 用のロール | 用途ごとに3つに分ける（[GitHub Actions のロール](#github-actions-のロール)） |
 | S3 | 画像バケット | [S3（画像）](#s3画像)を参照 |
-| | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する |
+| | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する。**未作成（#114）** |
 | | tfstate バケット | Terraform の状態を保存する。`bootstrap/` で作る。バージョニング、SSE-S3 の暗号化、パブリックアクセスのブロック、HTTPS 以外の拒否。ロックは `use_lockfile`（DynamoDB は使わない） |
 | ECR | リポジトリ | `portfolio/app`（本番とステージングで共有）。タグは `main-<SHA>` / `develop-<SHA>` で、上書きを禁止する。ライフサイクルルールで、タグなしは1日、`main-` は直近の20個、`develop-` は直近の10個だけ残す（接頭辞ごとに数えるので、ステージングへの push が続いても本番のイメージは消えない） |
 | SES | 送信元ドメインの ID（`envs/shared`） | `takuosblog.com`。本番とステージングで共有する（[メール送信（SES）](#メール送信ses)） |
 | SSM | Parameter Store | 秘密情報（SecureString）を置く。**Terraform では管理せず**、AWS CLI で入れる（[環境変数と秘密情報](#環境変数と秘密情報)） |
-| DLM | ライフサイクルポリシー | データ用 EBS の日次スナップショットを7世代残す |
-| CloudWatch | アラーム | ステータスチェックの失敗と CPU クレジット残高。通知先は SNS からメールに送る |
+| DLM | ライフサイクルポリシー | データ用 EBS の日次スナップショットを7世代残す。**未作成（#114）** |
+| CloudWatch | アラーム | ステータスチェックの失敗と CPU クレジット残高。通知先は SNS からメールに送る。**未作成（#114）** |
 | Budgets | 月の予算（`envs/shared`） | アカウント全体で月 $20。実績が 80% を超えたとき、月末の予測が 100% を超えそうなときにメールで知らせる |
 
 DB だけをプライベートサブネットに分ける構成は採らない。プライベートサブネットから外に出るには NAT Gateway が必要で、高くつくからです。MySQL は EC2 内のコンテナで動かし、ポートを外に公開しないことで守ります。
