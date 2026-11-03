@@ -385,7 +385,7 @@ terraform plan
 terraform apply
 ```
 
-EC2 は最初の起動で `user_data`（`modules/app/user_data.sh.tftpl`）を実行します。swap 2GB、Docker と compose、データ用 EBS の `/data` へのマウント（ファイルシステムが無いときだけフォーマットする）、`/usr/local/bin/portfolio-render-env` の配置です。t4g.micro では終わるまでに5分ほどかかります。`user_data` は最初の起動でしか実行されず、`ignore_changes` で固定しているので、あとから直しても今の EC2 には反映されません。
+EC2 は最初の起動で `user_data`（`modules/app/user_data.sh.tftpl`）を実行します。swap 2GB、Docker と compose、データ用 EBS の `/data` へのマウント（ファイルシステムが無いときだけフォーマットする）、`/usr/local/bin/portfolio-render-env` の配置です。t4g.micro では終わるまでに5分ほどかかります。`user_data` は最初の起動でしか実行されず、`ignore_changes` で固定しているので、あとから直しても今の EC2 には反映されません。直したときは、下の「[user_data で置いたものを直したとき](#user_data-で置いたものを直したとき)」の手順で、今の EC2 にも反映します。
 
 ### EC2 に接続する
 
@@ -424,4 +424,36 @@ terraform plan   # 変更なし。aws_instance が must be replaced になって
 ```
 
 tfstate に秘密が入っていないことは、[上の手順](#確かめる)の `terraform state pull` の確認で確かめます（0 と出ればよい）。
+
+### user_data で置いたものを直したとき
+
+`user_data`（`modules/app/user_data.sh.tftpl`・`envs/prod/mount-data.sh.tftpl`）と、それが置く `portfolio-render-env`（`modules/app/files/render-env.sh`）を直しても、今の EC2 には届きません。`terraform plan` にも差分は出ないので、リポジトリと EC2 が気づかないうちにずれます。直したら、SSM Run Command で同じ変更を EC2 にも行います（デプロイのたびに `portfolio-render-env` を最新にする仕組みは #115 で作る）。
+
+`portfolio-render-env` を置き直して、ハッシュが一致するのを確かめる：
+
+```bash
+cd infra/terraform/envs/prod
+I=$(terraform output -raw instance_id)
+S=../../modules/app/files/render-env.sh
+PARAMS=$(python3 - "$S" <<'PY'
+import base64, hashlib, json, sys
+data = open(sys.argv[1], "rb").read()
+b64, sha = base64.b64encode(data).decode(), hashlib.sha256(data).hexdigest()
+dst = "/usr/local/bin/portfolio-render-env"
+print(json.dumps({"commands": [
+    f"echo {b64} | base64 -d > {dst}.new",
+    f"echo '{sha}  {dst}.new' | sha256sum -c -",
+    f"chmod 700 {dst}.new",
+    f"mv {dst}.new {dst}",
+]}))
+PY
+)
+CID=$(aws ssm send-command --instance-ids "$I" --document-name AWS-RunShellScript \
+  --parameters "$PARAMS" --query Command.CommandId --output text)
+aws ssm wait command-executed --command-id "$CID" --instance-id "$I"
+aws ssm get-command-invocation --command-id "$CID" --instance-id "$I" \
+  --query '[Status,StandardOutputContent]' --output text   # Success と「OK」が出ればよい
+```
+
+ずれていないかだけを確かめるときは、EC2 の中の `sha256sum /usr/local/bin/portfolio-render-env` と、手元の `sha256sum infra/terraform/modules/app/files/render-env.sh` を比べます。
 
