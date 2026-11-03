@@ -1,6 +1,6 @@
 # パスワード再設定とメールアドレスの確認のメールを SES から送る（infra/design.md の「メール送信（SES）」）。
 # 送信元ドメインの ID は本番とステージングで共有し、環境を作り直しても DKIM が変わらないよう shared に置く。
-# 送信の権限（ses:SendRawEmail）は、使う環境のインスタンスロールに付ける
+# 送信の権限（ses:SendRawEmail）は、使う環境のインスタンスロールに付ける（Resource と条件は infra/design.md）
 locals {
   mail_domain      = "takuosblog.com"
   mail_from_domain = "mail.${local.mail_domain}"

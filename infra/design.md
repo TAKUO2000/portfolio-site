@@ -99,7 +99,7 @@ tfstate は同じバケット（`takuosblog-tfstate`、`bootstrap/` で作る）
 | | Elastic IP | `api.takuosblog.com` の向き先 |
 | | EBS（ルート） | gp3 12GB、暗号化する。OS と Docker のイメージを置く。インスタンスを作り直すと消えてよいものだけを置く |
 | | EBS（データ用） | gp3 10GB、暗号化する。`/data` にマウントし、MySQL のデータと証明書を置く。**`envs/prod` に置き、`prevent_destroy = true` にする**（[データの置き場所](#データの置き場所)） |
-| IAM | インスタンスプロファイル | **自分の環境のものだけ**に絞る。S3 は自分の環境の画像バケットの読み書き（本番はバックアップ用バケットへの `s3:PutObject` も）、Parameter Store は `arn:aws:ssm:ap-northeast-1:<アカウント ID>:parameter/portfolio/<env>/*` の読み取りだけ。ほかに ECR の pull と SSM（`AmazonSSMManagedInstanceCore`）、SES の `ses:SendRawEmail`（Resource は送信元ドメインの ID。`envs/shared` の出力 `ses_identity_arn`）。`modules/app` に `env` 変数を渡して ARN を組み立てる |
+| IAM | インスタンスプロファイル | **自分の環境のものだけ**に絞る。S3 は自分の環境の画像バケットの読み書き（本番はバックアップ用バケットへの `s3:PutObject` も）、Parameter Store は `arn:aws:ssm:ap-northeast-1:<アカウント ID>:parameter/portfolio/<env>/*` の読み取りだけ。ほかに ECR の pull と SSM（`AmazonSSMManagedInstanceCore`）、SES の `ses:SendRawEmail`（[メール送信（SES）](#メール送信ses)の「送信の権限」）。`modules/app` に `env` 変数を渡して ARN を組み立てる |
 | | GitHub Actions 用のロール | 用途ごとに3つに分ける（[GitHub Actions のロール](#github-actions-のロール)） |
 | S3 | 画像バケット | [S3（画像）](#s3画像)を参照 |
 | | バックアップ用バケット | `mysqldump` を置く（`envs/prod`）。パブリックアクセスをすべてブロックし、暗号化する。ライフサイクルで30日後に削除する |
@@ -409,7 +409,7 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 | MAIL FROM | `mail.takuosblog.com`。MX が引けないときは SES の既定の MAIL FROM で送る（Behavior on MX failure は「Use default MAIL FROM domain」） |
 | DMARC | `p=none`。レポート（`rua`）は `contact@takuosblog.com` で受け取る |
 | バウンスと苦情 | アカウント単位の抑制リスト（BOUNCE と COMPLAINT。最初から有効）。一度届かなかったアドレスや迷惑メールと報告したアドレスには、二度と送らない |
-| 送信の権限 | 各環境のインスタンスロールに `ses:SendRawEmail` を付ける（[AWS リソース](#aws-リソース)）。アクセスキーは使わない |
+| 送信の権限 | 各環境のインスタンスロールに `ses:SendRawEmail` を付ける（[AWS リソース](#aws-リソース)）。アクセスキーは使わない。Resource は `arn:aws:ses:ap-northeast-1:<アカウント ID>:identity/*` にし、条件 `ses:FromAddress` で送信元を `no-reply@takuosblog.com` に絞る（下の注意） |
 
 DNS のレコードは Terraform の Cloudflare プロバイダーで作ります（`envs/shared/ses.tf`）。プロキシはすべてオフです。
 
@@ -423,6 +423,7 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
 | `takuosblog.com` | TXT | `"v=spf1 include:_spf.mx.cloudflare.net ~all"` | Cloudflare の Email Routing（手作業） |
 
 - ルートの MX と SPF は、`contact@takuosblog.com` を Gmail へ転送する Cloudflare の Email Routing が使っている。SES の MAIL FROM はサブドメイン（`mail`）に分けたので、これらには触れない。Terraform でも管理しない
+- **サンドボックスの中では、送信元の ID だけでなく宛先の ID（検証済みのアドレス）も認可の対象になる**。Resource を送信元ドメインの ID だけにすると、サンドボックスの中で試したときに `AccessDenied` になる。そのため Resource は `identity/*` にし、送信元のアドレスは条件 `ses:FromAddress` で絞る。こうすれば、本番アクセスが通ったあとも同じポリシーのままでよい
 - DMARC の一致は relaxed（既定）なので、`mail.takuosblog.com` の SPF と `takuosblog.com` の DKIM のどちらでも合格になる
 - DMARC は、レポートで SPF と DKIM が通り続けているのを確かめてから、`p=quarantine` などに上げる
 - 新しいアカウントの SES はサンドボックスの中にある（1日200通、検証済みのアドレスにしか送れない）。本番アクセスの申請が通るまでは、本番で登録の導線を出さない（またはデプロイを待つ）。申請の手順は [構築手順](setup.md#ses-の本番アクセスを申請する) を参照

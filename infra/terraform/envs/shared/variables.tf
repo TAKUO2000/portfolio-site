@@ -26,4 +26,10 @@ variable "cloudflare_zone_id" {
 variable "dmarc_report_email" {
   description = "DMARC の集計レポート（rua）を受け取るアドレス。DNS に公開される"
   type        = string
+
+  # DMARC の TXT にそのまま埋め込むので、区切りの ; や , 、空白、" が入るとレコードが壊れる
+  validation {
+    condition     = can(regex("^[^\\s;,\"@]+@[^\\s;,\"@]+\\.[^\\s;,\"@]+$", var.dmarc_report_email))
+    error_message = "dmarc_report_email はメールアドレスを1つだけ指定してください。"
+  }
 }

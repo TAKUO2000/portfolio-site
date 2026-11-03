@@ -253,7 +253,7 @@ The domain is authenticated with Easy DKIM, a custom MAIL FROM domain
 (mail.takuosblog.com, SPF), and DMARC.
 ```
 
-コンソールの「Amazon SES」→「アカウントダッシュボード」→「本番アクセスをリクエスト」から出すか、説明をファイルに保存して CLI で出します。
+コンソールの「Amazon SES」→「アカウントダッシュボード」→「本番アクセスをリクエスト」から出すか、上の説明を `use-case.txt` に保存して CLI で出します。
 
 ```bash
 aws sesv2 put-account-details \
@@ -261,7 +261,7 @@ aws sesv2 put-account-details \
   --mail-type TRANSACTIONAL \
   --website-url https://github.com/TAKUO2000/portfolio-site \
   --contact-language EN \
-  --use-case-description "$(cat <説明のファイル>)"
+  --use-case-description "$(cat use-case.txt)"
 
 # 審査の状態（PENDING → GRANTED。DENIED ならサポートセンターのケースを見る）
 aws sesv2 get-account --query '{prod:ProductionAccessEnabled,review:Details.ReviewDetails}'

@@ -9,6 +9,6 @@ output "github_oidc_provider_arn" {
 }
 
 output "ses_identity_arn" {
-  description = "送信元ドメインの SES の ID。インスタンスロールの ses:SendRawEmail の Resource に使う（envs/prod・envs/stg）"
+  description = "送信元ドメインの SES の ID"
   value       = aws_sesv2_email_identity.domain.arn
 }
