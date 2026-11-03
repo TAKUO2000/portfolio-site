@@ -591,6 +591,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [x] SES の送信元ドメインの ID、DKIM・MAIL FROM・DMARC の DNS レコードを作る（#111）
 - [ ] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
 - [ ] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#53 の `envs/prod`）
+- [ ] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#53 の `envs/prod`）
 - [ ] GitHub Actions のデプロイワークフローを作る（#53）
 - [ ] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#53）
 

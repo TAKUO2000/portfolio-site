@@ -41,8 +41,14 @@ resource "aws_sesv2_email_identity_mail_from_attributes" "domain" {
   email_identity   = aws_sesv2_email_identity.domain.email_identity
   mail_from_domain = local.mail_from_domain
 
-  # MX が引けないときは、SES の既定の MAIL FROM（amazonses.com）で送る。送信は止めない
+  # MX が引けないときは、SES の既定の MAIL FROM（amazonses.com）で送る。送信は止めない。
+  # そうなると SPF が DMARC の From と揃わず DKIM だけで通る状態になり、気づきにくいので、レコードを先に作る
   behavior_on_mx_failure = "USE_DEFAULT_VALUE"
+
+  depends_on = [
+    cloudflare_dns_record.ses_mail_from_mx,
+    cloudflare_dns_record.ses_mail_from_spf,
+  ]
 }
 
 # バウンスと苦情の通知を SES が受け取るための MX。1つだけ置く
