@@ -7,3 +7,8 @@ output "github_oidc_provider_arn" {
   description = "GitHub Actions 用のロール（#115・#116）の信頼ポリシーで指定する OIDC プロバイダー"
   value       = aws_iam_openid_connect_provider.github.arn
 }
+
+output "ses_identity_arn" {
+  description = "送信元ドメインの SES の ID。インスタンスロールの ses:SendRawEmail の Resource に使う（envs/prod・envs/stg）"
+  value       = aws_sesv2_email_identity.domain.arn
+}
