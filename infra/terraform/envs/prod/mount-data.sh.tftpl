@@ -7,9 +7,16 @@ for _ in $(seq 1 60); do
 done
 [ -e "$DATA_DEV" ]
 
-# ファイルシステムが無いとき（初めてつないだとき）だけフォーマットする。作り直した EC2 につなぎ直したときは消さない
-if ! blkid "$DATA_DEV"; then
+# ファイルシステムが無いとき（初めてつないだとき）だけフォーマットする。作り直した EC2 につなぎ直したときは消さない。
+# blkid -p は、読み取りに失敗したときも「見つからない」と同じ終了コードを返すので、それだけでは決めない。
+# 新しい EBS は先頭がすべてゼロなので、先頭 1MiB がゼロだと読めたときだけフォーマットする（読めなければ cmp が失敗して止まる）
+if blkid -p "$DATA_DEV"; then
+  : # ファイルシステムがある
+elif cmp -s -n 1048576 "$DATA_DEV" /dev/zero; then
   mkfs.xfs "$DATA_DEV"
+else
+  echo "$DATA_DEV にファイルシステムが見つからないが、空でもない（または読めない）。フォーマットせずに止めます" >&2
+  exit 1
 fi
 
 DATA_UUID=$(blkid -s UUID -o value "$DATA_DEV")

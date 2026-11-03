@@ -425,6 +425,16 @@ terraform plan   # 変更なし。aws_instance が must be replaced になって
 
 tfstate に秘密が入っていないことは、[上の手順](#確かめる)の `terraform state pull` の確認で確かめます（0 と出ればよい）。
 
+### user_data が途中で失敗したとき
+
+`cloud-init status` が `error` のときは、`/var/log/cloud-init-output.log` の最後で、どこで止まったかを見ます（`set -x` なので、実行したコマンドが順に出ています）。たとえばデータ用 EBS が5分たっても見えなかった、`blkid` が失敗した、などです。`user_data` は最初の起動でしか実行されないので、そのままでは Docker や `portfolio-render-env` が入らないまま残ります。
+
+原因を取り除いたら、Session Manager で入って、同じスクリプトをもう一度実行します。どの処理も2回目に実行しても壊れないように書いてあります（swap と fstab は済んでいれば足さない、データ用 EBS はファイルシステムがあればフォーマットしない）。
+
+```bash
+sudo bash -x /var/lib/cloud/instance/scripts/part-001
+```
+
 ### user_data で置いたものを直したとき
 
 `user_data`（`modules/app/user_data.sh.tftpl`・`envs/prod/mount-data.sh.tftpl`）と、それが置く `portfolio-render-env`（`modules/app/files/render-env.sh`）を直しても、今の EC2 には届きません。`terraform plan` にも差分は出ないので、リポジトリと EC2 が気づかないうちにずれます。直したら、SSM Run Command で同じ変更を EC2 にも行います（デプロイのたびに `portfolio-render-env` を最新にする仕組みは #115 で作る）。
