@@ -1,0 +1,18 @@
+# データ用 EBS（${volume_id}）を /data にマウントする。アタッチは EC2 が起動したあとなので、現れるまで待つ。
+# Nitro のインスタンスでは NVMe として見え、by-id の名前にボリューム ID（ハイフンなし）が入る
+DATA_DEV=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${replace(volume_id, "-", "")}
+for _ in $(seq 1 60); do
+  [ -e "$DATA_DEV" ] && break
+  sleep 5
+done
+[ -e "$DATA_DEV" ]
+
+# ファイルシステムが無いとき（初めてつないだとき）だけフォーマットする。作り直した EC2 につなぎ直したときは消さない
+if ! blkid "$DATA_DEV"; then
+  mkfs.xfs "$DATA_DEV"
+fi
+
+DATA_UUID=$(blkid -s UUID -o value "$DATA_DEV")
+mkdir -p /data
+grep -q "UUID=$DATA_UUID" /etc/fstab || echo "UUID=$DATA_UUID /data xfs defaults,nofail 0 2" >> /etc/fstab
+mount /data
