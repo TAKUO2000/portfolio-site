@@ -3,7 +3,7 @@
 #   portfolio-render-env <APP_IMAGE>
 # 環境（prod / stg）は /etc/portfolio-env の PORTFOLIO_ENV（user_data が書く）。
 #
-# - .env            compose の変数の置き換え：APP_IMAGE、/portfolio/<env>/config/compose/*、DB_PASSWORD、DB_ROOT_PASSWORD
+# - .env            compose の変数の置き換え：APP_IMAGE、/portfolio/<env>/config/compose/*、DB_PASSWORD
 # - .env.production Laravel の設定：/portfolio/<env>/config/app/*、APP_KEY、FRONTEND_REVALIDATE_SECRET
 # どちらもパーミッション 600。値は単一引用符で囲む（compose は中身を置き換えずにそのまま渡す）
 set -euo pipefail
@@ -39,11 +39,10 @@ line() {
 compose_config=$(params_by_path "/portfolio/$PORTFOLIO_ENV/config/compose")
 app_config=$(params_by_path "/portfolio/$PORTFOLIO_ENV/config/app")
 DB_PASSWORD=$(secret DB_PASSWORD)
-DB_ROOT_PASSWORD=$(secret DB_ROOT_PASSWORD)
 APP_KEY=$(secret APP_KEY)
 FRONTEND_REVALIDATE_SECRET=$(secret FRONTEND_REVALIDATE_SECRET)
 
-for name in compose_config app_config DB_PASSWORD DB_ROOT_PASSWORD APP_KEY FRONTEND_REVALIDATE_SECRET; do
+for name in compose_config app_config DB_PASSWORD APP_KEY FRONTEND_REVALIDATE_SECRET; do
   if [ -z "${!name}" ]; then
     echo "$name が空です。Parameter Store の値を確かめてください（既存の .env は変えません）" >&2
     exit 1
@@ -59,7 +58,6 @@ trap 'rm -f "$tmp_env" "$tmp_app"' EXIT
   line APP_IMAGE "$APP_IMAGE"
   while IFS=$'\t' read -r name value; do line "$name" "$value"; done <<< "$compose_config"
   line DB_PASSWORD "$DB_PASSWORD"
-  line DB_ROOT_PASSWORD "$DB_ROOT_PASSWORD"
 } > "$tmp_env"
 
 {
@@ -68,6 +66,8 @@ trap 'rm -f "$tmp_env" "$tmp_app"' EXIT
   line FRONTEND_REVALIDATE_SECRET "$FRONTEND_REVALIDATE_SECRET"
 } > "$tmp_app"
 
+# 2つの mv は、それぞれは一瞬で入れ替わるが、2つまとめてではない。間で止まると新旧が混ざるので、
+# 失敗したらもう一度実行する（何度実行しても同じ結果になる）
 mv "$tmp_env" "$DIR/.env"
 mv "$tmp_app" "$DIR/.env.production"
 trap - EXIT

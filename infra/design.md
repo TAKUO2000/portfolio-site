@@ -213,10 +213,16 @@ CPU を使いやすい場面と、その対策：
 
 | ファイル | 中身 | 渡す先 | 雛形 |
 | --- | --- | --- | --- |
-| `.env` | 使うイメージ（`APP_IMAGE`）、API のドメイン（`API_DOMAIN`）、DB の値（`DB_DATABASE`・`DB_USERNAME`・`DB_PASSWORD`・`DB_ROOT_PASSWORD`） | compose の変数の置き換え。DB の値のうち `DB_ROOT_PASSWORD` 以外は、compose が `app` と `scheduler` にも渡す | `docker-compose.prod.env.example` |
+| `.env` | 使うイメージ（`APP_IMAGE`）、API のドメイン（`API_DOMAIN`）、DB の値（`DB_DATABASE`・`DB_USERNAME`・`DB_PASSWORD`） | compose の変数の置き換え。DB の値は、compose が `app` と `scheduler` にも渡す | `docker-compose.prod.env.example` |
 | `.env.production` | Laravel の設定 | `app` と `scheduler` | `laravel-back/.env.production.example` |
 
-MySQL の root のパスワードは `.env` にだけ置き、`app` と `scheduler` には渡しません。アプリが乗っ取られても、DB の root まで奪われないようにするためです。DB の接続情報は `.env` の1か所に置き、MySQL の初期化と `app`・`scheduler` の両方で使います（2か所に書くと値がずれ、MySQL は初期化済みのデータのパスワードを変えないので、原因も追いにくいため）。
+MySQL の root のパスワードは、**誰も持ちません**。`MYSQL_RANDOM_ROOT_PASSWORD=yes` で、MySQL が初期化のときに乱数で作ります。アプリが乗っ取られても、DB の root まで奪われないようにするためです。コンテナからもインスタンスロールを使えるので（IMDS のホップ数 2。[セキュリティ](#セキュリティ)）、root のパスワードを Parameter Store に置くと、`app` に渡さなくても、乗っ取られたアプリが Parameter Store から読めてしまいます。
+
+- 作られたパスワードは、初回の起動のときに mysql コンテナのログに `GENERATED ROOT PASSWORD:` として1回だけ出ます。控えずに、ログが回って消えるのに任せます
+- root でしかできない作業が要るときは、MySQL を止め、`--skip-grant-tables` を付けて起動してパスワードを設定し直します
+- `mysqldump`（#114）は、アプリ用のユーザー（`DB_USERNAME`）で取ります。このユーザーは `DB_DATABASE` のすべての権限を持つので足ります（`--no-tablespaces` を付ける）
+
+DB の接続情報は `.env` の1か所に置き、MySQL の初期化と `app`・`scheduler` の両方で使います（2か所に書くと値がずれ、MySQL は初期化済みのデータのパスワードを変えないので、原因も追いにくいため）。
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d
@@ -435,10 +441,10 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
 
 ## 環境変数と秘密情報
 
-- 秘密情報（`APP_KEY`、`DB_PASSWORD`、`DB_ROOT_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。Terraform の `aws_ssm_parameter` では作らず、AWS CLI で入れる（値が tfstate に平文で残るため。手順は [構築手順](setup.md#秘密情報を-parameter-store-に入れる)）。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
+- 秘密情報（`APP_KEY`、`DB_PASSWORD`、`FRONTEND_REVALIDATE_SECRET`）は SSM Parameter Store に SecureString で置く。Terraform の `aws_ssm_parameter` では作らず、AWS CLI で入れる（値が tfstate に平文で残るため。手順は [構築手順](setup.md#秘密情報を-parameter-store-に入れる)）。`FRONTEND_REVALIDATE_SECRET` だけは Vercel の `REVALIDATE_SECRET` にも同じ値を入れる（[Vercel](#vercel)）
 - 秘密でない値（`APP_URL`、`APP_DEBUG=false`、`AWS_BUCKET` など）は、Terraform のコード（`envs/<env>/main.tf` の `app_config`・`compose_config`）に書き、Terraform が Parameter Store に String で作る（`/portfolio/<env>/config/app/*`・`/portfolio/<env>/config/compose/*`）。秘密ではないので tfstate に載ってよい。`user_data` に埋め込まないのは、`ignore_changes = [user_data]` のため、あとから値を変えても EC2 に届かないから
 - デプロイ時に、EC2 上の `portfolio-render-env <APP_IMAGE>`（`modules/app/files/render-env.sh`。`user_data` が置く）が Parameter Store から秘密と設定をまとめて取り出し、`/opt/portfolio/.env` と `.env.production`（どちらもパーミッション 600）に書き出す。compose はそこから読む
-  - `.env`：`APP_IMAGE`（引数）、`config/compose/*`、`DB_PASSWORD`・`DB_ROOT_PASSWORD`
+  - `.env`：`APP_IMAGE`（引数）、`config/compose/*`、`DB_PASSWORD`
   - `.env.production`：`config/app/*`、`APP_KEY`・`FRONTEND_REVALIDATE_SECRET`
   - 値は単一引用符で囲んで書く（compose が `$` などを置き換えずにそのまま渡すように）。Parameter Store は空の値を置けないので、空にしたい変数（`AWS_ENDPOINT` など）は書かない
   - 値はすべて先に変数へ取り出し、取り出しに失敗したり空だったりしたら、既存の `.env` を変えずに止まる（`line X "$(secret X)"` のように引数の中で取り出すと、失敗しても `set -e` が効かず、空の秘密で上書きしてしまうため）

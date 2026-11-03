@@ -294,10 +294,11 @@ Terraform 側では、インスタンスプロファイルのポリシーで `/p
 | --- | --- |
 | `/portfolio/prod/APP_KEY` | `base64:` ＋ 32バイトの乱数を base64 にしたもの（`php artisan key:generate --show` と同じ形） |
 | `/portfolio/prod/DB_PASSWORD` | 32バイトの乱数を16進数にしたもの |
-| `/portfolio/prod/DB_ROOT_PASSWORD` | 同上 |
 | `/portfolio/prod/FRONTEND_REVALIDATE_SECRET` | 同上。Vercel の `REVALIDATE_SECRET` にも同じ値を入れる |
 
-DB のパスワードを16進数にするのは、`.env` や compose で特別な意味を持つ記号（`$`・`#`・引用符など）を含めないためです。
+DB のパスワードを16進数にするのは、`.env` や compose で特別な意味を持つ記号（`$`・`#`・引用符など）を含めないためです。**どの値も、単一引用符（`'`）・改行・タブを含めないでください**。EC2 の上で `.env` を作る `portfolio-render-env` が、値を単一引用符で囲んで1行に1つずつ書くので、含まれていると止まります（上の作り方なら含まれません）。
+
+MySQL の root のパスワードは置きません。初期化のときに MySQL が乱数で作り、どこにも保存しません（[EC2 上のコンテナ構成](design.md#ec2-上のコンテナ構成)）。
 
 ステージングは `/portfolio/stg/*` に同じ名前で、本番とは別の値を入れます（#116）。ステージングを destroy しても消えないよう、Terraform の管理の外に置きます。
 
@@ -314,9 +315,6 @@ aws ssm put-parameter --name /portfolio/prod/APP_KEY --type SecureString \
 aws ssm put-parameter --name /portfolio/prod/DB_PASSWORD --type SecureString \
   --value "$(openssl rand -hex 32)"
 
-aws ssm put-parameter --name /portfolio/prod/DB_ROOT_PASSWORD --type SecureString \
-  --value "$(openssl rand -hex 32)"
-
 aws ssm put-parameter --name /portfolio/prod/FRONTEND_REVALIDATE_SECRET --type SecureString \
   --value "$(openssl rand -hex 32)"
 ```
@@ -331,7 +329,7 @@ unset VALUE
 
 - 値を見るときは `aws ssm get-parameter --name <名前> --with-decryption --query Parameter.Value --output text`（Vercel に `FRONTEND_REVALIDATE_SECRET` を入れるときなど）
 - 値を替えるときは `--overwrite` を付けます。替えたあとは、デプロイ（`.env` の作り直しとコンテナの再起動）をしないと反映されません
-- `APP_KEY` を替えると、セッションと暗号化した値がすべて無効になります。`DB_PASSWORD` は、MySQL 側のユーザーのパスワードも合わせて替えます（`DB_ROOT_PASSWORD` と `DB_PASSWORD` は、mysql コンテナがデータを初めて作るときにだけ使われます）
+- `APP_KEY` を替えると、セッションと暗号化した値がすべて無効になります。`DB_PASSWORD` は、MySQL 側のユーザーのパスワードも合わせて替えます（`DB_PASSWORD` は、mysql コンテナがデータを初めて作るときにユーザーを作るのにも使われ、そのあとは MySQL 側で変えないかぎり変わりません）
 
 ### 確かめる
 
@@ -347,7 +345,7 @@ Terraform の状態に秘密の値が入っていないことは、Parameter Sto
 cd infra/terraform/envs/prod   # stg も同じ
 # 0 と出ればよい（見つかった行の数だけを出し、値は画面に出さない）
 terraform state pull | grep -cF -f <(
-  for n in APP_KEY DB_PASSWORD DB_ROOT_PASSWORD FRONTEND_REVALIDATE_SECRET; do
+  for n in APP_KEY DB_PASSWORD FRONTEND_REVALIDATE_SECRET; do
     aws ssm get-parameter --name "/portfolio/prod/$n" --with-decryption --query Parameter.Value --output text
   done
 )

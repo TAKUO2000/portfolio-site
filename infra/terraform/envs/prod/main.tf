@@ -29,7 +29,7 @@ module "app" {
     volume_id = aws_ebs_volume.data.id
   })
 
-  # .env（compose の変数の置き換え）。秘密の DB_PASSWORD・DB_ROOT_PASSWORD は Parameter Store に AWS CLI で入れる
+  # .env（compose の変数の置き換え）。秘密の DB_PASSWORD は Parameter Store に AWS CLI で入れる
   compose_config = {
     API_DOMAIN  = local.api_domain
     DB_DATABASE = "portfolio"

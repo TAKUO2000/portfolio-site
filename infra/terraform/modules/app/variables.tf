@@ -64,20 +64,29 @@ variable "mail_from_address" {
 variable "compose_config" {
   description = "EC2 の .env（compose の変数の置き換え）に書く、秘密でない値。Parameter Store の /portfolio/<env>/config/compose/ に置く"
   type        = map(string)
+
+  # render-env.sh は値を単一引用符で囲み、1行に1つずつ書く（Parameter Store からはタブ区切りで読む）。
+  # Parameter Store は空の値を置けないので、空にしたい変数は書かない
+  validation {
+    condition = alltrue([
+      for v in values(var.compose_config) :
+      v != "" && !strcontains(v, "'") && !strcontains(v, "\n") && !strcontains(v, "\t")
+    ])
+    error_message = "compose_config の値は、空にせず、単一引用符（'）・改行・タブを含めないでください。"
+  }
 }
 
 variable "app_config" {
   description = "EC2 の .env.production（Laravel の設定）に書く、秘密でない値。Parameter Store の /portfolio/<env>/config/app/ に置く"
   type        = map(string)
 
+  # compose_config と同じ決まり
   validation {
-    # render-env.sh は値を単一引用符で囲み、1行に1つずつ書く（Parameter Store からはタブ区切りで読む）。
-    # Parameter Store は空の値を置けないので、空にしたい変数は書かない
     condition = alltrue([
-      for v in values(merge(var.app_config, var.compose_config)) :
+      for v in values(var.app_config) :
       v != "" && !strcontains(v, "'") && !strcontains(v, "\n") && !strcontains(v, "\t")
     ])
-    error_message = "app_config と compose_config の値は、空にせず、単一引用符（'）・改行・タブを含めないでください。"
+    error_message = "app_config の値は、空にせず、単一引用符（'）・改行・タブを含めないでください。"
   }
 }
 

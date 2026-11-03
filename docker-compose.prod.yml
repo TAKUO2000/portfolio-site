@@ -4,7 +4,7 @@
 #   .env            compose の変数の置き換えに使う（イメージ、ドメイン、MySQL の初期化に使う DB の秘密）。
 #                   コンテナには渡らない。雛形は docker-compose.prod.env.example
 #   .env.production app と scheduler に渡す Laravel の設定。雛形は laravel-back/.env.production.example。
-#                   MySQL の root のパスワードは入れない（アプリが乗っ取られても DB の root を渡さないため）
+#                   MySQL の root のパスワードは誰も持たない（MYSQL_RANDOM_ROOT_PASSWORD。infra/design.md の「EC2 上のコンテナ構成」）
 #
 #   docker compose -f docker-compose.prod.yml up -d
 #
@@ -49,7 +49,9 @@ services:
       MYSQL_DATABASE: ${DB_DATABASE:?DB_DATABASE を指定してください}
       MYSQL_USER: ${DB_USERNAME:?DB_USERNAME を指定してください}
       MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD を指定してください}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD を指定してください}
+      # root のパスワードは、初期化のときに MySQL が乱数で作り、どこにも保存しない。コンテナからインスタンスロールを
+      # 使えるので（IMDS のホップ数 2）、Parameter Store に置くと、乗っ取られたアプリに root まで読まれるため
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
     # ポートはホストに公開しない（app と scheduler からだけ、compose のネットワークで使う）
     volumes:
       # データ用 EBS（/data）に置き、インスタンスを作り直しても残す
