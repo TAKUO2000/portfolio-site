@@ -126,7 +126,7 @@ DB だけをプライベートサブネットに分ける構成は採らない�
 - **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env` と `.env.production` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
 - `github-terraform-stg` は、GitHub の Environment（`staging`）に結び付ける。Environment の設定で、実行できるブランチを `main` だけに限定する。`workflow_dispatch` で手動実行したときだけ使う
 - **`envs/shared` と `envs/prod` は GitHub Actions から apply しない**。手元から、MFA を付けた管理用のユーザーで apply する。この2つを Actions から apply できるロールを作ると、ワークフローを書き換えられただけでアカウント全体を奪われるため
-- Cloudflare の API トークンも、ステージングの DNS レコードを作るために GitHub Actions のシークレットに置く。対象ゾーンの DNS 編集権限だけに絞る
+- Cloudflare の API トークンも、ステージングの DNS レコードを作るために GitHub Actions のシークレットに置く。対象ゾーンの DNS 編集権限だけに絞り、リポジトリ全体ではなく Environment（`staging`）のシークレットにする（`github-terraform-stg` と同じ Environment のジョブからしか読めない）
 
 ### データの置き場所
 
@@ -392,7 +392,7 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 
 - **プロキシ（オレンジの雲）は使わない**。Vercel は Cloudflare のプロキシを通さない設定を推奨している。API 側も、certbot が Let's Encrypt の証明書を直接取得できるように（HTTP-01 の確認が EC2 に届くように）、まずは DNS only にする
 - Cloudflare のプロキシで API を守る構成（DDoS 対策・キャッシュ・オリジン証明書）は、必要になったら検討する
-- Terraform の Cloudflare プロバイダーで `api` と `api.stg` のレコードを作る（`envs/prod`・`envs/stg`）。Cloudflare の API トークンは、対象ゾーンの DNS 編集権限だけに絞り、GitHub Actions のシークレットに置く
+- Terraform の Cloudflare プロバイダーで `api` と `api.stg` のレコードを作る（`envs/prod`・`envs/stg`）。Cloudflare の API トークンは、対象ゾーンの DNS 編集権限だけに絞り、GitHub Actions の Environment（`staging`）のシークレットに置く
 - Vercel 向けのレコード（`takuosblog.com` と `stg.takuosblog.com`）は、Vercel の画面に表示される値を見て手で作ってもよい
 
 ---
@@ -587,7 +587,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] Terraform のコード化（#53）
 - [x] tfstate のバケットの作り方を決める。`bootstrap/` で Terraform で作り、状態は作ったバケットへ移す（#110）
 - [x] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#110）
-- [x] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions のシークレットに登録する（#111）
+- [x] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions の Environment（`staging`）のシークレットに登録する（#111）
 - [x] SES の送信元ドメインの ID、DKIM・MAIL FROM・DMARC の DNS レコードを作る（#111）
 - [ ] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
 - [ ] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#53 の `envs/prod`）

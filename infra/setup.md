@@ -161,9 +161,19 @@ chmod 600 ~/.config/portfolio/cloudflare-api-token
 curl -s -H "Authorization: Bearer $(cat ~/.config/portfolio/cloudflare-api-token)" \
   https://api.cloudflare.com/client/v4/user/tokens/verify
 
-# GitHub Actions のシークレットに登録する（値は画面に出ない）
-gh secret set CLOUDFLARE_API_TOKEN < ~/.config/portfolio/cloudflare-api-token
+# GitHub の Environment「staging」を作り、実行できるブランチを main だけにする
+gh api -X PUT repos/TAKUO2000/portfolio-site/environments/staging \
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api -X POST repos/TAKUO2000/portfolio-site/environments/staging/deployment-branch-policies \
+  -f name=main -f type=branch
+
+# Environment「staging」のシークレットに登録する（値は画面に出ない）
+gh secret set CLOUDFLARE_API_TOKEN --env staging < ~/.config/portfolio/cloudflare-api-token
+gh secret list --env staging
 ```
+
+トークンは、リポジトリ全体のシークレットではなく、**Environment「staging」のシークレット**に置きます。リポジトリのシークレットはどのワークフローのどのジョブからも読めますが、Environment のシークレットは `environment: staging` を指定したジョブ（`envs/stg` を apply / destroy するジョブ）からしか読めません。さらに、Environment で実行できるブランチを `main` に絞るので、ほかのブランチでワークフローを書き換えても、トークンを取り出せません（[GitHub Actions のロール](design.md#github-actions-のロール)の `github-terraform-stg` と同じ Environment）。
 
 ゾーンの ID は、ダッシュボードで `takuosblog.com` を開き、**Overview** の右下の「API」の欄の **Zone ID** を控えます。トークンにゾーンを読む権限を与えないため、Terraform にはドメイン名から引かせず、`terraform.tfvars` で直接渡します。
 
