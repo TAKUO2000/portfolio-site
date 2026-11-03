@@ -138,9 +138,17 @@ DNS は Cloudflare にあるので、Terraform の Cloudflare プロバイダー
 | Permissions | `Zone` / `DNS` / `Edit` だけ |
 | Zone Resources | `Include` / `Specific zone` / `takuosblog.com` |
 | Client IP Address Filtering | 空（GitHub Actions の IP は決まらない） |
-| TTL | 空（期限なし） |
+| TTL | 空（期限なし。下の「期限を付けない理由」） |
 
 3. **Continue to summary** で「takuosblog.com - DNS:Edit」だけになっているのを確かめ、**Create Token**。トークンは一度しか表示されない
+
+**期限を付けない理由**：期限が切れると、ステージングを作るワークフローが DNS レコードを作れずに途中で失敗し、気づくのが使うときになるためです。その代わりに、漏れたときの被害を次のように絞ります。
+
+- 権限は `takuosblog.com` の DNS の編集だけ。ほかのゾーン、アカウントの設定、Registrar（ドメインの移管）には届かない
+- ただし DNS を書き換えられると、`api` の向き先や、メールの認証のレコード（DKIM・SPF・DMARC）を書き換えたなりすましができる。漏れたかもしれないときは、すぐに作り直す
+  1. Cloudflare の **API Tokens** で、このトークンの **Roll**（値の作り直し）を押す。古い値はその場で使えなくなる
+  2. 新しい値を、上の手順でファイルに保存し直し、`gh secret set` で GitHub のシークレットも上書きする
+  3. Cloudflare の **Audit Logs** と DNS レコードの一覧で、身に覚えのない変更がないかを見る
 
 トークンはチャットやリポジトリに貼らず、リポジトリの外のファイルに置きます。手元のターミナルで実行し、トークンを貼り付けて Enter を押します（画面には出ない）。
 

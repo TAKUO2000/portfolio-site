@@ -13,6 +13,12 @@ resource "aws_sesv2_email_identity" "domain" {
   dkim_signing_attributes {
     next_signing_key_length = "RSA_2048_BIT"
   }
+
+  # 本番とステージングの両方のメール送信が使う。作り直すと DKIM のトークンが変わり、DNS が行き渡るまで
+  # 送ったメールの DKIM が通らなくなるうえ、サンドボックスの解除もやり直しになりうる。消すときはこの行を外してから
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Easy DKIM の公開鍵を指す CNAME。トークンは SES の ID を作るまで決まらず for_each のキーにできないので、
