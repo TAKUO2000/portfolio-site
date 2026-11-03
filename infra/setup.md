@@ -423,6 +423,34 @@ terraform plan   # 変更なし。aws_instance が must be replaced になって
 
 tfstate に秘密が入っていないことは、[上の手順](#確かめる)の `terraform state pull` の確認で確かめます（0 と出ればよい）。
 
+### MySQL の root で作業するとき
+
+MySQL の root のパスワードは誰も持ちません（`MYSQL_RANDOM_ROOT_PASSWORD`。[EC2 上のコンテナ構成](design.md#ec2-上のコンテナ構成)）。ふだんの作業は、アプリ用のユーザー（`.env` の `DB_USERNAME`。`DB_DATABASE` のすべての権限を持つ）で行います。
+
+```bash
+cd /opt/portfolio
+# アプリ用のユーザーで入る（パスワードは .env の DB_PASSWORD）
+sudo docker compose -f docker-compose.prod.yml exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'
+
+# バックアップもアプリ用のユーザーで取る。PROCESS の権限が無いので --no-tablespaces を付ける（#114 で timer にする）
+sudo docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
+  'mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --single-transaction --no-tablespaces "$MYSQL_DATABASE"' > dump.sql
+```
+
+ユーザーの作り直しや権限の付け直しなど、root でしかできない作業が要るときは、MySQL を権限の確認なしで起動し直して、root のパスワードを設定します。その間は誰でも DB に入れるので、API を止めてから行い、終わったら元に戻します。
+
+```bash
+cd /opt/portfolio
+sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx
+sudo docker compose -f docker-compose.prod.yml run --rm -d --name mysql-recovery mysql \
+  --skip-grant-tables --skip-networking
+sudo docker exec -it mysql-recovery mysql   # 中で FLUSH PRIVILEGES; のあと ALTER USER 'root'@'localhost' IDENTIFIED BY '...'; など
+sudo docker stop mysql-recovery
+sudo docker compose -f docker-compose.prod.yml up -d
+```
+
+root のパスワードを設定した場合は、作業が終わったら `ALTER USER 'root'@'localhost' ACCOUNT LOCK;` で使えなくするか、値を Parameter Store に置かずに控えないでおきます。
+
 ### user_data が途中で失敗したとき
 
 `cloud-init status` が `error` のときは、`/var/log/cloud-init-output.log` の最後で、どこで止まったかを見ます（`set -x` なので、実行したコマンドが順に出ています）。たとえばデータ用 EBS が5分たっても見えなかった、`blkid` が失敗した、などです。`user_data` は最初の起動でしか実行されないので、そのままでは Docker や `portfolio-render-env` が入らないまま残ります。
