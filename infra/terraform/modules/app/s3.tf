@@ -4,7 +4,11 @@ resource "aws_s3_bucket" "images" {
   force_destroy = var.image_bucket_force_destroy
 }
 
-# バケットポリシーでの公開だけを許し、ACL での公開は塞ぐ
+# バケットポリシーでの公開だけを許し、ACL での公開は塞ぐ。
+# images/* を誰でも読めるようにするため、ポリシーでの公開を止める2つ（block_public_policy・restrict_public_buckets）を外している。
+# その代わり、公開するのは下のポリシーの images/* だけで、tmp/* は公開しない。ポリシーを直すときは、公開の範囲が
+# images/* から広がっていないかを確かめる（infra/setup.md の確認：images/ は 200、tmp/ は 403）。
+# 4つとも有効にするには、バケットを非公開にして CloudFront（OAC）から配る（infra/design.md の未決事項）
 resource "aws_s3_bucket_public_access_block" "images" {
   bucket = aws_s3_bucket.images.id
 
