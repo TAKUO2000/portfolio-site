@@ -1,0 +1,9 @@
+# Let's Encrypt の証明書の更新（infra/ec2/cert-renew.sh）。portfolio-cert-renew.timer から動く
+[Unit]
+Description=Renew Let's Encrypt certificates and reload nginx
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/portfolio-cert-renew

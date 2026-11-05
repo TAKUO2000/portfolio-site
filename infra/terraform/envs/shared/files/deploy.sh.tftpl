@@ -98,6 +98,16 @@ install -d -m 700 "$DIR"
 install -m 600 "$WORK/bundle/docker-compose.prod.yml" "$DIR/docker-compose.prod.yml"
 install -d -m 755 "$DIR/laravel-back/docker/nginx"
 install -m 644 "$WORK/bundle/laravel-back/docker/nginx/prod.conf" "$DIR/laravel-back/docker/nginx/prod.conf"
+
+# 証明書の取得と更新のスクリプトと systemd の unit（infra/ec2/）。#113 より前の部品には無いので、あるときだけ置く
+if [ -d "$WORK/bundle/infra/ec2" ]; then
+  install -m 700 "$WORK/bundle/infra/ec2/cert-init.sh" /usr/local/bin/portfolio-cert-init
+  install -m 700 "$WORK/bundle/infra/ec2/cert-renew.sh" /usr/local/bin/portfolio-cert-renew
+  install -m 644 "$WORK/bundle/infra/ec2/portfolio-cert-renew.service" /etc/systemd/system/portfolio-cert-renew.service
+  install -m 644 "$WORK/bundle/infra/ec2/portfolio-cert-renew.timer" /etc/systemd/system/portfolio-cert-renew.timer
+  systemctl daemon-reload
+  systemctl enable --now portfolio-cert-renew.timer
+fi
 echo "placed the bundle for $TAG"
 
 # .env と .env.production を Parameter Store から作り直す（.env の APP_IMAGE を今回のタグにする）

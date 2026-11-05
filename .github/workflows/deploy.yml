@@ -5,7 +5,7 @@
 #
 # 1. OIDC で AWS のロールを引き受ける（長期のアクセスキーは使わない）
 # 2. Dockerfile.prod から linux/arm64 のイメージをビルドし、<ブランチ>-<SHA> のタグで ECR に push する
-# 3. デプロイの部品（compose のファイル・nginx の設定・render-env.sh）を、同じタグで S3 に置く
+# 3. デプロイの部品（compose のファイル・nginx の設定・render-env.sh・証明書のスクリプト）を、同じタグで S3 に置く
 # 4. EC2 に SSM ドキュメント portfolio-deploy を実行させ、結果を待つ
 name: Deploy backend
 
@@ -16,6 +16,7 @@ on:
       - laravel-back/**
       - docker-compose.prod.yml
       - infra/terraform/modules/app/files/render-env.sh
+      - infra/ec2/**
       - .github/workflows/deploy.yml
   workflow_dispatch:
     inputs:
@@ -150,7 +151,8 @@ jobs:
           tar -czf bundle.tar.gz \
             docker-compose.prod.yml \
             laravel-back/docker/nginx/prod.conf \
-            infra/terraform/modules/app/files/render-env.sh
+            infra/terraform/modules/app/files/render-env.sh \
+            infra/ec2
           aws s3 cp --only-show-errors bundle.tar.gz "s3://$DEPLOY_BUCKET/bundles/$TAG.tar.gz"
 
       - name: Check the deploy bundle for the rollback
