@@ -16,6 +16,7 @@
 8. [秘密情報を Parameter Store に入れる](#秘密情報を-parameter-store-に入れる)
 9. [本番のリソースを作る（envs/prod）](#本番のリソースを作るenvsprod)
 10. [デプロイする（GitHub Actions）](#デプロイするgithub-actions)
+11. [証明書を取る（初回）](#証明書を取る初回)
 
 ---
 
@@ -522,6 +523,10 @@ sudo docker compose -f docker-compose.prod.yml ps
 sudo docker compose -f docker-compose.prod.yml logs --tail 100 app
 ```
 
+### デプロイの手順（SSM ドキュメント）を直したとき
+
+EC2 で動くデプロイの手順（`infra/terraform/envs/shared/files/deploy.sh.tftpl`）は、Terraform が SSM ドキュメント `portfolio-deploy` として置きます。ワークフローや部品と一緒に直したときは、**`main` にマージしてデプロイする前に、`envs/shared` を apply します**。先にデプロイすると、古い手順で動き、新しい部品（スクリプトや unit など）が置かれません。
+
 ### ロールバックする
 
 Actions の画面で「Deploy backend」を手動で実行し（Run workflow）、ブランチに `main`、`image_tag` に戻したいタグ（`main-<コミットの SHA>`）を入れます。ビルドはせず、そのタグのイメージと部品でデプロイし直します。ECR に残っているのは、`main-` の直近の20個と `develop-` の直近の10個です。
@@ -543,5 +548,37 @@ CID=$(aws ssm send-command --instance-ids "$I" --document-name portfolio-deploy 
 aws ssm wait command-executed --command-id "$CID" --instance-id "$I"
 aws ssm get-command-invocation --command-id "$CID" --instance-id "$I" \
   --query '[Status,StandardOutputContent,StandardErrorContent]' --output text
+```
+
+---
+
+## 証明書を取る（初回）
+
+API（`api.takuosblog.com`）の TLS の証明書を、Let's Encrypt から certbot で取ります（[証明書（certbot）](design.md#証明書certbot)）。最初のデプロイのあと、1回だけ行います。証明書が無いうちは、nginx は 443 の設定を読めずに起動を繰り返します（想定どおり）。
+
+取得のスクリプト（`portfolio-cert-init`）と、更新の timer（`portfolio-cert-renew.timer`）は、デプロイで EC2 に置かれます。
+
+Session Manager で EC2 に入って実行します。メールアドレスは Let's Encrypt のアカウントの連絡先です（期限切れの通知は来ない）。
+
+```bash
+# 1. 試験用の認証局で、手順が通るかを確かめる（本物は同じドメインで週5回までしか発行できないため）
+sudo portfolio-cert-init --staging <メールアドレス>
+
+# 2. 通ったら本物を取る（試験用の証明書は自動で消してから取る）
+sudo portfolio-cert-init <メールアドレス>
+```
+
+スクリプトは、nginx を止める → `certbot certonly --standalone` で取る → nginx を起動する → `certbot renew --dry-run --webroot` で、ふだんの更新が通るかを確かめる → `https://<ドメイン>/up` の状態コードと、証明書の発行元と期限を表示する、の順に進みます。最後に `200` と出て、本物のときは発行元が Let's Encrypt（`STAGING` が付かない）になっていればよいです。
+
+### 確かめる
+
+```bash
+# EC2 の中で
+systemctl list-timers portfolio-cert-renew.timer   # 次に動く時刻が出る
+sudo systemctl start portfolio-cert-renew.service  # 今すぐ更新を試す（期限が30日以上残っていれば、更新はしない）
+journalctl -u portfolio-cert-renew --no-pager -n 30
+
+# 手元で
+curl -sI https://api.takuosblog.com/up | head -1   # HTTP/2 200
 ```
 

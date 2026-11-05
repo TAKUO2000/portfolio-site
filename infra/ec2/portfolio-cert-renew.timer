@@ -1,0 +1,12 @@
+# 1日2回（UTC の 3時と15時）。Let's Encrypt へのアクセスが同じ時刻に集まらないよう、1時間の中でずらす。
+# 止まっていた間に時刻を過ぎたら、起動したあとに1回実行する（Persistent）
+[Unit]
+Description=Renew Let's Encrypt certificates twice a day
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
