@@ -493,7 +493,8 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
    - 同じタグの部品を S3 から取り、3つのファイルが揃っているのを確かめてから `/opt/portfolio` に置く。`portfolio-render-env` も、ここで部品の最新に置き直す
    - Parameter Store から `.env` と `.env.production` を作り直す（`.env` の `APP_IMAGE` を今回のタグにする）
    - ECR にログインし、`docker compose pull` → `docker compose up -d`
-   - `app` が healthy になっているかを確かめる
+   - `app` が healthy になっているかを確かめる。**healthy にならなかったら、控えておいた前の状態（compose のファイル・nginx の設定・`.env`・`.env.production`）に戻して起動し直し、デプロイは失敗にする**。マイグレーションはすでに流れているが、後方互換に書く決まりなので、前のイメージでも動く（下の「マイグレーション」）。EC2 が再起動しても、壊れたイメージで起動し直さない
+   - 出力は GitHub Actions のログ（公開リポジトリでは誰でも見られる）に出るので、`app` のログは出さない。原因は EC2 の中で `docker compose logs app` で確かめる
 
 部品を GitHub から直接取らずに S3 に置くのは、**リポジトリを非公開にしても動くようにする**ためです。イメージと部品が同じタグで結び付くので、ロールバックすると compose のファイルや nginx の設定も当時のものに戻ります。部品は1回のデプロイで数 KB なので、消さずに残します。
 

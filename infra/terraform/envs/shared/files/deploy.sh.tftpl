@@ -33,6 +33,35 @@ for f in docker-compose.prod.yml laravel-back/docker/nginx/prod.conf infra/terra
   fi
 done
 
+# 今のファイル（compose のファイル・nginx の設定・.env・.env.production）を控えておく。
+# 新しいタグで app が healthy にならなかったら、これに戻して起動し直す（マイグレーションは後方互換に書く決まり。infra/design.md の「デプロイ」）
+PREVIOUS="$WORK/previous"
+HAS_PREVIOUS=false
+if [ -f "$DIR/.env" ] && [ -f "$DIR/docker-compose.prod.yml" ]; then
+  mkdir "$PREVIOUS"
+  cp -a "$DIR/." "$PREVIOUS/"
+  HAS_PREVIOUS=true
+fi
+
+# app の healthcheck の状態（healthy / unhealthy / starting / none）
+app_health() {
+  local id
+  id=$($COMPOSE ps -q app)
+  if [ -z "$id" ]; then
+    echo none
+    return
+  fi
+  docker inspect "$id" | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["State"]["Health"]["Status"])'
+}
+
+# 置いてある compose のファイルと .env で起動し、app が healthy かを確かめる。
+# nginx は app が healthy になってから起動する（depends_on）ので、マイグレーションが失敗すると up -d が失敗する
+start() {
+  $COMPOSE pull --quiet &&
+    $COMPOSE up -d --remove-orphans &&
+    [ "$(app_health)" = healthy ]
+}
+
 install -m 700 "$WORK/bundle/infra/terraform/modules/app/files/render-env.sh" /usr/local/bin/portfolio-render-env
 install -d -m 700 "$DIR"
 install -m 600 "$WORK/bundle/docker-compose.prod.yml" "$DIR/docker-compose.prod.yml"
@@ -44,15 +73,23 @@ echo "placed the bundle for $TAG"
 /usr/local/bin/portfolio-render-env "$REGISTRY/$REPOSITORY:$TAG"
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
-$COMPOSE pull --quiet
-# nginx は app が healthy になってから起動する（depends_on）。app のマイグレーションが失敗すると、ここで失敗する
-$COMPOSE up -d --remove-orphans
 
-APP_ID=$($COMPOSE ps -q app)
-APP_HEALTH=$(docker inspect "$APP_ID" | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["State"]["Health"]["Status"])')
-$COMPOSE ps
-if [ "$APP_HEALTH" != "healthy" ]; then
-  echo "app が healthy になっていません（$APP_HEALTH）。docker compose logs app で原因を確かめてください" >&2
-  exit 1
+if start; then
+  $COMPOSE ps
+  echo "deployed $TAG"
+  exit 0
 fi
-echo "deployed $TAG"
+
+# 出力は GitHub Actions のログ（公開）に出るので、app のログ（秘密を含みうる）はここでは出さない
+$COMPOSE ps || true
+echo "$TAG で app が healthy になりませんでした（$(app_health)）。原因は EC2 の中で docker compose logs app で確かめてください" >&2
+if [ "$HAS_PREVIOUS" = true ]; then
+  echo "前の状態に戻します" >&2
+  cp -a "$PREVIOUS/." "$DIR/"
+  if start; then
+    echo "前の状態（$(grep '^APP_IMAGE=' "$DIR/.env")）に戻しました" >&2
+  else
+    echo "前の状態でも app が healthy になりません（$(app_health)）" >&2
+  fi
+fi
+exit 1

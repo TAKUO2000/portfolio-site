@@ -38,7 +38,7 @@ jobs:
     if: github.ref_name == 'main' || github.ref_name == 'develop'
     # arm64 のランナーで、エミュレーションせずにビルドする（EC2 は t4g = arm64）
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       ENV_NAME: ${{ github.ref_name == 'main' && 'prod' || 'stg' }}
       TAG_PREFIX: ${{ github.ref_name }}
@@ -85,11 +85,15 @@ jobs:
           else
             tag="$TAG_PREFIX-$GITHUB_SHA"
           fi
-          # タグは上書きできない（IMMUTABLE）ので、同じコミットを再実行したときは、ビルドを飛ばす
-          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$tag" >/dev/null 2>&1; then
+          # タグは上書きできない（IMMUTABLE）ので、同じコミットを再実行したときは、ビルドを飛ばす。
+          # 「無い」と判定するのは ImageNotFoundException のときだけ（権限や通信のエラーを「無い」と取り違えない）
+          if out=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$tag" 2>&1); then
             exists=true
-          else
+          elif grep -q ImageNotFoundException <<< "$out"; then
             exists=false
+          else
+            echo "::error::ECR の確認に失敗しました: $out"
+            exit 1
           fi
           if [ -n "$ROLLBACK_TAG" ] && [ "$exists" = false ]; then
             echo "::error::$tag のイメージが ECR にありません（main- は直近の20個、develop- は直近の10個だけが残る）"
@@ -162,12 +166,20 @@ jobs:
             --query Command.CommandId --output text)
           echo "command: $cid"
 
-          # 長いマイグレーションを待てるよう、最大15分待つ（SSM ドキュメントの timeoutSeconds も900秒）
+          # SSM ドキュメントの timeoutSeconds（900秒）より長く、最大17分待つ。SSM 側で TimedOut になるのを先に見届けるため
           status=Pending
-          for _ in $(seq 1 90); do
+          for _ in $(seq 1 100); do
             sleep 10
-            status=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)
+            # 送った直後は InvocationDoesNotExist が返ることがあるので、それだけは待つ。ほかのエラー（権限など）はすぐに失敗にする
+            if out=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>&1); then
+              status=$out
+            elif grep -q InvocationDoesNotExist <<< "$out"; then
+              status=Pending
+            else
+              echo "::error::デプロイの結果を読めませんでした: $out"
+              exit 1
+            fi
             case "$status" in
               Success | Failed | Cancelled | TimedOut) break ;;
             esac
