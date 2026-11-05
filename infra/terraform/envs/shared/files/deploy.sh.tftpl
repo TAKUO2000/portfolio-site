@@ -1,0 +1,115 @@
+#!/bin/bash
+# SSM ドキュメント portfolio-deploy の中身（EC2 の root で実行される）。
+# {{ imageTag }} は SSM が引数で置き換える（ドキュメントの allowedPattern で形を縛っている）。
+# Terraform の templatefile を通すので、シェルの変数は $NAME の形だけで書く
+set -euo pipefail
+export HOME=/root
+
+TAG='{{ imageTag }}'
+REGION='${region}'
+BUCKET='${bucket}'
+REGISTRY='${registry}'
+REPOSITORY='${repository}'
+DIR=/opt/portfolio
+COMPOSE="docker compose -f $DIR/docker-compose.prod.yml --project-directory $DIR"
+
+# 本番に develop- のイメージを入れない（user_data が書いた環境の名前と、タグの接頭辞を比べる）
+. /etc/portfolio-env
+case "$PORTFOLIO_ENV:$TAG" in
+  prod:main-* | stg:develop-*) ;;
+  *) echo "この EC2（$PORTFOLIO_ENV）には $TAG をデプロイできません" >&2; exit 1 ;;
+esac
+
+# 部品を取ってから、3つとも揃っているのを確かめて入れ替える（途中で失敗したら、今のファイルは変えない）
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+aws s3 cp --region "$REGION" --only-show-errors "s3://$BUCKET/bundles/$TAG.tar.gz" "$WORK/bundle.tar.gz"
+mkdir "$WORK/bundle"
+tar -xzf "$WORK/bundle.tar.gz" -C "$WORK/bundle"
+for f in docker-compose.prod.yml laravel-back/docker/nginx/prod.conf infra/terraform/modules/app/files/render-env.sh; do
+  if [ ! -s "$WORK/bundle/$f" ]; then
+    echo "部品に $f がありません" >&2
+    exit 1
+  fi
+done
+
+# 先に ECR にログインしておく（この先で失敗して前の状態に戻すときも、pull に使うため）
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+
+# app の healthcheck の状態（healthy / unhealthy / starting / none）
+app_health() {
+  local id
+  id=$($COMPOSE ps -q app 2>/dev/null || true)
+  if [ -z "$id" ]; then
+    echo none
+    return
+  fi
+  docker inspect "$id" | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["State"].get("Health", {}).get("Status", "none"))'
+}
+
+# 置いてある compose のファイルと .env で起動し、app が healthy かを確かめる。
+# nginx は app が healthy になってから起動する（depends_on）ので、マイグレーションが失敗すると up -d が失敗する。
+# --wait は使わない（証明書を取るまで nginx は起動を繰り返すので、全部のコンテナを待つと必ず失敗する）
+start() {
+  $COMPOSE pull --quiet &&
+    $COMPOSE up -d --remove-orphans &&
+    [ "$(app_health)" = healthy ]
+}
+
+# 今の状態（compose のファイル・nginx の設定・.env・.env.production・portfolio-render-env）を控えておく。
+# ここから先で失敗したら（部品を置いたあと、起動の前に止まった場合も）、控えたものに戻して起動し直す。
+# マイグレーションは後方互換に書く決まりなので、前のイメージでも動く（infra/design.md の「デプロイ」）
+PREVIOUS="$WORK/previous"
+HAS_PREVIOUS=false
+if [ -f "$DIR/.env" ] && [ -f "$DIR/docker-compose.prod.yml" ]; then
+  mkdir -p "$PREVIOUS/opt"
+  cp -a "$DIR/." "$PREVIOUS/opt/"
+  cp -a /usr/local/bin/portfolio-render-env "$PREVIOUS/portfolio-render-env"
+  HAS_PREVIOUS=true
+fi
+DEPLOYED=false
+
+# 出力は GitHub Actions のログ（公開）に出るので、app のログ（秘密を含みうる）はここでは出さない
+on_exit() {
+  local rc=$?
+  set +e
+  if [ "$DEPLOYED" != true ]; then
+    $COMPOSE ps 2>/dev/null
+    echo "$TAG のデプロイに失敗しました（app: $(app_health)）。原因は EC2 の中で docker compose logs app で確かめてください" >&2
+    if [ "$HAS_PREVIOUS" = true ]; then
+      echo "前の状態に戻します" >&2
+      cp -a "$PREVIOUS/opt/." "$DIR/"
+      cp -a "$PREVIOUS/portfolio-render-env" /usr/local/bin/portfolio-render-env
+      if start; then
+        echo "前の状態（$(grep '^APP_IMAGE=' "$DIR/.env")）に戻しました" >&2
+      else
+        echo "前の状態でも app が healthy になりません（$(app_health)）" >&2
+      fi
+    fi
+    [ "$rc" -eq 0 ] && rc=1
+  fi
+  rm -rf "$WORK"
+  exit "$rc"
+}
+trap on_exit EXIT
+
+install -m 700 "$WORK/bundle/infra/terraform/modules/app/files/render-env.sh" /usr/local/bin/portfolio-render-env
+install -d -m 700 "$DIR"
+install -m 600 "$WORK/bundle/docker-compose.prod.yml" "$DIR/docker-compose.prod.yml"
+install -d -m 755 "$DIR/laravel-back/docker/nginx"
+install -m 644 "$WORK/bundle/laravel-back/docker/nginx/prod.conf" "$DIR/laravel-back/docker/nginx/prod.conf"
+echo "placed the bundle for $TAG"
+
+# .env と .env.production を Parameter Store から作り直す（.env の APP_IMAGE を今回のタグにする）
+/usr/local/bin/portfolio-render-env "$REGISTRY/$REPOSITORY:$TAG"
+
+start
+DEPLOYED=true
+$COMPOSE ps
+
+# 使っていない古いイメージを消す（ルートの EBS は 12GB で、デプロイのたびに数百 MB のイメージが増えるため）。
+# ロールバックは ECR から取り直すので、手元に残さなくてよい。掃除に失敗しても、デプロイは失敗にしない
+docker image prune -af --filter "until=168h" >/dev/null || echo "古いイメージの掃除に失敗しました（デプロイは成功）" >&2
+df -h / | tail -1
+
+echo "deployed $TAG"

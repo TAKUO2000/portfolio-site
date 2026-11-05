@@ -1,0 +1,206 @@
+# バックエンドのデプロイ（infra/design.md の「デプロイ」）。
+#   main への push    → 本番（github-deploy-prod）
+#   develop への push → ステージング（github-deploy-stg）。ステージングの EC2 が無いときは何もしない
+#   手動の実行        → image_tag を指定すると、そのタグにロールバックする（ビルドしない）
+#
+# 1. OIDC で AWS のロールを引き受ける（長期のアクセスキーは使わない）
+# 2. Dockerfile.prod から linux/arm64 のイメージをビルドし、<ブランチ>-<SHA> のタグで ECR に push する
+# 3. デプロイの部品（compose のファイル・nginx の設定・render-env.sh）を、同じタグで S3 に置く
+# 4. EC2 に SSM ドキュメント portfolio-deploy を実行させ、結果を待つ
+name: Deploy backend
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - laravel-back/**
+      - docker-compose.prod.yml
+      - infra/terraform/modules/app/files/render-env.sh
+      - .github/workflows/deploy.yml
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: ロールバック先のタグ（main-<SHA> / develop-<SHA>）。空なら、選んだブランチの最新のコミットをビルドしてデプロイする
+        required: false
+        default: ""
+
+# 同じブランチのデプロイは順番に1つずつ（途中で打ち切らない）
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+# 外部のアクションは、タグではなくコミットの SHA で固定する。本番のロールを引き受けるワークフローなので、
+# タグを悪い版に付け替えられても動かないように（更新は .github/dependabot.yml で追う）
+permissions:
+  id-token: write # OIDC のトークンを受け取る
+  contents: read
+
+jobs:
+  # テストが通ったコミットだけをデプロイする（ロールバックのときは、すでにデプロイしたイメージなので飛ばす）
+  test:
+    if: (github.ref_name == 'main' || github.ref_name == 'develop') && inputs.image_tag == ''
+    uses: ./.github/workflows/test.yml
+
+  deploy:
+    needs: test
+    if: >-
+      always() &&
+      (github.ref_name == 'main' || github.ref_name == 'develop') &&
+      (needs.test.result == 'success' || (needs.test.result == 'skipped' && inputs.image_tag != ''))
+    # arm64 のランナーで、エミュレーションせずにビルドする（EC2 は t4g = arm64）
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    env:
+      ENV_NAME: ${{ github.ref_name == 'main' && 'prod' || 'stg' }}
+      TAG_PREFIX: ${{ github.ref_name }}
+      AWS_REGION: ap-northeast-1
+      ECR_REPOSITORY: portfolio/app
+      DEPLOY_BUCKET: takuosblog-deploy
+      ROLLBACK_TAG: ${{ inputs.image_tag }}
+    steps:
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-deploy-${{ env.ENV_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Find the EC2 instance
+        id: instance
+        run: |
+          ids=$(aws ec2 describe-instances \
+            --filters "Name=tag:Env,Values=$ENV_NAME" "Name=tag:Project,Values=portfolio" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          count=$(wc -w <<< "$ids")
+          if [ "$count" -eq 0 ] && [ "$ENV_NAME" = stg ]; then
+            echo "ステージングの EC2 が無いので、デプロイしません"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Env=$ENV_NAME の動いている EC2 が1台ではありません（$count 台）"
+            exit 1
+          fi
+          echo "id=$ids" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Decide the image tag
+        if: steps.instance.outputs.skip == 'false'
+        id: tag
+        run: |
+          if [ -n "$ROLLBACK_TAG" ]; then
+            if ! [[ "$ROLLBACK_TAG" =~ ^${TAG_PREFIX}-[0-9a-f]{40}$ ]]; then
+              echo "::error::image_tag は ${TAG_PREFIX}-<40桁のコミットの SHA> の形で指定してください"
+              exit 1
+            fi
+            tag=$ROLLBACK_TAG
+          else
+            tag="$TAG_PREFIX-$GITHUB_SHA"
+          fi
+          # タグは上書きできない（IMMUTABLE）ので、同じコミットを再実行したときは、ビルドを飛ばす。
+          # 「無い」と判定するのは ImageNotFoundException のときだけ（権限や通信のエラーを「無い」と取り違えない）
+          if out=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$tag" 2>&1); then
+            exists=true
+          elif grep -q ImageNotFoundException <<< "$out"; then
+            exists=false
+          else
+            echo "::error::ECR の確認に失敗しました: $out"
+            exit 1
+          fi
+          if [ -n "$ROLLBACK_TAG" ] && [ "$exists" = false ]; then
+            echo "::error::$tag のイメージが ECR にありません（main- は直近の20個、develop- は直近の10個だけが残る）"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "build=$([ "$exists" = false ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "deploy $tag (build: $([ "$exists" = false ] && echo yes || echo no))"
+
+      - name: Check out
+        if: steps.instance.outputs.skip == 'false' && env.ROLLBACK_TAG == ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to ECR
+        if: steps.tag.outputs.build == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      - name: Set up Buildx
+        if: steps.tag.outputs.build == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build and push the image
+        if: steps.tag.outputs.build == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: laravel-back
+          file: laravel-back/docker/php/Dockerfile.prod
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
+          # 付けるとタグなしのマニフェストができ、ECR のライフサイクルルールで1日後に消されてイメージが壊れる
+          provenance: false
+          sbom: false
+
+      - name: Upload the deploy bundle
+        if: steps.instance.outputs.skip == 'false' && env.ROLLBACK_TAG == ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          tar -czf bundle.tar.gz \
+            docker-compose.prod.yml \
+            laravel-back/docker/nginx/prod.conf \
+            infra/terraform/modules/app/files/render-env.sh
+          aws s3 cp --only-show-errors bundle.tar.gz "s3://$DEPLOY_BUCKET/bundles/$TAG.tar.gz"
+
+      - name: Check the deploy bundle for the rollback
+        if: steps.instance.outputs.skip == 'false' && env.ROLLBACK_TAG != ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if ! aws s3api head-object --bucket "$DEPLOY_BUCKET" --key "bundles/$TAG.tar.gz" >/dev/null 2>&1; then
+            echo "::error::$TAG の部品が S3 にありません"
+            exit 1
+          fi
+
+      - name: Deploy on the EC2 instance
+        if: steps.instance.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          INSTANCE_ID: ${{ steps.instance.outputs.id }}
+        run: |
+          cid=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name portfolio-deploy \
+            --parameters "imageTag=$TAG" \
+            --comment "deploy $TAG" \
+            --query Command.CommandId --output text)
+          echo "command: $cid"
+
+          # SSM ドキュメントの timeoutSeconds（900秒）より長く、最大17分待つ。SSM 側で TimedOut になるのを先に見届けるため
+          status=Pending
+          for _ in $(seq 1 100); do
+            sleep 10
+            # 送った直後は InvocationDoesNotExist が返ることがあるので、それだけは待つ。ほかのエラー（権限など）はすぐに失敗にする
+            if out=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>&1); then
+              status=$out
+            elif grep -q InvocationDoesNotExist <<< "$out"; then
+              status=Pending
+            else
+              echo "::error::デプロイの結果を読めませんでした: $out"
+              exit 1
+            fi
+            # 進行中の状態のときだけ待つ。それ以外（Success・Failed・Undeliverable・DeliveryTimedOut など）は終わり
+            case "$status" in
+              Pending | InProgress | Delayed | Cancelling) ;;
+              *) break ;;
+            esac
+          done
+
+          aws ssm get-command-invocation --command-id "$cid" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text
+          if [ "$status" != Success ]; then
+            echo "::error::デプロイが失敗しました（$status）"
+            exit 1
+          fi

@@ -56,6 +56,11 @@ variable "ecr_repository_arn" {
   type        = string
 }
 
+variable "deploy_bucket_arn" {
+  description = "デプロイの部品の置き場（envs/shared の takuosblog-deploy）。自分の環境の接頭辞の分だけを読める"
+  type        = string
+}
+
 variable "mail_from_address" {
   description = "SES の送信を許可する送信元のアドレス（Laravel の MAIL_FROM_ADDRESS）"
   type        = string

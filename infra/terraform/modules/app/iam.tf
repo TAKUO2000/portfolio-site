@@ -3,6 +3,8 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
+  # デプロイするイメージのタグの接頭辞（ブランチの名前）。部品も同じ接頭辞で置かれる
+  deploy_tag_prefix  = var.env == "prod" ? "main" : "develop"
   parameter_path_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/portfolio/${var.env}"
 }
 
@@ -68,6 +70,13 @@ data "aws_iam_policy_document" "app" {
       "ssm:GetParameterHistory",
     ]
     not_resources = [local.parameter_path_arn, "${local.parameter_path_arn}/*"]
+  }
+
+  # デプロイのとき（SSM ドキュメント portfolio-deploy）に、自分の環境の部品を取る
+  statement {
+    sid       = "ReadOwnDeployBundles"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.deploy_bucket_arn}/bundles/${local.deploy_tag_prefix}-*"]
   }
 
   statement {

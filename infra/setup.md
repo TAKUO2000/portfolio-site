@@ -15,6 +15,7 @@
 7. [SES の本番アクセスを申請する](#ses-の本番アクセスを申請する)
 8. [秘密情報を Parameter Store に入れる](#秘密情報を-parameter-store-に入れる)
 9. [本番のリソースを作る（envs/prod）](#本番のリソースを作るenvsprod)
+10. [デプロイする（GitHub Actions）](#デプロイするgithub-actions)
 
 ---
 
@@ -187,7 +188,10 @@ gh secret list --env staging
 | リソース | 内容 |
 | --- | --- |
 | ECR | リポジトリ `portfolio/app`。タグの上書きを禁止し、プッシュ時にスキャンする。タグなしは1日で消し、`main-` は直近の20個、`develop-` は直近の10個だけ残す |
-| GitHub の OIDC プロバイダー | GitHub Actions がアクセスキーなしでロールを引き受けるため。ロールは #115・#116 で作る |
+| GitHub の OIDC プロバイダー | GitHub Actions がアクセスキーなしでロールを引き受けるため |
+| デプロイ用のロール | `github-deploy-prod`（`main` のワークフローだけ）・`github-deploy-stg`（`develop` のワークフローだけ）。[GitHub Actions のロール](design.md#github-actions-のロール) |
+| デプロイの部品の置き場 | バケット `takuosblog-deploy`。公開はすべて塞ぎ、HTTPS 以外は拒否する |
+| SSM ドキュメント | `portfolio-deploy`。EC2 で決まったデプロイの手順だけを実行する（[デプロイ](design.md#デプロイ)） |
 | AWS Budgets | 月 $20。実績が 80%、月末の予測が 100% を超えたらメールで知らせる。クレジットを差し引く前の金額で比べる |
 | SES | 送信元ドメイン `takuosblog.com` の ID（Easy DKIM）と、MAIL FROM の `mail.takuosblog.com` |
 | Cloudflare の DNS レコード | DKIM の CNAME 3つ、`mail` の MX と SPF、`_dmarc` の TXT（[メール送信（SES）](design.md#メール送信ses)） |
@@ -464,7 +468,7 @@ sudo bash -x /var/lib/cloud/instance/scripts/part-001
 
 ### user_data で置いたものを直したとき
 
-`user_data`（`modules/app/user_data.sh.tftpl`・`envs/prod/mount-data.sh.tftpl`）と、それが置く `portfolio-render-env`（`modules/app/files/render-env.sh`）を直しても、今の EC2 には届きません。`terraform plan` にも差分は出ないので、リポジトリと EC2 が気づかないうちにずれます。直したら、SSM Run Command で同じ変更を EC2 にも行います（デプロイのたびに `portfolio-render-env` を最新にする仕組みは #115 で作る）。
+`user_data`（`modules/app/user_data.sh.tftpl`・`envs/prod/mount-data.sh.tftpl`）と、それが置く `portfolio-render-env`（`modules/app/files/render-env.sh`）を直しても、今の EC2 には届きません。`terraform plan` にも差分は出ないので、リポジトリと EC2 が気づかないうちにずれます。直したら、SSM Run Command で同じ変更を EC2 にも行います。`portfolio-render-env` だけは、デプロイのたびにデプロイ用の SSM ドキュメントが部品から置き直すので、次のデプロイで自動で最新になります。デプロイを待たずに直したいときは、下の手順で置き直します。
 
 `portfolio-render-env` を置き直して、ハッシュが一致するのを確かめる：
 
@@ -493,4 +497,51 @@ aws ssm get-command-invocation --command-id "$CID" --instance-id "$I" \
 ```
 
 ずれていないかだけを確かめるときは、EC2 の中の `sha256sum /usr/local/bin/portfolio-render-env` と、手元の `sha256sum infra/terraform/modules/app/files/render-env.sh` を比べます。
+
+---
+
+## デプロイする（GitHub Actions）
+
+バックエンドは、`.github/workflows/deploy.yml` でデプロイします（[デプロイ](design.md#デプロイ)）。`main` への push で本番に、`develop` への push でステージング（EC2 があるときだけ）にデプロイされます。
+
+### 最初に一度だけ
+
+ワークフローは、アカウント ID からロールの ARN を組み立てます。公開リポジトリに書かないよう、GitHub のシークレットに入れます。
+
+```bash
+aws sts get-caller-identity --query Account --output text | gh secret set AWS_ACCOUNT_ID
+```
+
+### デプロイの結果を確かめる
+
+GitHub の Actions の画面で「Deploy backend」の結果を見ます。最後のステップに、EC2 の上で実行したデプロイの出力（`docker compose ps` など）が出ます。EC2 の中で確かめるときは、Session Manager で入ります。
+
+```bash
+cd /opt/portfolio
+sudo docker compose -f docker-compose.prod.yml ps
+sudo docker compose -f docker-compose.prod.yml logs --tail 100 app
+```
+
+### ロールバックする
+
+Actions の画面で「Deploy backend」を手動で実行し（Run workflow）、ブランチに `main`、`image_tag` に戻したいタグ（`main-<コミットの SHA>`）を入れます。ビルドはせず、そのタグのイメージと部品でデプロイし直します。ECR に残っているのは、`main-` の直近の20個と `develop-` の直近の10個です。
+
+```bash
+# 残っているタグの一覧（新しい順）
+aws ecr describe-images --repository-name portfolio/app \
+  --query 'reverse(sort_by(imageDetails, &imagePushedAt))[].imageTags[0]' --output text
+```
+
+### 手でデプロイ用のドキュメントを実行する
+
+GitHub Actions を使わずに、手元から同じデプロイを実行することもできます（ECR のイメージと S3 の部品がすでにあるタグだけ）。
+
+```bash
+I=$(cd infra/terraform/envs/prod && terraform output -raw instance_id)
+CID=$(aws ssm send-command --instance-ids "$I" --document-name portfolio-deploy \
+  --parameters imageTag=main-<コミットの SHA> --query Command.CommandId --output text)
+aws ssm wait command-executed --command-id "$CID" --instance-id "$I"
+aws ssm get-command-invocation --command-id "$CID" --instance-id "$I" \
+  --query '[Status,StandardOutputContent,StandardErrorContent]' --output text
+```
 

@@ -17,6 +17,10 @@ data "aws_ecr_repository" "app" {
   name = "portfolio/app"
 }
 
+data "aws_s3_bucket" "deploy" {
+  bucket = "takuosblog-deploy"
+}
+
 module "app" {
   source = "../../modules/app"
 
@@ -29,6 +33,7 @@ module "app" {
   image_bucket_name  = local.image_bucket_name
   frontend_origin    = local.frontend_origin
   ecr_repository_arn = data.aws_ecr_repository.app.arn
+  deploy_bucket_arn  = data.aws_s3_bucket.deploy.arn
   mail_from_address  = local.mail_from_address
 
   extra_user_data = templatefile("${path.module}/mount-data.sh.tftpl", {
