@@ -263,8 +263,8 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 ### 証明書（certbot）
 
 - 証明書はデータ用 EBS の `/data/letsencrypt` に置き、nginx と certbot の `/etc/letsencrypt` にマウントして共有する。チャレンジ用の webroot（`/var/www/certbot`）も同じように共有する
-- **初回の取得**：nginx は証明書がないと 443 の設定で起動できない。そのため、nginx を起動する前に `certbot certonly --standalone` で取得する（certbot が自分で 80 番を開いて確認を受ける）。手順はセットアップ用のスクリプトにまとめる
-- **更新**：systemd timer で1日2回、次のように実行する。certbot は期限が残り30日を切った証明書だけを更新する。Amazon Linux 2023 には cron が入っていないので、systemd timer を使う
+- **初回の取得**：nginx は証明書がないと 443 の設定で起動できない。そのため、nginx を止めて `certbot certonly --standalone` で取得する（certbot が自分で 80 番を開いて確認を受ける）。手順は `infra/ec2/cert-init.sh`（EC2 では `portfolio-cert-init`）にまとめ、最初に1回だけ手で実行する（[構築手順](setup.md#証明書を取る初回)）。Let's Encrypt のアカウントのメールアドレスは、公開リポジトリに書かないよう引数で渡す
+- **更新**：systemd timer（`portfolio-cert-renew.timer`）で1日2回、`infra/ec2/cert-renew.sh`（EC2 では `portfolio-cert-renew`）が次のように実行する。certbot は期限が残り30日を切った証明書だけを更新する。Amazon Linux 2023 には cron が入っていないので、systemd timer を使う。実行の時刻は、Let's Encrypt へのアクセスが集まらないよう1時間の中でずらす
 
   ```bash
   docker compose -f docker-compose.prod.yml run --rm certbot renew --webroot -w /var/www/certbot
@@ -273,8 +273,9 @@ Web サーバーは開発環境と同じ nginx にします。証明書の取得
 
 - **更新の認証方法を必ず指定する**：初回に `--standalone` で取った証明書は、更新の設定（`/etc/letsencrypt/renewal/<ドメイン>.conf`）に `authenticator = standalone` が記録される。そのまま `renew` すると certbot が 80 番を開こうとして nginx とぶつかり、90日後に初めて更新の失敗に気づくことになる。`--webroot -w /var/www/certbot` を渡すと webroot で更新され、成功すると設定も webroot に書き換わる
 - reload は certbot の `--deploy-hook` ではなく、ホスト側で続けて実行する。certbot はコンテナの中で動くので、hook から nginx のコンテナを操作できないため
-- **初回の取得のあとに `renew --dry-run` を実行し、webroot での更新が通ることを確かめる**。手順はセットアップ用のスクリプトに入れる
-- 更新に失敗したまま期限（90日）が切れると、API に HTTPS でつながらなくなる。Let's Encrypt は期限切れが近づいても通知メールを送らないので、更新のログを確認できるようにしておく
+- **初回の取得のあとに `renew --dry-run` を実行し、webroot での更新が通ることを確かめる**（`cert-init.sh` に入れてある）
+- スクリプトと unit は、デプロイの部品に入れて配る。デプロイのたびに、デプロイ用の SSM ドキュメントが `/usr/local/bin` と `/etc/systemd/system` に置き直し、timer を有効にする（[デプロイ](#デプロイ)）
+- 更新に失敗したまま期限（90日）が切れると、API に HTTPS でつながらなくなる。Let's Encrypt は期限切れが近づいても通知メールを送らない（2025年に終了した）。更新のログは `journalctl -u portfolio-cert-renew` で見る。残りの日数が少なくなったら知らせるアラームは、ほかの CloudWatch のアラームと一緒に #114 で作る
 
 ### 1GB に収めるための設定
 
