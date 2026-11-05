@@ -1,0 +1,11 @@
+# ワークフローの外部のアクションは SHA で固定しているので、新しい版が出たら Dependabot に PR を作らせる
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

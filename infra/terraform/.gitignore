@@ -1,0 +1,11 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# 通知先のメールアドレスなど、公開リポジトリに置かない値。雛形は *.tfvars.example
+*.tfvars
+
+# bootstrap の初回だけ使う（infra/setup.md）
+*_override.tf

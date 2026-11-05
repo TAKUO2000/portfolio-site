@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { tv } from "tailwind-variants";
 
 const button = tv({
@@ -16,25 +17,49 @@ const button = tv({
   },
 });
 
-interface NormalButtonProps {
+interface NormalButtonBaseProps {
   color?: "white" | "green" | "red";
   buttonLabel: string;
-  onClick?: () => void;
-  disabled?: boolean;
 }
+
+/**
+ * hrefありはLink、hrefなしはbuttonとして描画するため、
+ * それぞれで意味を持たないpropsは型レベルで渡せないようにしている。
+ */
+type NormalButtonProps = NormalButtonBaseProps &
+  (
+    | {
+        /** 押すと遷移するだけのボタンはこちら。リンクとして描画する */
+        href: string;
+        onClick?: never;
+        disabled?: never;
+      }
+    | {
+        href?: never;
+        onClick?: () => void;
+        disabled?: boolean;
+      }
+  );
 
 export default function NormalButton({
   color,
   buttonLabel,
   onClick,
   disabled,
+  href,
 }: NormalButtonProps) {
+  // 遷移するだけのものをbuttonで作ると、中クリックでの新規タブや
+  // プリフェッチが効かなくなるため、hrefがあるときはLinkで描画する
+  if (href !== undefined) {
+    return (
+      <Link href={href} className={button({ color })}>
+        {buttonLabel}
+      </Link>
+    );
+  }
+
   return (
-    <button
-      className={button({ color })}
-      onClick={onClick}
-      disabled={disabled}
-    >
+    <button className={button({ color })} onClick={onClick} disabled={disabled}>
       {buttonLabel}
     </button>
   );

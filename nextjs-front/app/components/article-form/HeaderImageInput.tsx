@@ -13,18 +13,24 @@ import {
 interface HeaderImageInputProps {
   pendingHeader: PendingImage | null;
   setPendingHeader: (image: PendingImage | null) => void;
+  /** 保存済み記事のヘッダー画像URL。選び直されていないときの表示に使う */
+  savedHeaderImageUrl?: string | null;
+  /** 保存済みのヘッダー画像が削除されたときに呼ぶ */
+  onRemoveSavedHeaderImage?: () => void;
 }
 
 export default function HeaderImageInput({
   pendingHeader,
   setPendingHeader,
+  savedHeaderImageUrl = null,
+  onRemoveSavedHeaderImage,
 }: HeaderImageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   // 選択されたファイルをblobプレビューとしてキャッシュする。
-  // S3署名付きURLの取得と実際のPUTは送信ボタン押下時（page.tsx側）にまとめて行う
+  // S3署名付きURLの取得と実際のPUTは保存時（ArticleForm側）にまとめて行う
   // （早い段階で取得すると、フォーム入力が長引いた場合に署名付きURLの有効期限切れで失敗するため）
   function cacheHeaderImage(file: File) {
     if (
@@ -65,7 +71,11 @@ export default function HeaderImageInput({
   function removeHeaderImage() {
     if (pendingHeader) URL.revokeObjectURL(pendingHeader.blobUrl);
     setPendingHeader(null);
+    onRemoveSavedHeaderImage?.();
   }
+
+  // 選び直されていればそのプレビュー、無ければ保存済みの画像を表示する
+  const previewUrl = pendingHeader?.blobUrl ?? savedHeaderImageUrl;
 
   return (
     <div className="flex flex-col gap-1  ">
@@ -79,11 +89,11 @@ export default function HeaderImageInput({
         onChange={handleFileInputChange}
       />
 
-      {pendingHeader ? (
+      {previewUrl ? (
         <div className="relative mx-auto max-w-90 overflow-hidden rounded-lg border border-gray-300 bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={pendingHeader.blobUrl}
+            src={previewUrl}
             alt="ヘッダー画像プレビュー"
             className="h-60 max-w-90 object-cover object-center mx-auto block"
           />

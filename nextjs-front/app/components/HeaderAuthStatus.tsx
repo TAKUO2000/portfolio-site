@@ -1,5 +1,6 @@
 "use client";
 
+import Pencil from "@/public/Pencil.svg";
 import Plus from "@/public/Plus.svg";
 
 import Link from "next/link";
@@ -61,48 +62,66 @@ export default function HeaderAuthStatus() {
 
   if (user) {
     return (
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:gap-6">
         <span className="max-w-36 truncate text-sm font-semibold">
           {user.name}
         </span>
+        {user.email_verified === false && (
+          <Link
+            href="/auth/verify-email"
+            className="text-sm underline transition-opacity hover:opacity-70"
+          >
+            メールを確認
+          </Link>
+        )}
         <button
           className="text-sm transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           onClick={handleLogout}
           disabled={isLoggingOut}
         >
-          ログアウト
+          Sign out
         </button>
 
         {user.role === "admin" && (
-          <Link
-            href="/articles/new"
-            className="text-sm transition-opacity hover:opacity-70 bg-white text-black rounded-4xl px-3 py-1 flex items-center"
-          >
-            <Plus className="h-4 w-4 shrink-0 border bg-black text-white rounded-2xl mr-2" />
-            <span>記事投稿</span>
-          </Link>
+          <>
+            <Link
+              href="/articles/new"
+              className="text-sm transition-opacity hover:opacity-70 bg-white text-black border-[1.5px] border-white rounded-4xl px-3 py-1 flex items-center"
+            >
+              <Plus className="h-4 w-4 shrink-0 border bg-black text-white rounded-2xl mr-2" />
+              <span>記事投稿</span>
+            </Link>
+            <Link
+              href="/articles/manage"
+              className="text-sm transition-opacity hover:opacity-70 border-[1.5px] border-white rounded-4xl px-3 py-1 flex items-center"
+            >
+              <Pencil className="h-4 w-4 shrink-0 mr-2" />
+              <span>記事管理</span>
+            </Link>
+          </>
         )}
       </div>
     );
   }
 
   return (
-    <ul className="flex gap-8">
+    // 管理者向けの記事投稿・記事管理ボタンと同じ形にそろえ、新規登録の方を塗りで目立たせる
+    <ul className="flex flex-col items-start gap-4 md:flex-row md:items-center md:gap-3">
       <li>
         <Link
           href="/auth/sign-up"
-          className="text-sm transition-opacity hover:opacity-70"
+          className="text-sm transition-opacity hover:opacity-70 bg-white text-black border-[1.5px] border-white rounded-4xl px-3 py-1 flex items-center"
         >
-          サインアップ
+          Sign up
         </Link>
       </li>
       <li>
         <Link
           href="/auth/sign-in"
-          className="text-sm transition-opacity hover:opacity-70"
+          className="text-sm transition-opacity hover:opacity-70 border-[1.5px] border-white rounded-4xl px-3 py-1 flex items-center"
         >
-          ログイン
+          Sign in
         </Link>
       </li>
     </ul>

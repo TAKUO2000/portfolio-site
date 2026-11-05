@@ -2,26 +2,44 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\DeleteArticleRequest;
 use App\Http\Requests\IndexArticleRequest;
+use App\Http\Requests\IndexMyArticleRequest;
 use App\Http\Requests\ShowArticleRequest;
 use App\Http\Requests\StoreArticleRequest;
+use App\Http\Requests\UpdateArticleRequest;
+use App\Http\Requests\UpdateArticleStatusRequest;
 use App\Http\Resources\ArticleDetailResource;
+use App\Http\Resources\ArticleEditResource;
 use App\Http\Resources\ArticleResource;
+use App\Http\Resources\MyArticleResource;
+use App\Models\Article;
 use App\Services\ArticleService;
+use App\Services\FrontendCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Gate;
+
+use function Illuminate\Support\defer;
 
 class ArticleController extends Controller
 {
-    //CRUDの順で追加予定～
-    public function __construct(private ArticleService $articleService) {}
+    // CRUDの順で追加予定～
+    public function __construct(
+        private ArticleService $articleService,
+        private FrontendCache $frontendCache,
+    ) {}
 
     public function store(StoreArticleRequest $request): JsonResponse
     {
         $article = $this->articleService->store($request->user(), $request->validated());
+        $this->revalidateFrontendArticles();
 
-        return response()->json($article, 201);
+        // 投稿後もそのまま編集を続けられるよう、updateと同じ編集フォーム向けの表現を返す。
+        // 保存時にサーバーが本置き場へ移した画像キーと書き換え後の本文を画面に渡さないと、
+        // 次の更新で既に存在しない一時キーを送ることになる
+        return (new ArticleEditResource($article))
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function index(IndexArticleRequest $request): AnonymousResourceCollection
@@ -38,10 +56,64 @@ class ArticleController extends Controller
         return new ArticleDetailResource($article);
     }
 
-    public function delete(DeleteArticleRequest $request): JsonResponse
+    /** 記事管理画面の一覧。自分が書いた記事を下書きも含めて返す */
+    public function mine(IndexMyArticleRequest $request): AnonymousResourceCollection
     {
-        $this->articleService->delete($request->validated()['id']);
+        $articles = $this->articleService->mine($request->user(), $request->validated());
+        $statusCounts = $this->articleService->mineStatusCounts($request->user(), $request->validated());
+
+        // additionalはページネーションのmetaと再帰的にマージされるため、metaの中に件数が足される
+        return MyArticleResource::collection($articles)
+            ->additional(['meta' => ['status_counts' => $statusCounts]]);
+    }
+
+    /** 編集フォームの初期値。公開・下書きのどちらも返す */
+    public function edit(Article $article): ArticleEditResource
+    {
+        // 記事の存在チェックはルートモデルバインディングが担う（未存在・論理削除済みは404）
+        Gate::authorize('update', $article);
+
+        return new ArticleEditResource($article->load(['category', 'tags', 'images']));
+    }
+
+    /** 一覧からの下書き⇔公開の切り替え */
+    public function updateStatus(UpdateArticleStatusRequest $request, Article $article): MyArticleResource
+    {
+        $updated = $this->articleService->updateStatus($article, $request->validated()['status']);
+        $this->revalidateFrontendArticles();
+
+        return new MyArticleResource($updated);
+    }
+
+    public function update(UpdateArticleRequest $request, Article $article): ArticleEditResource
+    {
+        $updated = $this->articleService->update(
+            $article,
+            $request->validated()
+        );
+        $this->revalidateFrontendArticles();
+
+        return new ArticleEditResource($updated);
+    }
+
+    public function destroy(Article $article): JsonResponse
+    {
+        // 記事の存在チェックはルートモデルバインディングが担う（未存在・論理削除済みは404）
+        Gate::authorize('delete', $article);
+
+        $this->articleService->delete($article);
+        $this->revalidateFrontendArticles();
 
         return response()->json(null, 204);
+    }
+
+    /**
+     * トップページなどの記事一覧に変更を出すため、Next.jsのキャッシュを捨てさせる。
+     * 下書きの保存でも呼ぶが、一覧が変わらないだけで害は無いため分けない。
+     * 保存した人を待たせないよう、応答を返したあとに送る
+     */
+    private function revalidateFrontendArticles(): void
+    {
+        defer(fn () => $this->frontendCache->revalidateArticles());
     }
 }

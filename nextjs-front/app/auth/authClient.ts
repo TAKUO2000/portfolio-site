@@ -66,6 +66,13 @@ export function getApiErrorMessages( // バックエンドからの複数のerro
   response: unknown,
   fallbackMessage: string,
 ): string[] {
+  // 回数制限の応答はLaravelの英語の文言（Too Many Attempts.）なので、日本語の案内に置き換える
+  if (status === 429) {
+    return [
+      "短い時間に何度も送信されました。少し時間をおいてからお試しください。",
+    ];
+  }
+
   if (
     response &&
     typeof response === "object" &&

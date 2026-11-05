@@ -56,7 +56,6 @@ export default function CategorySelect({
           <CategoryBox
             category={selectedCategory.name}
             id={selectedCategory.id}
-            isLink={false}
             title="クリックで解除"
             onClick={deselectCategory}
           />

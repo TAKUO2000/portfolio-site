@@ -28,6 +28,12 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // 記事の変更時に、Next.jsの記事一覧のキャッシュを捨てさせる（App\Services\FrontendCache）。
+    // nextjs-frontの REVALIDATE_SECRET と同じ値にする
+    'frontend' => [
+        'revalidate_secret' => env('FRONTEND_REVALIDATE_SECRET'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
