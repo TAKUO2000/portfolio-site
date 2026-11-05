@@ -202,9 +202,10 @@ data "aws_iam_policy_document" "deploy" {
     }
   }
 
+  # 送ったデプロイの結果だけを読む。SSM の仕様で環境ごとには絞れないが、出力は GitHub Actions のログにも出している内容だけ
   statement {
     sid       = "ReadCommandResult"
-    actions   = ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"]
+    actions   = ["ssm:GetCommandInvocation"]
     resources = ["*"]
   }
 }
