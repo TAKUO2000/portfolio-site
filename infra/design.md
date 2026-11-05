@@ -121,8 +121,8 @@ DB だけをプライベートサブネットに分ける構成は採らない�
 
 | ロール | 引き受けられる条件（OIDC の `sub`） | 許可すること |
 | --- | --- | --- |
-| `github-deploy-prod` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/main` | ECR の `portfolio/app` への push。`Env=prod` タグの EC2 に、デプロイ用の SSM ドキュメントだけを `ssm:SendCommand` で実行する |
-| `github-deploy-stg` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/develop` | ECR への push。`Env=stg` タグの EC2 に、デプロイ用の SSM ドキュメントだけを実行する。ステージングの有無を確かめるための `ec2:DescribeInstances` |
+| `github-deploy-prod` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/main` | ECR の `portfolio/app` への push。デプロイの部品の `bundles/main-*` の読み書き。EC2 を探すための `ec2:DescribeInstances`。`Env=prod` タグの EC2 に、デプロイ用の SSM ドキュメントだけを `ssm:SendCommand` で実行し、結果を読む |
+| `github-deploy-stg` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/develop` | ECR への push。デプロイの部品の `bundles/develop-*` の読み書き。`Env=stg` タグの EC2 に、デプロイ用の SSM ドキュメントだけを実行する。ステージングの有無を確かめるための `ec2:DescribeInstances` |
 | `github-terraform-stg` | `repo:TAKUO2000/portfolio-site:environment:staging` | `envs/stg` の apply / destroy に必要な権限（VPC・EC2・S3 の stg バケット・IAM など）。作る IAM ロールには permissions boundary を必須にし、自分より強い権限のロールを作れないようにする |
 
 - **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env` と `.env.production` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
@@ -448,7 +448,7 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
   - `.env.production`：`config/app/*`、`APP_KEY`・`FRONTEND_REVALIDATE_SECRET`
   - 値は単一引用符で囲んで書く（compose が `$` などを置き換えずにそのまま渡すように）。Parameter Store は空の値を置けないので、空にしたい変数（`AWS_ENDPOINT` など）は書かない
   - 値はすべて先に変数へ取り出し、取り出しに失敗したり空だったりしたら、既存の `.env` を変えずに止まる（`line X "$(secret X)"` のように引数の中で取り出すと、失敗しても `set -e` が効かず、空の秘密で上書きしてしまうため）
-  - **`user_data` が置くのは最初の起動のときだけ**。`render-env.sh` を直しても今の EC2 には届かない（`terraform plan` にも差分は出ない）ので、SSM Run Command で置き直す。デプロイのたびに最新を置く仕組みは #115 のデプロイ用の SSM ドキュメントで作る
+  - **`user_data` が置くのは最初の起動のときだけ**。`render-env.sh` を直しても今の EC2 には届かない（`terraform plan` にも差分は出ない）ので、デプロイのたびに、デプロイ用の SSM ドキュメントが部品から置き直す（[デプロイ](#デプロイ)）。デプロイを待たずに直したいときは、SSM Run Command で置き直す
 - `.env` も秘密情報もリポジトリには入れない
 
 ---
@@ -482,18 +482,26 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 
 **フロントエンド**：`main` への push で Vercel が自動でビルド・デプロイする（`develop` はステージング。[ステージング環境](#ステージング環境)）。
 
-**バックエンド**：GitHub Actions で行う。
+**バックエンド**：GitHub Actions（`.github/workflows/deploy.yml`）で行う。`main` への push で本番、`develop` への push でステージング（EC2 があるときだけ）にデプロイする。バックエンドに関わるファイル（`laravel-back/**`・`docker-compose.prod.yml`・`render-env.sh`・ワークフロー自身）が変わったときだけ動く。
 
 1. OIDC で AWS のロール（本番は `github-deploy-prod`）を引き受ける（長期のアクセスキーは使わない）
-2. `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、`main-<コミットの SHA>`（ステージングは `develop-<SHA>`）をタグにして ECR へ push する。buildx の provenance は付けない（`provenance: false`。付けるとタグなしのマニフェストができ、ECR のライフサイクルルールで消されてイメージが壊れるため）
-3. SSM Run Command で、デプロイ用の SSM ドキュメント（`portfolio-deploy`）を EC2 に実行させる。ドキュメントの中身は次のとおり
+2. `Env` タグで、デプロイ先の EC2 を探す（ステージングの EC2 が無ければ、ここで終わる）
+3. arm64 のランナー（`ubuntu-24.04-arm`）で `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、`main-<コミットの SHA>`（ステージングは `develop-<SHA>`）をタグにして ECR へ push する。エミュレーションしないので速い。buildx の provenance は付けない（`provenance: false`。付けるとタグなしのマニフェストができ、ECR のライフサイクルルールで消されてイメージが壊れるため）。同じタグがすでにあれば（再実行したとき）ビルドを飛ばす
+4. **デプロイの部品**（`docker-compose.prod.yml`・`laravel-back/docker/nginx/prod.conf`・`render-env.sh`）を tar にまとめ、同じタグの名前で S3（`takuosblog-deploy` の `bundles/<タグ>.tar.gz`）に置く
+5. SSM Run Command で、デプロイ用の SSM ドキュメント（`portfolio-deploy`。`envs/shared`）を EC2 に実行させ、結果を最大15分待つ。失敗したらジョブも失敗にする。ドキュメントの中身（`envs/shared/files/deploy.sh.tftpl`）は次のとおり
+   - EC2 の環境（`/etc/portfolio-env`）とタグの接頭辞が合うかを確かめる（本番に `develop-` のイメージを入れない）
+   - 同じタグの部品を S3 から取り、3つのファイルが揃っているのを確かめてから `/opt/portfolio` に置く。`portfolio-render-env` も、ここで部品の最新に置き直す
    - Parameter Store から `.env` と `.env.production` を作り直す（`.env` の `APP_IMAGE` を今回のタグにする）
-   - `docker compose -f docker-compose.prod.yml pull`
-   - `docker compose -f docker-compose.prod.yml up -d`
+   - ECR にログインし、`docker compose pull` → `docker compose up -d`
+   - `app` が healthy になっているかを確かめる
+
+部品を GitHub から直接取らずに S3 に置くのは、**リポジトリを非公開にしても動くようにする**ためです。イメージと部品が同じタグで結び付くので、ロールバックすると compose のファイルや nginx の設定も当時のものに戻ります。部品は1回のデプロイで数 KB なので、消さずに残します。
+
+SSM ドキュメントの引数はイメージのタグだけで、`^(main|develop)-[0-9a-f]{40}$` の形以外は受け付けません（シェルにそのまま埋め込むので、コマンドを差し込まれないように）。
 
 `up -d` でコンテナが入れ替わる間、数秒だけ API が止まります。個人開発なので許容します。
 
-**ロールバック**：前のコミットのタグ（`main-<SHA>`。直近の20個が残っている）を指定して `up -d` し直す。マイグレーションは後方互換を保つように書く。
+**ロールバック**：ワークフローを手動で実行し（`workflow_dispatch`）、`image_tag` に前のコミットのタグ（`main-<SHA>`。直近の20個が残っている）を指定する。ビルドはせず、そのタグのイメージと部品でデプロイし直す。マイグレーションは後方互換を保つように書く。
 
 **マイグレーション**：`app` が起動のたびに `migrate --force` を流すので、デプロイがそのまま本番の DB の変更になります。前のイメージに戻しても動くよう、破壊的な変更は2回のデプロイに分けます。
 
@@ -608,7 +616,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
 - [ ] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#53 の `envs/prod`）
 - [ ] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#114）
-- [ ] GitHub Actions のデプロイワークフローを作る（#53）
+- [x] GitHub Actions のデプロイワークフローを作る（#115）
 - [ ] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#53）
 
 **アプリ側**
