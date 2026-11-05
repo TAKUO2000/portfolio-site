@@ -638,4 +638,3 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] 開発環境の MySQL を本番と同じ 8.4 に上げる（issue なし）
 
 - [ ] アクセスが増えたら CloudFront を前に置く（画像の配信と API の保護のため）（issue なし）
-- [ ] 本番とステージングで ECR のリポジトリを分ける。ECR はタグごとに権限を絞れないので、今はステージングのロールでも `main-` のタグで push できる（issue なし）
