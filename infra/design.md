@@ -500,14 +500,6 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 
 SSM ドキュメントの引数はイメージのタグだけで、`^(main|develop)-[0-9a-f]{40}$` の形以外は受け付けません（シェルにそのまま埋め込むので、コマンドを差し込まれないように）。
 
-**`main` への入れ方**：`develop` から `main` へは、GitHub で `develop` → `main` の PR を作り、Merge のボタン（Create a merge commit・Squash・Rebase のどれでもよい）で入れる。**手元から `main` に直接 push しない**（`git push origin develop:main` や fast-forward）。
-
-- ECR はタグごとに権限を絞れないので、ステージングのロール（`develop` のワークフロー）でも `main-<SHA>` のタグで push できる
-- ワークフローは、同じタグのイメージがすでにあればビルドを飛ばす。`develop` のコミットを SHA のまま `main` に入れると、`develop` 側から先に `main-<その SHA>` を push されたときに、本番がそのイメージを使ってしまう
-- GitHub の Merge のボタンなら、`main` には新しい SHA のコミットができるので、前もって知られない
-- ロールバックで指定するタグは、本番のデプロイで作られたもの（Actions の履歴にあるもの）だけにする。消えた古いタグや、デプロイが動かなかったコミットのタグは、あとから誰かが作れてしまう
-- 本番とステージングで ECR のリポジトリを分ければ、この前提は要らなくなる（今後の課題）
-
 外部のアクションは、タグではなくコミットの SHA で固定する（タグを悪い版に付け替えられても動かないように）。新しい版は Dependabot（`.github/dependabot.yml`）が PR で知らせる。
 
 `up -d` でコンテナが入れ替わる間、数秒だけ API が止まります。個人開発なので許容します。
@@ -646,4 +638,4 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] 開発環境の MySQL を本番と同じ 8.4 に上げる（issue なし）
 
 - [ ] アクセスが増えたら CloudFront を前に置く（画像の配信と API の保護のため）（issue なし）
-- [ ] 本番とステージングで ECR のリポジトリを分ける（ステージングのロールで `main-` のタグを push できないように。[デプロイ](#デプロイ)）（issue なし）
+- [ ] 本番とステージングで ECR のリポジトリを分ける。ECR はタグごとに権限を絞れないので、今はステージングのロールでも `main-` のタグで push できる（issue なし）
