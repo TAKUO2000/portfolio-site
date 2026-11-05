@@ -523,6 +523,10 @@ sudo docker compose -f docker-compose.prod.yml ps
 sudo docker compose -f docker-compose.prod.yml logs --tail 100 app
 ```
 
+### デプロイの手順（SSM ドキュメント）を直したとき
+
+EC2 で動くデプロイの手順（`infra/terraform/envs/shared/files/deploy.sh.tftpl`）は、Terraform が SSM ドキュメント `portfolio-deploy` として置きます。ワークフローや部品と一緒に直したときは、**`main` にマージしてデプロイする前に、`envs/shared` を apply します**。先にデプロイすると、古い手順で動き、新しい部品（スクリプトや unit など）が置かれません。
+
 ### ロールバックする
 
 Actions の画面で「Deploy backend」を手動で実行し（Run workflow）、ブランチに `main`、`image_tag` に戻したいタグ（`main-<コミットの SHA>`）を入れます。ビルドはせず、そのタグのイメージと部品でデプロイし直します。ECR に残っているのは、`main-` の直近の20個と `develop-` の直近の10個です。

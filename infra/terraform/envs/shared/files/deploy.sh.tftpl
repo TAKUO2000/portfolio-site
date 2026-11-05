@@ -106,7 +106,9 @@ if [ -d "$WORK/bundle/infra/ec2" ]; then
   install -m 644 "$WORK/bundle/infra/ec2/portfolio-cert-renew.service" /etc/systemd/system/portfolio-cert-renew.service
   install -m 644 "$WORK/bundle/infra/ec2/portfolio-cert-renew.timer" /etc/systemd/system/portfolio-cert-renew.timer
   systemctl daemon-reload
-  systemctl enable --now portfolio-cert-renew.timer
+  # enable --now は動いている timer を起動し直さないので、unit の時刻を変えたときも反映されるよう、毎回 restart する
+  systemctl enable portfolio-cert-renew.timer
+  systemctl restart portfolio-cert-renew.timer
 fi
 echo "placed the bundle for $TAG"
 
