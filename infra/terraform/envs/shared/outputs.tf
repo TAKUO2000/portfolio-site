@@ -12,3 +12,13 @@ output "ses_identity_arn" {
   description = "送信元ドメインの SES の ID"
   value       = aws_sesv2_email_identity.domain.arn
 }
+
+output "deploy_role_arns" {
+  description = "GitHub Actions のデプロイ用のロール（.github/workflows/deploy.yml が引き受ける）"
+  value       = { for env, role in aws_iam_role.deploy : env => role.arn }
+}
+
+output "deploy_bucket_arn" {
+  description = "デプロイの部品の置き場（EC2 のインスタンスロールに、自分の環境の分の読み取りを許可する）"
+  value       = aws_s3_bucket.deploy.arn
+}

@@ -9,7 +9,7 @@
 #
 # このファイルは user_data が最初の起動のときに /usr/local/bin/portfolio-render-env に置く。直しても、動いている EC2 には
 # 自動では届かない（terraform plan にも差分は出ない）。infra/setup.md の「user_data で置いたものを直したとき」の手順で
-# 置き直す（デプロイのたびに最新を置く仕組みは #115 で作る）
+# 置き直すか、次のデプロイを待つ（デプロイ用の SSM ドキュメント portfolio-deploy が、デプロイのたびに最新を置く）
 set -euo pipefail
 
 APP_IMAGE=${1:?usage: portfolio-render-env <APP_IMAGE>}
