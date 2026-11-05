@@ -36,8 +36,17 @@ permissions:
   contents: read
 
 jobs:
+  # テストが通ったコミットだけをデプロイする（ロールバックのときは、すでにデプロイしたイメージなので飛ばす）
+  test:
+    if: (github.ref_name == 'main' || github.ref_name == 'develop') && inputs.image_tag == ''
+    uses: ./.github/workflows/test.yml
+
   deploy:
-    if: github.ref_name == 'main' || github.ref_name == 'develop'
+    needs: test
+    if: >-
+      always() &&
+      (github.ref_name == 'main' || github.ref_name == 'develop') &&
+      (needs.test.result == 'success' || (needs.test.result == 'skipped' && inputs.image_tag != ''))
     # arm64 のランナーで、エミュレーションせずにビルドする（EC2 は t4g = arm64）
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
@@ -182,8 +191,10 @@ jobs:
               echo "::error::デプロイの結果を読めませんでした: $out"
               exit 1
             fi
+            # 進行中の状態のときだけ待つ。それ以外（Success・Failed・Undeliverable・DeliveryTimedOut など）は終わり
             case "$status" in
-              Success | Failed | Cancelled | TimedOut) break ;;
+              Pending | InProgress | Delayed | Cancelling) ;;
+              *) break ;;
             esac
           done
 

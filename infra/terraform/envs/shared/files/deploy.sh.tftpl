@@ -33,6 +33,9 @@ for f in docker-compose.prod.yml laravel-back/docker/nginx/prod.conf infra/terra
   fi
 done
 
+# 先に ECR にログインしておく（この先で失敗して前の状態に戻すときも、pull に使うため）
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+
 # app の healthcheck の状態（healthy / unhealthy / starting / none）
 app_health() {
   local id
@@ -99,8 +102,6 @@ echo "placed the bundle for $TAG"
 
 # .env と .env.production を Parameter Store から作り直す（.env の APP_IMAGE を今回のタグにする）
 /usr/local/bin/portfolio-render-env "$REGISTRY/$REPOSITORY:$TAG"
-
-aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
 
 start
 DEPLOYED=true

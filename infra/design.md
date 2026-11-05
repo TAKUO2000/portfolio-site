@@ -484,11 +484,12 @@ docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
 
 **バックエンド**：GitHub Actions（`.github/workflows/deploy.yml`）で行う。`main` への push で本番、`develop` への push でステージング（EC2 があるときだけ）にデプロイする。バックエンドに関わるファイル（`laravel-back/**`・`docker-compose.prod.yml`・`render-env.sh`・ワークフロー自身）が変わったときだけ動く。
 
-1. OIDC で AWS のロール（本番は `github-deploy-prod`）を引き受ける（長期のアクセスキーは使わない）
-2. `Env` タグで、デプロイ先の EC2 を探す（ステージングの EC2 が無ければ、ここで終わる）
-3. arm64 のランナー（`ubuntu-24.04-arm`）で `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、`main-<コミットの SHA>`（ステージングは `develop-<SHA>`）をタグにして ECR へ push する。エミュレーションしないので速い。buildx の provenance は付けない（`provenance: false`。付けるとタグなしのマニフェストができ、ECR のライフサイクルルールで消されてイメージが壊れるため）。同じタグがすでにあれば（再実行したとき）ビルドを飛ばす
-4. **デプロイの部品**（`docker-compose.prod.yml`・`laravel-back/docker/nginx/prod.conf`・`render-env.sh`）を tar にまとめ、同じタグの名前で S3（`takuosblog-deploy` の `bundles/<タグ>.tar.gz`）に置く
-5. SSM Run Command で、デプロイ用の SSM ドキュメント（`portfolio-deploy`。`envs/shared`）を EC2 に実行させ、結果を最大15分待つ。失敗したらジョブも失敗にする。ドキュメントの中身（`envs/shared/files/deploy.sh.tftpl`）は次のとおり
+1. バックエンドのテスト（`.github/workflows/test.yml`。Pest と MySQL 8.4）を流し、通ったときだけ先に進む。テストは PR のたびにも流れる。ロールバックのときは、すでにデプロイしたイメージなので飛ばす
+2. OIDC で AWS のロール（本番は `github-deploy-prod`）を引き受ける（長期のアクセスキーは使わない）
+3. `Env` タグで、デプロイ先の EC2 を探す（ステージングの EC2 が無ければ、ここで終わる）
+4. arm64 のランナー（`ubuntu-24.04-arm`）で `Dockerfile.prod` から `linux/arm64` のイメージをビルドし、`main-<コミットの SHA>`（ステージングは `develop-<SHA>`）をタグにして ECR へ push する。エミュレーションしないので速い。buildx の provenance は付けない（`provenance: false`。付けるとタグなしのマニフェストができ、ECR のライフサイクルルールで消されてイメージが壊れるため）。同じタグがすでにあれば（再実行したとき）ビルドを飛ばす
+5. **デプロイの部品**（`docker-compose.prod.yml`・`laravel-back/docker/nginx/prod.conf`・`render-env.sh`）を tar にまとめ、同じタグの名前で S3（`takuosblog-deploy` の `bundles/<タグ>.tar.gz`）に置く
+6. SSM Run Command で、デプロイ用の SSM ドキュメント（`portfolio-deploy`。`envs/shared`）を EC2 に実行させ、結果を最大15分待つ。失敗したらジョブも失敗にする。ドキュメントの中身（`envs/shared/files/deploy.sh.tftpl`）は次のとおり
    - EC2 の環境（`/etc/portfolio-env`）とタグの接頭辞が合うかを確かめる（本番に `develop-` のイメージを入れない）
    - 同じタグの部品を S3 から取り、3つのファイルが揃っているのを確かめてから `/opt/portfolio` に置く。`portfolio-render-env` も、ここで部品の最新に置き直す
    - Parameter Store から `.env` と `.env.production` を作り直す（`.env` の `APP_IMAGE` を今回のタグにする）
