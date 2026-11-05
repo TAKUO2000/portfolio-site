@@ -106,4 +106,10 @@ echo "placed the bundle for $TAG"
 start
 DEPLOYED=true
 $COMPOSE ps
+
+# 使っていない古いイメージを消す（ルートの EBS は 12GB で、デプロイのたびに数百 MB のイメージが増えるため）。
+# ロールバックは ECR から取り直すので、手元に残さなくてよい。掃除に失敗しても、デプロイは失敗にしない
+docker image prune -af --filter "until=168h" >/dev/null || echo "古いイメージの掃除に失敗しました（デプロイは成功）" >&2
+df -h / | tail -1
+
 echo "deployed $TAG"
