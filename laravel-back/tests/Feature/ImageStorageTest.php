@@ -52,3 +52,65 @@ test('キーが空なら、SDKの既定の探索で見つけた認証情報で�
 
     expect($url)->toContain('X-Amz-Credential=key-from-sdk-chain%2F');
 });
+
+/**
+ * S3 への応答を差し替えた ImageStorage。copyObject の結果を $result で決める
+ */
+function imageStorageRespondingWith(callable $result): ImageStorage
+{
+    config(['filesystems.disks.s3.bucket' => 'test-bucket']);
+
+    $mock = new Aws\MockHandler;
+    $mock->append($result);
+
+    $client = new Aws\S3\S3Client([
+        'region'      => 'ap-northeast-1',
+        'version'     => 'latest',
+        'credentials' => ['key' => 'test', 'secret' => 'test'],
+        'handler'     => $mock,
+    ]);
+
+    $storage = new ImageStorage;
+    (fn () => $this->serverClient = $client)->call($storage);
+
+    return $storage;
+}
+
+test('移動元が無いとき（NoSuchKey）は ImageNotFoundException を投げる', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception('Not Found', $command, ['code' => 'NoSuchKey'])
+    );
+
+    expect(fn () => $storage->move('tmp/a.png', 'images/a.png'))
+        ->toThrow(App\Services\ImageNotFoundException::class);
+});
+
+test('移動元が無い以外の S3 のエラーは、そのまま投げる', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception('Access Denied', $command, ['code' => 'AccessDenied'])
+    );
+
+    expect(fn () => $storage->move('tmp/a.png', 'images/a.png'))
+        ->toThrow(Aws\S3\Exception\S3Exception::class);
+});
+
+test('オブジェクトが無いとき（HEAD が 404）は exists が false を返す', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
+            'Not Found', $command, ['response' => new GuzzleHttp\Psr7\Response(404)]
+        )
+    );
+
+    expect($storage->exists('tmp/a.png'))->toBeFalse();
+});
+
+test('404 以外のエラーのときは、exists は「無い」と取り違えずに投げる', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
+            'Forbidden', $command, ['response' => new GuzzleHttp\Psr7\Response(403)]
+        )
+    );
+
+    expect(fn () => $storage->exists('tmp/a.png'))->toThrow(Aws\S3\Exception\S3Exception::class);
+});
+

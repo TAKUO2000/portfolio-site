@@ -153,8 +153,23 @@ class ArticleService
             ? []
             : $article->images()->pluck('object_key')->flip()->all();
 
+        preg_match_all('#' . ArticleImageKey::PATTERN . '#', $data['body'], $matches);
+        $bodyCandidates = array_unique($matches[0]);
+
+        // 一時置き場の画像は、1つも動かす前にすべてあるかを確かめる。途中で見つからない画像があって
+        // 422 にしたときに、先に移した画像だけが本置き場に残り、同じ内容で送り直すと今度はそれが
+        // 「見つからない」になる、ということが起きないように
+        $this->ensureUploaded($data['header_image_key'], 'header_image_key');
+        foreach ($bodyCandidates as $key) {
+            $this->ensureUploaded($key, 'body');
+        }
+
+        // この保存で移したキー（一時置き場 => 本置き場）。ヘッダー画像と本文で同じ画像を使っていても、
+        // 移すのは一度だけにする（二度目は移動元が無く失敗するため）
+        $moved = [];
+
         // ヘッダー画像は本文外の明示的な項目なので、解決できなければ黙って捨てずに弾く
-        $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys);
+        $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys, $moved, 'header_image_key');
 
         if ($headerKey === null) {
             throw ValidationException::withMessages([
@@ -165,11 +180,9 @@ class ArticleService
         $body = $data['body'];
         $bodyKeys = [];
 
-        preg_match_all('#' . ArticleImageKey::PATTERN . '#', $body, $matches);
-
         // 同じ画像が複数回貼られていても移動は一度だけ（二度目は移動元が無く失敗するため）
-        foreach (array_unique($matches[0]) as $key) {
-            $published = $this->publishKey($key, $ownedKeys);
+        foreach ($bodyCandidates as $key) {
+            $published = $this->publishKey($key, $ownedKeys, $moved, 'body');
 
             if ($published === null) {
                 // 本文は自由記述なので、この記事のものでないキーはエラーにせず参照として扱わない。
@@ -185,6 +198,24 @@ class ArticleService
     }
 
     /**
+     * 一時置き場のキーなら、ストレージにあるかを確かめ、無ければバリデーションエラーにする。
+     * 本置き場のキーは、この記事のものかどうかを publishKey で判断するので、ここでは見ない
+     */
+    private function ensureUploaded(string $key, string $field): void
+    {
+        if (str_starts_with($key, ImageStorage::TMP_PREFIX) && ! $this->imageStorage->exists($key)) {
+            throw $this->imageNotFound($field);
+        }
+    }
+
+    private function imageNotFound(string $field): ValidationException
+    {
+        return ValidationException::withMessages([
+            $field => '画像が見つかりません。時間がたって消えた可能性があるので、もう一度アップロードしてください。',
+        ]);
+    }
+
+    /**
      * キーを本置き場のものに解決する。
      *
      * - 一時置き場のキー : 本置き場へ移して新しいキーを返す
@@ -192,16 +223,29 @@ class ArticleService
      *                      他の記事の画像を指定するだけで自分の記事に紐付けられてしまう
      *
      * 解決できなかった場合にエラーにするかは呼び出し側で決める。ヘッダー画像と本文とで
-     * 扱いが違うため、その判断をここに持たせない
+     * 扱いが違うため、その判断をここに持たせない。
+     * ただし一時置き場のキーがストレージに無いとき（アップロードの失敗や期限切れ）は、どちらでも
+     * バリデーションエラーにする。そのまま保存すると、読めない画像が記事に残るため
+     *
+     * @param  array<string, string>  $moved  この保存で移したキー（一時置き場 => 本置き場）。移したら書き足す
      */
-    private function publishKey(string $key, array $ownedKeys): ?string
+    private function publishKey(string $key, array $ownedKeys, array &$moved, string $field): ?string
     {
         if (str_starts_with($key, ImageStorage::TMP_PREFIX)) {
+            if (isset($moved[$key])) {
+                return $moved[$key];
+            }
+
             $published = ImageStorage::IMAGE_PREFIX . substr($key, strlen(ImageStorage::TMP_PREFIX));
 
-            $this->imageStorage->move($key, $published);
+            try {
+                $this->imageStorage->move($key, $published);
+            } catch (ImageNotFoundException) {
+                // 先に ensureUploaded で確かめているので、ここに来るのは、確かめたあとに消えたときだけ
+                throw $this->imageNotFound($field);
+            }
 
-            return $published;
+            return $moved[$key] = $published;
         }
 
         return isset($ownedKeys[$key]) ? $key : null;
