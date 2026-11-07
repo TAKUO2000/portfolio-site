@@ -1,0 +1,9 @@
+# MySQL のバックアップ（infra/ec2/mysqldump.sh）。portfolio-mysqldump.timer から動く
+[Unit]
+Description=Back up MySQL with mysqldump to S3
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/portfolio-mysqldump

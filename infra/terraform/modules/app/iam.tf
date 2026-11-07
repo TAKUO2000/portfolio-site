@@ -79,6 +79,20 @@ data "aws_iam_policy_document" "app" {
     resources = ["${var.deploy_bucket_arn}/bundles/${local.deploy_tag_prefix}-*"]
   }
 
+  # 証明書の残りの日数（infra/ec2/cert-renew.sh）を送る。自分の環境の名前空間にだけ送れる
+  # （ステージングの EC2 が、本番の値を送って本番のアラームを黙らせられないように）
+  statement {
+    sid       = "PutTlsMetric"
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = ["Portfolio/${var.env}/TLS"]
+    }
+  }
+
   statement {
     sid       = "EcrAuth"
     actions   = ["ecr:GetAuthorizationToken"]

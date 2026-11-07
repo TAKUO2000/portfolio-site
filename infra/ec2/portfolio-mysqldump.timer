@@ -1,0 +1,12 @@
+# 毎日 UTC の 18時（日本時間の 3時）から15分の中で。データ用 EBS のスナップショット（DLM、UTC の 19時）の前に取る。
+# 止まっていた間に時刻を過ぎたら、起動したあとに1回実行する（Persistent）
+[Unit]
+Description=Back up MySQL every day
+
+[Timer]
+OnCalendar=*-*-* 18:00:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
