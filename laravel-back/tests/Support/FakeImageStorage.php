@@ -2,11 +2,11 @@
 
 namespace Tests\Support;
 
+use App\Services\ImageNotFoundException;
 use App\Services\ImageStorage;
 use DateTimeInterface;
 use Generator;
 use Illuminate\Support\Carbon;
-use RuntimeException;
 
 /**
  * ストレージの中身をメモリ上に持つImageStorage。
@@ -39,7 +39,7 @@ class FakeImageStorage extends ImageStorage
     public function move(string $from, string $to): void
     {
         if (! isset($this->objects[$from])) {
-            throw new RuntimeException("移動元のオブジェクトがありません: {$from}");
+            throw new ImageNotFoundException($from);
         }
 
         $this->objects[$to] = $this->objects[$from];

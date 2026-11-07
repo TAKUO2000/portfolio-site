@@ -397,6 +397,72 @@ test('同じ本文画像が複数回貼られていても一度だけ移動し�
     expect($article->body)->not->toContain('tmp/');
 });
 
+test('ヘッダー画像と本文に同じ一時置き場の画像を使っても保存できる', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/44444444-4444-4444-8444-444444444444.png';
+    $storage->put($key);
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => 'ヘッダーと本文に同じ画像を使った記事',
+            'summary' => 'テスト概要',
+            'body' => "![](/{$key})",
+            'status' => 'published',
+            'header_image_key' => $key,
+        ]);
+
+    $response->assertStatus(201);
+
+    $published = 'images/44444444-4444-4444-8444-444444444444.png';
+    $article = Article::where('title', 'ヘッダーと本文に同じ画像を使った記事')->first();
+    expect($response->json('data.header_image_key'))->toBe($published);
+    expect($article->body)->toContain($published)->not->toContain('tmp/');
+    expect($article->images->where('type', 'header')->pluck('object_key')->all())->toBe([$published]);
+    expect($article->images->where('type', 'body')->pluck('object_key')->all())->toBe([$published]);
+    expect($storage->keys())->toBe([$published]);
+});
+
+test('存在しない一時置き場のheader_image_keyはバリデーションエラーになる', function () {
+    useMinioStorage();
+    fakeImageStorage();
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => 'アップロードしていないヘッダー画像の記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            // 形式は正しいが、アップロードされていない（または期限切れで消えた）キー
+            'header_image_key' => 'tmp/55555555-5555-4555-8555-555555555555.png',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+    expect(Article::where('title', 'アップロードしていないヘッダー画像の記事')->exists())->toBeFalse();
+});
+
+test('本文に存在しない一時置き場の画像があるとバリデーションエラーになる', function () {
+    useMinioStorage();
+    fakeImageStorage();
+
+    $response = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => 'アップロードしていない本文画像の記事',
+            'summary' => 'テスト概要',
+            'body' => '![](/tmp/66666666-6666-4666-8666-666666666666.png)',
+            'status' => 'published',
+            'header_image_key' => pendingImageKey(),
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['body']);
+    expect(Article::where('title', 'アップロードしていない本文画像の記事')->exists())->toBeFalse();
+});
+
 test('アプリが発行した形式でないheader_image_keyはバリデーションエラーになる', function () {
     useMinioStorage();
 

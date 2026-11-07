@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Aws\S3\Exception\S3Exception;
 use Aws\S3\S3Client;
 use DateTimeInterface;
 use Generator;
@@ -72,16 +73,26 @@ class ImageStorage
     /**
      * 一時置き場のオブジェクトを本置き場へ移す。
      * S3にはリネームが無いため、コピーしてから元を消す。
+     *
+     * @throws ImageNotFoundException 移動元が無いとき（アップロードの失敗や、一時置き場の期限切れ）
      */
     public function move(string $from, string $to): void
     {
         $bucket = $this->config('bucket');
 
-        $this->serverClient()->copyObject([
-            'Bucket'     => $bucket,
-            'Key'        => $to,
-            'CopySource' => rawurlencode($bucket . '/' . $from),
-        ]);
+        try {
+            $this->serverClient()->copyObject([
+                'Bucket'     => $bucket,
+                'Key'        => $to,
+                'CopySource' => rawurlencode($bucket . '/' . $from),
+            ]);
+        } catch (S3Exception $e) {
+            if ($e->getAwsErrorCode() === 'NoSuchKey') {
+                throw new ImageNotFoundException($from);
+            }
+
+            throw $e;
+        }
 
         $this->serverClient()->deleteObject(['Bucket' => $bucket, 'Key' => $from]);
     }
