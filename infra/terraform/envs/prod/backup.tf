@@ -112,6 +112,19 @@ data "aws_iam_policy_document" "app_backup" {
     actions   = ["s3:PutObject"]
     resources = ["${aws_s3_bucket.backup.arn}/mysql/*"]
   }
+
+  # mysqldump が取れたことを送る（1日届かなければ、アラームで知らせる）。本番の名前空間にだけ送れる
+  statement {
+    sid       = "PutBackupMetric"
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = ["Portfolio/prod/Backup"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "app_backup" {

@@ -583,7 +583,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 | S3 の画像 | バージョニングは使わない（`images:prune` の論理削除の猶予期間で代わりにする） |
 | 死活監視 | CloudWatch のステータスチェックのアラーム。AWS 側の故障（system）は、自動で recover する（別の機械で起動し直す。IP・EBS・インスタンス ID はそのまま）。EC2 の中の故障（instance）は知らせるだけ。通知先は SNS（`portfolio-prod-alerts`）からメールに送る |
 | CPU クレジット | CloudWatch の `CPUCreditBalance` のアラーム（残高が30を切ったら。Standard モードで遅くなる前に気づく） |
-| TLS の証明書 | `portfolio-cert-renew` が、更新のたびに残りの日数を CloudWatch（`Portfolio/TLS` の `DaysToExpiry`）に送り、14日を切ったら知らせる。値が2日届かないとき（timer が止まったなど）も知らせる |
+| TLS の証明書 | `portfolio-cert-renew` が、更新のたびに残りの日数を CloudWatch（`Portfolio/prod/TLS` の `DaysToExpiry`。名前空間を環境ごとに分け、ほかの環境の EC2 が本番の値を送れないようにする）に送り、14日を切ったら知らせる。値が2日届かないとき（timer が止まったなど）も知らせる |
 | メールの送信 | SES のバウンス率（5%）と苦情率（0.1%）のアラーム。AWS が見直しを始める値。高いままだと送信が止められる |
 | 費用 | AWS Budgets（月 $20）。アカウント全体なので、ステージングの費用も含まれる |
 | ログ | まずは `docker compose logs` で見る。必要になったら CloudWatch Logs に送る |

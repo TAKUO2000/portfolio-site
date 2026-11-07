@@ -70,9 +70,9 @@ resource "aws_cloudwatch_metric_alarm" "cpu_credit_balance" {
 resource "aws_cloudwatch_metric_alarm" "tls_days_to_expiry" {
   alarm_name          = "portfolio-prod-tls-expiring"
   alarm_description   = "api の TLS の証明書の期限が14日を切った、または残りの日数が2日届いていない（更新の timer を確かめる）"
-  namespace           = "Portfolio/TLS"
+  namespace           = "Portfolio/prod/TLS"
   metric_name         = "DaysToExpiry"
-  dimensions          = { Env = "prod", Domain = local.api_domain }
+  dimensions          = { Domain = local.api_domain }
   statistic           = "Minimum"
   period              = 86400
   evaluation_periods  = 2
@@ -121,9 +121,8 @@ resource "aws_cloudwatch_metric_alarm" "ses_complaint_rate" {
 resource "aws_cloudwatch_metric_alarm" "mysqldump_missing" {
   alarm_name          = "portfolio-prod-mysqldump-missing"
   alarm_description   = "mysqldump のバックアップが1日取れていない（journalctl -u portfolio-mysqldump を確かめる）"
-  namespace           = "Portfolio/Backup"
+  namespace           = "Portfolio/prod/Backup"
   metric_name         = "MysqlDumpSucceeded"
-  dimensions          = { Env = "prod" }
   statistic           = "Sum"
   period              = 86400
   evaluation_periods  = 1
