@@ -66,17 +66,18 @@ resource "aws_cloudwatch_metric_alarm" "cpu_credit_balance" {
 }
 
 # TLS の証明書の残りの日数。portfolio-cert-renew（1日2回）が送る。Let's Encrypt は期限切れの通知を送らない。
-# 値が届かないとき（timer が止まった、送る権限が無いなど）も知らせる
+# 値が届かないとき（timer が止まった、送る権限が無いなど）も知らせる。
+# 2日とも条件を満たしたときだけ知らせる（1日だけ届かなかったときに、2日間 ALARM が続かないように）
 resource "aws_cloudwatch_metric_alarm" "tls_days_to_expiry" {
   alarm_name          = "portfolio-prod-tls-expiring"
-  alarm_description   = "api の TLS の証明書の期限が14日を切った、または残りの日数が2日届いていない（更新の timer を確かめる）"
+  alarm_description   = "api の TLS の証明書の期限が2日続けて14日を切っている、または残りの日数が2日続けて届いていない（更新の timer を確かめる）"
   namespace           = "Portfolio/prod/TLS"
   metric_name         = "DaysToExpiry"
   dimensions          = { Domain = local.api_domain }
   statistic           = "Minimum"
   period              = 86400
   evaluation_periods  = 2
-  datapoints_to_alarm = 1
+  datapoints_to_alarm = 2
   comparison_operator = "LessThanThreshold"
   threshold           = 14
   treat_missing_data  = "breaching"
