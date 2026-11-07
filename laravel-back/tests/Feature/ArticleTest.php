@@ -463,6 +463,34 @@ test('本文に存在しない一時置き場の画像があるとバリデー�
     expect(Article::where('title', 'アップロードしていない本文画像の記事')->exists())->toBeFalse();
 });
 
+test('本文の画像が見つからないときは、ヘッダー画像も動かさずにバリデーションエラーになる', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $headerKey = 'tmp/77777777-7777-4777-8777-777777777777.png';
+    $storage->put($headerKey);
+
+    $payload = [
+        'category_id' => $this->category->id,
+        'title' => '本文の画像だけ見つからない記事',
+        'summary' => 'テスト概要',
+        'body' => '![](/tmp/88888888-8888-4888-8888-888888888888.png)',
+        'status' => 'published',
+        'header_image_key' => $headerKey,
+    ];
+
+    $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['body']);
+
+    // ヘッダー画像は一時置き場に残っている（本置き場に移っていない）
+    expect($storage->keys())->toBe([$headerKey]);
+
+    // 本文を直して同じヘッダー画像で送り直すと、保存できる
+    $payload['body'] = '画像なしの本文';
+    $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)
+        ->assertStatus(201);
+});
+
 test('アプリが発行した形式でないheader_image_keyはバリデーションエラーになる', function () {
     useMinioStorage();
 

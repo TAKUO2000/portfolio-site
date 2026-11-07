@@ -36,6 +36,11 @@ class FakeImageStorage extends ImageStorage
         return $keys;
     }
 
+    public function exists(string $key): bool
+    {
+        return isset($this->objects[$key]);
+    }
+
     public function move(string $from, string $to): void
     {
         if (! isset($this->objects[$from])) {

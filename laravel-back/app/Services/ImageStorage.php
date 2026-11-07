@@ -71,6 +71,29 @@ class ImageStorage
     }
 
     /**
+     * オブジェクトがあるか。
+     * HEAD の応答には本文が無く、エラーの種類（NoSuchKey など）が分からないので、404 かどうかで決める。
+     * 404 以外のエラー（権限など）は「無い」と取り違えないよう、そのまま投げる
+     */
+    public function exists(string $key): bool
+    {
+        try {
+            $this->serverClient()->headObject([
+                'Bucket' => $this->config('bucket'),
+                'Key'    => $key,
+            ]);
+
+            return true;
+        } catch (S3Exception $e) {
+            if ($e->getStatusCode() === 404) {
+                return false;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
      * 一時置き場のオブジェクトを本置き場へ移す。
      * S3にはリネームが無いため、コピーしてから元を消す。
      *

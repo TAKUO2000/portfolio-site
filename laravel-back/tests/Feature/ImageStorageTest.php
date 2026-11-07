@@ -93,3 +93,24 @@ test('移動元が無い以外の S3 のエラーは、そのまま投げる', f
     expect(fn () => $storage->move('tmp/a.png', 'images/a.png'))
         ->toThrow(Aws\S3\Exception\S3Exception::class);
 });
+
+test('オブジェクトが無いとき（HEAD が 404）は exists が false を返す', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
+            'Not Found', $command, ['response' => new GuzzleHttp\Psr7\Response(404)]
+        )
+    );
+
+    expect($storage->exists('tmp/a.png'))->toBeFalse();
+});
+
+test('404 以外のエラーのときは、exists は「無い」と取り違えずに投げる', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
+            'Forbidden', $command, ['response' => new GuzzleHttp\Psr7\Response(403)]
+        )
+    );
+
+    expect(fn () => $storage->exists('tmp/a.png'))->toThrow(Aws\S3\Exception\S3Exception::class);
+});
+
