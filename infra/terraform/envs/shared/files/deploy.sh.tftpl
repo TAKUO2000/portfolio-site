@@ -110,6 +110,19 @@ if [ -d "$WORK/bundle/infra/ec2" ]; then
   systemctl enable portfolio-cert-renew.timer
   systemctl restart portfolio-cert-renew.timer
 fi
+
+# MySQL のバックアップ（infra/ec2/mysqldump.sh）。#114 より前の部品には無いので、あるときだけ置く。
+# バックアップ用のバケットは本番にしか無いので、timer は本番だけで有効にする
+if [ -f "$WORK/bundle/infra/ec2/mysqldump.sh" ]; then
+  install -m 700 "$WORK/bundle/infra/ec2/mysqldump.sh" /usr/local/bin/portfolio-mysqldump
+  install -m 644 "$WORK/bundle/infra/ec2/portfolio-mysqldump.service" /etc/systemd/system/portfolio-mysqldump.service
+  install -m 644 "$WORK/bundle/infra/ec2/portfolio-mysqldump.timer" /etc/systemd/system/portfolio-mysqldump.timer
+  systemctl daemon-reload
+  if [ "$PORTFOLIO_ENV" = prod ]; then
+    systemctl enable portfolio-mysqldump.timer
+    systemctl restart portfolio-mysqldump.timer
+  fi
+fi
 echo "placed the bundle for $TAG"
 
 # .env と .env.production を Parameter Store から作り直す（.env の APP_IMAGE を今回のタグにする）

@@ -17,3 +17,8 @@ variable "cloudflare_zone_id" {
     error_message = "cloudflare_zone_id は32桁の16進数で指定してください。"
   }
 }
+
+variable "alert_email" {
+  description = "アラームの通知（SNS）を受け取るメールアドレス。envs/shared の Budgets と同じ。公開リポジトリに書かないよう terraform.tfvars で渡す"
+  type        = string
+}

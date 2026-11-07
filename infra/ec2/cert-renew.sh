@@ -18,6 +18,23 @@ fi
 "${COMPOSE[@]}" run --rm certbot renew --webroot -w /var/www/certbot --no-random-sleep-on-renew
 "${COMPOSE[@]}" exec -T nginx nginx -s reload
 
-for cert in /data/letsencrypt/live/*/cert.pem; do
-  echo "$cert: $(openssl x509 -in "$cert" -noout -enddate)"
-done
+# 残りの日数を CloudWatch に送る（14日を切ったらアラームで知らせる。#114）。
+# サブシェルにまとめ、どこで失敗しても更新そのものは成功にする（届かなければ、アラームが「値が届かない」で知らせる）。
+# `||` の左側で呼ぶと中の set -e が効かないので、失敗は1つずつ exit 1 で抜ける。
+# 名前空間は環境ごとに分ける（ステージングの EC2 が、本番の値を送ってアラームを黙らせられないように）
+publish_days_to_expiry() (
+  . /etc/portfolio-env || exit 1
+  TOKEN=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60') || exit 1
+  REGION=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region) || exit 1
+  [ -n "$PORTFOLIO_ENV" ] && [ -n "$REGION" ] || exit 1
+  for cert in /data/letsencrypt/live/*/cert.pem; do
+    domain=$(basename "$(dirname "$cert")")
+    end=$(openssl x509 -in "$cert" -noout -enddate | cut -d= -f2) || exit 1
+    end_epoch=$(date -d "$end" +%s) || exit 1
+    days=$(( (end_epoch - $(date +%s)) / 86400 ))
+    echo "$domain: $end（残り $days 日）"
+    aws cloudwatch put-metric-data --region "$REGION" --namespace "Portfolio/$PORTFOLIO_ENV/TLS" \
+      --metric-name DaysToExpiry --dimensions "Domain=$domain" --unit Count --value "$days" || exit 1
+  done
+)
+publish_days_to_expiry || echo "残りの日数を CloudWatch に送れませんでした" >&2
