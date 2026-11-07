@@ -18,16 +18,20 @@ fi
 "${COMPOSE[@]}" run --rm certbot renew --webroot -w /var/www/certbot --no-random-sleep-on-renew
 "${COMPOSE[@]}" exec -T nginx nginx -s reload
 
-# 残りの日数を CloudWatch に送る（14日を切ったらアラームで知らせる。#114）。送れなくても更新は成功にする
-. /etc/portfolio-env
-TOKEN=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
-REGION=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)
-for cert in /data/letsencrypt/live/*/cert.pem; do
-  domain=$(basename "$(dirname "$cert")")
-  end=$(openssl x509 -in "$cert" -noout -enddate | cut -d= -f2)
-  days=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
-  echo "$domain: $end（残り $days 日）"
-  aws cloudwatch put-metric-data --region "$REGION" --namespace Portfolio/TLS --metric-name DaysToExpiry \
-    --dimensions "Env=$PORTFOLIO_ENV,Domain=$domain" --unit Count --value "$days" ||
-    echo "残りの日数を CloudWatch に送れませんでした" >&2
-done
+# 残りの日数を CloudWatch に送る（14日を切ったらアラームで知らせる。#114）。
+# サブシェルにまとめ、どこで失敗しても更新そのものは成功にする（届かなければ、アラームが「値が届かない」で知らせる）
+publish_days_to_expiry() (
+  set -euo pipefail
+  . /etc/portfolio-env
+  TOKEN=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
+  REGION=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)
+  for cert in /data/letsencrypt/live/*/cert.pem; do
+    domain=$(basename "$(dirname "$cert")")
+    end=$(openssl x509 -in "$cert" -noout -enddate | cut -d= -f2)
+    days=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+    echo "$domain: $end（残り $days 日）"
+    aws cloudwatch put-metric-data --region "$REGION" --namespace Portfolio/TLS --metric-name DaysToExpiry \
+      --dimensions "Env=$PORTFOLIO_ENV,Domain=$domain" --unit Count --value "$days"
+  done
+)
+publish_days_to_expiry || echo "残りの日数を CloudWatch に送れませんでした" >&2

@@ -115,3 +115,22 @@ resource "aws_cloudwatch_metric_alarm" "ses_complaint_rate" {
   alarm_actions       = local.alert_actions
   ok_actions          = local.alert_actions
 }
+
+# mysqldump が取れたこと。portfolio-mysqldump（毎日 UTC の 18時台）が、置けたときだけ送る。
+# 1日届かなければ知らせる（失敗に気づかないまま30日たつと、バックアップがすべて消えるため）
+resource "aws_cloudwatch_metric_alarm" "mysqldump_missing" {
+  alarm_name          = "portfolio-prod-mysqldump-missing"
+  alarm_description   = "mysqldump のバックアップが1日取れていない（journalctl -u portfolio-mysqldump を確かめる）"
+  namespace           = "Portfolio/Backup"
+  metric_name         = "MysqlDumpSucceeded"
+  dimensions          = { Env = "prod" }
+  statistic           = "Sum"
+  period              = 86400
+  evaluation_periods  = 1
+  comparison_operator = "LessThanThreshold"
+  threshold           = 1
+  treat_missing_data  = "breaching"
+  alarm_actions       = local.alert_actions
+  ok_actions          = local.alert_actions
+}
+

@@ -579,7 +579,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 | 対象 | 方法 |
 | --- | --- |
 | データ用 EBS（MySQL のデータと証明書） | DLM で日次スナップショットを7世代残す（UTC の 19時。`mysqldump` のあと）。対象は `Name=portfolio-prod-data` のタグで決める。ルートボリュームは対象にしない（作り直せばよいため） |
-| MySQL | systemd timer（`portfolio-mysqldump.timer`。UTC の 18時、日本時間の 3時）で毎日 `infra/ec2/mysqldump.sh` が `mysqldump --single-transaction --no-tablespaces` を取り、gzip してバックアップ用バケット（`takuosblog-backup-prod`）の `mysql/<年>/<月>/<日>/` に置く（スナップショットだけだと、書き込み途中の状態を拾う可能性があるため）。root のパスワードは誰も持たないので、アプリ用のユーザーで取る。いったんファイルに書き、最後まで取れたのを確かめてから置く。EC2 の権限は `s3:PutObject` だけにし、削除はライフサイクル（30日）に任せる。EC2 が乗っ取られても、バックアップを読まれたり消されたりしないようにするため。同じキーへの上書きはできてしまうので、**バケットのバージョニングで前の版を残す**（前の版も30日で消す） |
+| MySQL | systemd timer（`portfolio-mysqldump.timer`。取れたら CloudWatch に知らせ、1日届かなければアラームで知らせる。UTC の 18時、日本時間の 3時）で毎日 `infra/ec2/mysqldump.sh` が `mysqldump --single-transaction --no-tablespaces` を取り、gzip してバックアップ用バケット（`takuosblog-backup-prod`）の `mysql/<年>/<月>/<日>/` に置く（スナップショットだけだと、書き込み途中の状態を拾う可能性があるため）。root のパスワードは誰も持たないので、アプリ用のユーザーで取る。いったんファイルに書き、最後まで取れたのを確かめてから置く。EC2 の権限は `s3:PutObject` だけにし、削除はライフサイクル（30日）に任せる。EC2 が乗っ取られても、バックアップを読まれたり消されたりしないようにするため。同じキーへの上書きはできてしまうので、**バケットのバージョニングで前の版を残す**（前の版も30日で消す） |
 | S3 の画像 | バージョニングは使わない（`images:prune` の論理削除の猶予期間で代わりにする） |
 | 死活監視 | CloudWatch のステータスチェックのアラーム。AWS 側の故障（system）は、自動で recover する（別の機械で起動し直す。IP・EBS・インスタンス ID はそのまま）。EC2 の中の故障（instance）は知らせるだけ。通知先は SNS（`portfolio-prod-alerts`）からメールに送る |
 | CPU クレジット | CloudWatch の `CPUCreditBalance` のアラーム（残高が30を切ったら。Standard モードで遅くなる前に気づく） |
@@ -615,6 +615,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
 - [x] データ用 EBS のマウント（`user_data`）を作る（#112）
 - [x] `mysqldump` の systemd timer を作る（#114）
+- [ ] `mysqldump` のファイルから DB を復元する手順を一度試す（手順は [構築手順](setup.md#mysqldump-から復元する)）（#114）
 - [x] 本番の AWS リソース（`modules/app`・`envs/prod`）の Terraform のコード化（#112）
 - [x] tfstate のバケットの作り方を決める。`bootstrap/` で Terraform で作り、状態は作ったバケットへ移す（#110）
 - [x] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#110）

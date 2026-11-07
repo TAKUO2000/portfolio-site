@@ -34,3 +34,7 @@ fi
 
 aws s3 cp --region "$REGION" --only-show-errors "$TMP" "s3://$BUCKET/$KEY"
 echo "uploaded s3://$BUCKET/$KEY ($(stat -c %s "$TMP") bytes)"
+
+# 取れたことを CloudWatch に送る。届かない日があれば、アラームで知らせる（失敗しても journal に残るだけで気づけないため）
+aws cloudwatch put-metric-data --region "$REGION" --namespace Portfolio/Backup --metric-name MysqlDumpSucceeded \
+  --dimensions "Env=$PORTFOLIO_ENV" --unit Count --value 1
