@@ -578,11 +578,13 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 
 | 対象 | 方法 |
 | --- | --- |
-| データ用 EBS（MySQL のデータと証明書） | DLM で日次スナップショットを7世代残す。ルートボリュームは対象にしない（作り直せばよいため） |
-| MySQL | systemd timer で毎日 `mysqldump --single-transaction` を取り、バックアップ用バケットに日付入りのキーで置く（スナップショットだけだと、書き込み途中の状態を拾う可能性があるため）。EC2 の権限は `s3:PutObject` だけにし、削除はライフサイクル（30日）に任せる。EC2 が乗っ取られても、バックアップを消されないようにするため |
+| データ用 EBS（MySQL のデータと証明書） | DLM で日次スナップショットを7世代残す（UTC の 19時。`mysqldump` のあと）。対象は `Name=portfolio-prod-data` のタグで決める。ルートボリュームは対象にしない（作り直せばよいため） |
+| MySQL | systemd timer（`portfolio-mysqldump.timer`。UTC の 18時、日本時間の 3時）で毎日 `infra/ec2/mysqldump.sh` が `mysqldump --single-transaction --no-tablespaces` を取り、gzip してバックアップ用バケット（`takuosblog-backup-prod`）の `mysql/<年>/<月>/<日>/` に置く（スナップショットだけだと、書き込み途中の状態を拾う可能性があるため）。root のパスワードは誰も持たないので、アプリ用のユーザーで取る。いったんファイルに書き、最後まで取れたのを確かめてから置く。EC2 の権限は `s3:PutObject` だけにし、削除はライフサイクル（30日）に任せる。EC2 が乗っ取られても、バックアップを読まれたり消されたりしないようにするため。同じキーへの上書きはできてしまうので、**バケットのバージョニングで前の版を残す**（前の版も30日で消す） |
 | S3 の画像 | バージョニングは使わない（`images:prune` の論理削除の猶予期間で代わりにする） |
-| 死活監視 | CloudWatch のステータスチェックのアラーム。通知先は SNS からメールに送る |
-| CPU クレジット | CloudWatch の `CPUCreditBalance` のアラーム（Standard モードで遅くなる前に気づく） |
+| 死活監視 | CloudWatch のステータスチェックのアラーム。AWS 側の故障（system）は、自動で recover する（別の機械で起動し直す。IP・EBS・インスタンス ID はそのまま）。EC2 の中の故障（instance）は知らせるだけ。通知先は SNS（`portfolio-prod-alerts`）からメールに送る |
+| CPU クレジット | CloudWatch の `CPUCreditBalance` のアラーム（残高が30を切ったら。Standard モードで遅くなる前に気づく） |
+| TLS の証明書 | `portfolio-cert-renew` が、更新のたびに残りの日数を CloudWatch（`Portfolio/TLS` の `DaysToExpiry`）に送り、14日を切ったら知らせる。値が2日届かないとき（timer が止まったなど）も知らせる |
+| メールの送信 | SES のバウンス率（5%）と苦情率（0.1%）のアラーム。AWS が見直しを始める値。高いままだと送信が止められる |
 | 費用 | AWS Budgets（月 $20）。アカウント全体なので、ステージングの費用も含まれる |
 | ログ | まずは `docker compose logs` で見る。必要になったら CloudWatch Logs に送る |
 
@@ -612,7 +614,7 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 - [x] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#109）
 - [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
 - [x] データ用 EBS のマウント（`user_data`）を作る（#112）
-- [ ] `mysqldump` の systemd timer を作る。`mysqldump` から復元する手順を一度試して、この設計書に書く（#114）
+- [x] `mysqldump` の systemd timer を作る（#114）
 - [x] 本番の AWS リソース（`modules/app`・`envs/prod`）の Terraform のコード化（#112）
 - [x] tfstate のバケットの作り方を決める。`bootstrap/` で Terraform で作り、状態は作ったバケットへ移す（#110）
 - [x] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#110）

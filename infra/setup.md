@@ -17,6 +17,7 @@
 9. [本番のリソースを作る（envs/prod）](#本番のリソースを作るenvsprod)
 10. [デプロイする（GitHub Actions）](#デプロイするgithub-actions)
 11. [証明書を取る（初回）](#証明書を取る初回)
+12. [バックアップと監視を確かめる](#バックアップと監視を確かめる)
 
 ---
 
@@ -581,4 +582,80 @@ journalctl -u portfolio-cert-renew --no-pager -n 30
 # 手元で
 curl -sI https://api.takuosblog.com/up | head -1   # HTTP/2 200
 ```
+
+---
+
+## バックアップと監視を確かめる
+
+`envs/prod` の apply で、バックアップ用バケット（`takuosblog-backup-prod`）・DLM・SNS（`portfolio-prod-alerts`）・CloudWatch のアラームができます（[バックアップと監視](design.md#バックアップと監視)）。`mysqldump` の timer と、証明書の残りの日数を送る処理は、デプロイで EC2 に置かれます。
+
+### 通知を受け取れるようにする
+
+apply のあと、`alert_email` に「AWS Notification - Subscription Confirmation」のメールが届くので、「Confirm subscription」を押します。押すまで、アラームのメールは届きません。
+
+```bash
+# PendingConfirmation でなく、ARN が出ればよい
+aws sns list-subscriptions-by-topic \
+  --topic-arn "$(aws sns list-topics --query "Topics[?contains(TopicArn,'portfolio-prod-alerts')].TopicArn" --output text)" \
+  --query 'Subscriptions[].SubscriptionArn' --output text
+
+# アラームの状態（OK になればよい）
+aws cloudwatch describe-alarms --alarm-name-prefix portfolio --query 'MetricAlarms[].[AlarmName,StateValue]' --output table
+```
+
+証明書のアラーム（`portfolio-prod-tls-expiring`）は、残りの日数が届くまで ALARM（または INSUFFICIENT_DATA）になります。デプロイのあとに、EC2 で更新を1回動かすと値が届きます。
+
+```bash
+sudo systemctl start portfolio-cert-renew.service
+journalctl -u portfolio-cert-renew --no-pager -n 10   # 「残り N 日」が出ればよい
+```
+
+### mysqldump を試す
+
+```bash
+# EC2 の中で
+systemctl list-timers portfolio-mysqldump.timer      # 次に動く時刻
+sudo systemctl start portfolio-mysqldump.service     # 今すぐ取る
+journalctl -u portfolio-mysqldump --no-pager -n 10   # uploaded s3://takuosblog-backup-prod/mysql/... と出ればよい
+
+# EC2 からは、バックアップを読む・消すことはできない（AccessDenied になればよい）
+aws s3 ls s3://takuosblog-backup-prod/mysql/
+```
+
+```bash
+# 手元で（管理用のユーザー）
+aws s3 ls --recursive s3://takuosblog-backup-prod/mysql/
+```
+
+### mysqldump から復元する
+
+本番の MySQL では、アプリ用のユーザーは別の DB を作れず、root のパスワードも誰も持っていません。復元の手順は、本番に触らずに、手元の Docker の MySQL 8.4 で試します。
+
+```bash
+# 手元で。新しいものを1つ取ってくる
+KEY=$(aws s3 ls --recursive s3://takuosblog-backup-prod/mysql/ | sort | tail -1 | awk '{print $4}')
+aws s3 cp "s3://takuosblog-backup-prod/$KEY" ./dump.sql.gz
+
+docker run -d --name restore-test -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=portfolio mysql:8.4
+until docker exec restore-test mysqladmin ping -uroot -proot --silent 2>/dev/null; do sleep 2; done
+sleep 5   # 初期化の一時サーバーが終わるのを待つ
+gunzip -c dump.sql.gz | docker exec -i restore-test mysql -uroot -proot portfolio
+
+# テーブルと件数を確かめる
+docker exec restore-test mysql -uroot -proot portfolio -e "SHOW TABLES; SELECT COUNT(*) FROM users; SELECT COUNT(*) FROM migrations;"
+
+docker rm -f restore-test && rm dump.sql.gz
+```
+
+本番の DB を mysqldump から戻すときは、`app`・`scheduler`・`nginx` を止めてから、アプリ用のユーザーで流し込みます（`DB_DATABASE` のすべての権限を持つ）。
+
+```bash
+# EC2 の中で（/opt/portfolio）。dump.sql.gz は管理用のユーザーで S3 から取って、Session Manager などで EC2 に置く
+sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx
+gunzip -c dump.sql.gz | sudo docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
+  'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE"'
+sudo docker compose -f docker-compose.prod.yml up -d
+```
+
+データ用 EBS ごと戻すときは、DLM のスナップショットから新しいボリュームを作って付け替えます。データ用 EBS は Terraform（`envs/prod` の `aws_ebs_volume.data`、`prevent_destroy`）が管理しているので、付け替えたら Terraform の状態も合わせる必要があります。手順は、必要になったときに決めます。
 
