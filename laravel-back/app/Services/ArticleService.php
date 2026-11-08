@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Requests\GetImageUploadUrlRequest;
 use App\Models\Article;
 use App\Models\ArticleImage;
 use App\Models\Reaction;
@@ -15,6 +16,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class ArticleService
 {
@@ -22,11 +24,11 @@ class ArticleService
 
     public function store(User $user, array $data): Article
     {
-        // 画像の移動はトランザクションの外。ストレージはロールバックできないため、
-        // DB側が失敗して残ったオブジェクトはimages:pruneに回収させる
+        // 画像のコピーはトランザクションの外（ストレージはロールバックできない）。
+        // 一時置き場は、DB の保存が成功してから消す（saveWithImages）
         $images = $this->publishImages(null, $data);
 
-        return DB::transaction(function () use ($user, $data, $images) {
+        return $this->saveWithImages($images, function () use ($user, $data, $images) {
             $article = $user->articles()->create([
                 'category_id'  => $data['category_id'],
                 'title'        => $data['title'],
@@ -48,7 +50,7 @@ class ArticleService
     {
         $images = $this->publishImages($article, $data);
 
-        return DB::transaction(function () use ($article, $data, $images) {
+        return $this->saveWithImages($images, function () use ($article, $data, $images) {
             $article->update([
                 'category_id'  => $data['category_id'],
                 'title'        => $data['title'],
@@ -65,6 +67,47 @@ class ArticleService
             // ArticleEditResourceが参照するリレーションを揃えてから返す
             return $article->load(['category', 'tags', 'images']);
         });
+    }
+
+    /**
+     * 記事を DB に保存し、成功したら一時置き場の画像を消す。
+     * DB の保存が失敗したら、この保存で本置き場へコピーした画像を消し、一時置き場はそのまま残す
+     * （同じ内容で送り直せるように）
+     *
+     * @param  array{copied: array<string, string>}  $images  publishImages() の結果
+     */
+    private function saveWithImages(array $images, \Closure $save): Article
+    {
+        try {
+            $article = DB::transaction($save);
+        } catch (Throwable $e) {
+            $this->discardImages(array_values($images['copied']));
+
+            throw $e;
+        }
+
+        $this->discardImages(array_keys($images['copied']));
+
+        return $article;
+    }
+
+    /**
+     * 後始末として画像を消す。失敗しても記録だけして、呼び出し元の結果（成功・例外）を変えない
+     * （一時置き場は1日で消え、本置き場の参照されない画像は images:prune が回収する）
+     *
+     * @param  list<string>  $keys
+     */
+    private function discardImages(array $keys): void
+    {
+        if ($keys === []) {
+            return;
+        }
+
+        try {
+            $this->imageStorage->delete($keys);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -153,55 +196,176 @@ class ArticleService
             ? []
             : $article->images()->pluck('object_key')->flip()->all();
 
-        // ヘッダー画像は本文外の明示的な項目なので、解決できなければ黙って捨てずに弾く
-        $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys);
+        preg_match_all('#' . ArticleImageKey::PATTERN . '#', $data['body'], $matches);
+        $bodyCandidates = array_unique($matches[0]);
 
-        if ($headerKey === null) {
+        // 一時置き場の画像は、1つも動かす前にすべて確かめる。途中で見つからない画像があって
+        // 422 にしたときに、先に移した画像だけが本置き場に残り、同じ内容で送り直すと今度はそれが
+        // 「見つからない」になる、ということが起きないように。
+        // 大きさと種類もここで確かめる（署名付きURLでは縛れないため。#129）
+        // 確かめたときの中身の目印（キー => ETag）。移すときに、中身が同じときだけ移すのに使う。
+        // ヘッダー画像と本文で同じ画像を使っていても、確かめるのは一度だけ
+        $verified = [];
+        foreach ([$data['header_image_key'] => 'header_image_key'] + array_fill_keys($bodyCandidates, 'body') as $key => $field) {
+            $etag = $this->ensureUploaded($key, $field);
+            if ($etag !== null) {
+                $verified[$key] = $etag;
+            }
+        }
+
+        // この保存で本置き場へコピーしたキー（一時置き場 => 本置き場）。ヘッダー画像と本文で同じ画像を
+        // 使っていても、コピーは一度だけにする。一時置き場は、DB の保存が成功してから消す（saveWithImages）。
+        // 途中で失敗したら（どんな例外でも）、コピーした分を消して一時置き場をそのまま残す（同じ内容で送り直せるように）
+        $copied = [];
+
+        try {
+            // ヘッダー画像は本文外の明示的な項目なので、解決できなければ黙って捨てずに弾く
+            $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys, $verified, $copied, 'header_image_key');
+
+            if ($headerKey === null) {
+                throw ValidationException::withMessages([
+                    'header_image_key' => 'この記事の画像ではありません。',
+                ]);
+            }
+
+            $body = $data['body'];
+            $bodyKeys = [];
+
+            // 同じ画像が複数回貼られていてもコピーは一度だけ
+            foreach ($bodyCandidates as $key) {
+                $published = $this->publishKey($key, $ownedKeys, $verified, $copied, 'body');
+
+                if ($published === null) {
+                    // 本文は自由記述なので、この記事のものでないキーはエラーにせず参照として扱わない。
+                    // 見た目も変えないため、記事の書き方（コードブロック内の例示など）を壊さずに済む
+                    continue;
+                }
+
+                $body = str_replace($key, $published, $body);
+                $bodyKeys[] = $published;
+            }
+        } catch (Throwable $e) {
+            $this->discardImages(array_values($copied));
+
+            throw $e;
+        }
+
+        return ['header_key' => $headerKey, 'body' => $body, 'body_keys' => $bodyKeys, 'copied' => $copied];
+    }
+
+    /**
+     * 一時置き場のキーなら、ストレージにあるか、大きさと種類がアップロードの決まりに合っているかを確かめる。
+     * 署名付きURLは大きさと種類を縛れないので、申告と違うファイル（大きすぎる、画像でない）が置かれうる。
+     * 合っていなければ一時置き場から消し、公開される本置き場には移さない。
+     * 本置き場のキーは、この記事のものかどうかを publishKey で判断するので、ここでは見ない
+     */
+    private function ensureUploaded(string $key, string $field): ?string
+    {
+        if (! str_starts_with($key, ImageStorage::TMP_PREFIX)) {
+            return null;
+        }
+
+        $metadata = $this->imageStorage->metadata($key);
+
+        if ($metadata === null) {
+            throw $this->imageNotFound($field);
+        }
+
+        // キーの拡張子は、URL を発行したときに申告された種類から決めている（ImageController）
+        $expectedType = array_search(
+            pathinfo($key, PATHINFO_EXTENSION),
+            GetImageUploadUrlRequest::EXTENSIONS_BY_MEDIA_TYPE,
+            true,
+        );
+
+        // Content-Type は PUT した人が自由に決められるので、先頭のバイト（マジックナンバー）でも確かめる。
+        // 先頭は、HEAD で確かめたのと同じ中身（ETag）から読む
+        try {
+            $valid = $metadata['size'] >= 1
+                && $metadata['size'] <= GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES
+                && $metadata['type'] === $expectedType
+                && self::hasImageSignature($expectedType, $this->imageStorage->readHead($key, 12, $metadata['etag']));
+        } catch (ImageChangedException) {
+            // HEAD のあとに差し替えられた。確かめていない中身なので、ほかの不正なファイルと同じく消す
+            $this->discardImages([$key]);
+
+            throw $this->imageChanged($field);
+        }
+
+        if (! $valid) {
+            $this->discardImages([$key]);
+
             throw ValidationException::withMessages([
-                'header_image_key' => 'この記事の画像ではありません。',
+                $field => '画像の形式か大きさが正しくありません（5MB 以下の JPEG・PNG・WebP・GIF）。もう一度アップロードしてください。',
             ]);
         }
 
-        $body = $data['body'];
-        $bodyKeys = [];
+        return $metadata['etag'];
+    }
 
-        preg_match_all('#' . ArticleImageKey::PATTERN . '#', $body, $matches);
+    /** ファイルの先頭のバイトが、その種類の画像のマジックナンバーで始まっているか */
+    private static function hasImageSignature(string $type, string $head): bool
+    {
+        return match ($type) {
+            'image/png'  => str_starts_with($head, "\x89PNG\r\n\x1a\n"),
+            'image/jpeg' => str_starts_with($head, "\xFF\xD8\xFF"),
+            'image/gif'  => str_starts_with($head, 'GIF87a') || str_starts_with($head, 'GIF89a'),
+            'image/webp' => str_starts_with($head, 'RIFF') && substr($head, 8, 4) === 'WEBP',
+            default      => false,
+        };
+    }
 
-        // 同じ画像が複数回貼られていても移動は一度だけ（二度目は移動元が無く失敗するため）
-        foreach (array_unique($matches[0]) as $key) {
-            $published = $this->publishKey($key, $ownedKeys);
+    private function imageChanged(string $field): ValidationException
+    {
+        return ValidationException::withMessages([
+            $field => '画像がアップロードのあとに変わりました。もう一度アップロードしてください。',
+        ]);
+    }
 
-            if ($published === null) {
-                // 本文は自由記述なので、この記事のものでないキーはエラーにせず参照として扱わない。
-                // 見た目も変えないため、記事の書き方（コードブロック内の例示など）を壊さずに済む
-                continue;
-            }
-
-            $body = str_replace($key, $published, $body);
-            $bodyKeys[] = $published;
-        }
-
-        return ['header_key' => $headerKey, 'body' => $body, 'body_keys' => $bodyKeys];
+    private function imageNotFound(string $field): ValidationException
+    {
+        return ValidationException::withMessages([
+            $field => '画像が見つかりません。時間がたって消えた可能性があるので、もう一度アップロードしてください。',
+        ]);
     }
 
     /**
      * キーを本置き場のものに解決する。
      *
-     * - 一時置き場のキー : 本置き場へ移して新しいキーを返す
+     * - 一時置き場のキー : 本置き場へコピーして新しいキーを返す（一時置き場は publishImages がまとめて消す）
      * - 本置き場のキー   : 既にこの記事が参照している場合だけ引き継ぐ。そうしないと
      *                      他の記事の画像を指定するだけで自分の記事に紐付けられてしまう
      *
      * 解決できなかった場合にエラーにするかは呼び出し側で決める。ヘッダー画像と本文とで
-     * 扱いが違うため、その判断をここに持たせない
+     * 扱いが違うため、その判断をここに持たせない。
+     * ただし一時置き場のキーがストレージに無いとき（アップロードの失敗や期限切れ）は、どちらでも
+     * バリデーションエラーにする。そのまま保存すると、読めない画像が記事に残るため
+     *
+     * @param  array<string, string>  $verified  確かめたときの中身の目印（一時置き場のキー => ETag）
+     * @param  array<string, string>  $copied  この保存でコピーしたキー（一時置き場 => 本置き場）。コピーしたら書き足す
      */
-    private function publishKey(string $key, array $ownedKeys): ?string
+    private function publishKey(string $key, array $ownedKeys, array $verified, array &$copied, string $field): ?string
     {
         if (str_starts_with($key, ImageStorage::TMP_PREFIX)) {
+            if (isset($copied[$key])) {
+                return $copied[$key];
+            }
+
             $published = ImageStorage::IMAGE_PREFIX . substr($key, strlen(ImageStorage::TMP_PREFIX));
 
-            $this->imageStorage->move($key, $published);
+            try {
+                $this->imageStorage->copy($key, $published, $verified[$key] ?? null);
+            } catch (ImageNotFoundException) {
+                // 先に ensureUploaded で確かめているので、ここに来るのは、確かめたあとに消えたときだけ
+                throw $this->imageNotFound($field);
+            } catch (ImageChangedException) {
+                // 確かめたあとに、署名付きURLで別のファイルに差し替えられた。確かめていない中身は公開せず、消す
+                $this->discardImages([$key]);
 
-            return $published;
+                throw $this->imageChanged($field);
+            }
+
+            return $copied[$key] = $published;
         }
 
         return isset($ownedKeys[$key]) ? $key : null;

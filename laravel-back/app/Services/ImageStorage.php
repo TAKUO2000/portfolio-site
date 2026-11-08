@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Aws\S3\Exception\S3Exception;
 use Aws\S3\S3Client;
 use DateTimeInterface;
 use Generator;
@@ -41,8 +42,9 @@ class ImageStorage
     /**
      * ブラウザから直接PUTさせるための署名付きURLを発行する。
      *
-     * ContentLengthを署名対象に含めることで、バリデーション済みのサイズと異なる
-     * ファイルをPUTしようとすると署名不一致で拒否される。
+     * 署名されるのは host だけで、ContentType と ContentLength は署名に含まれない（SDK が外す）。
+     * そのため、申告と違う大きさ・種類のファイルも置けてしまう。置かれたものは、記事に添付して
+     * 本置き場へ移す前に ArticleService が metadata() で確かめ、違えば消す（#129）
      */
     public function uploadUrl(string $key, string $mediaType, int $size): string
     {
@@ -70,20 +72,119 @@ class ImageStorage
     }
 
     /**
+     * オブジェクトの大きさ（バイト）と種類（Content-Type）。無ければ null。
+     * HEAD の応答には本文が無く、エラーの種類（NoSuchKey など）が分からないので、404 かどうかで決める。
+     * 404 以外のエラー（権限など）は「無い」と取り違えないよう、そのまま投げる
+     *
+     * etag は中身の目印。copy()・move()・readHead() に渡すと、確かめたときと中身が同じときだけ扱う
+     *
+     * @return array{size: int, type: string, etag: string}|null
+     */
+    public function metadata(string $key): ?array
+    {
+        try {
+            $result = $this->serverClient()->headObject([
+                'Bucket' => $this->config('bucket'),
+                'Key'    => $key,
+            ]);
+
+            return [
+                'size' => (int) $result['ContentLength'],
+                'type' => (string) $result['ContentType'],
+                'etag' => (string) $result['ETag'],
+            ];
+        } catch (S3Exception $e) {
+            if ($e->getStatusCode() === 404) {
+                return null;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * オブジェクトの先頭の数バイト。ファイルの種類をマジックナンバーで確かめるのに使う
+     * （Content-Type は PUT した人が自由に決められるので、それだけでは種類を確かめられない）。
+     *
+     * $ifMatch（metadata() の etag）を渡すと、そのときと同じ中身だけを読む
+     *
+     * @throws ImageChangedException $ifMatch と中身が違うとき（412）、または中身が空に差し替えられて範囲を読めないとき（416）
+     */
+    public function readHead(string $key, int $length, ?string $ifMatch = null): string
+    {
+        $params = [
+            'Bucket' => $this->config('bucket'),
+            'Key'    => $key,
+            'Range'  => 'bytes=0-' . ($length - 1),
+        ];
+
+        if ($ifMatch !== null) {
+            $params['IfMatch'] = $ifMatch;
+        }
+
+        try {
+            $result = $this->serverClient()->getObject($params);
+        } catch (S3Exception $e) {
+            if (in_array($e->getStatusCode(), [412, 416], true)) {
+                throw new ImageChangedException($key);
+            }
+
+            throw $e;
+        }
+
+        return (string) $result['Body'];
+    }
+
+    /**
      * 一時置き場のオブジェクトを本置き場へ移す。
      * S3にはリネームが無いため、コピーしてから元を消す。
+     *
+     * @throws ImageNotFoundException 移動元が無いとき（アップロードの失敗や、一時置き場の期限切れ）
+     * @throws ImageChangedException  $ifMatch と中身が違うとき
      */
-    public function move(string $from, string $to): void
+    public function move(string $from, string $to, ?string $ifMatch = null): void
+    {
+        $this->copy($from, $to, $ifMatch);
+
+        $this->serverClient()->deleteObject(['Bucket' => $this->config('bucket'), 'Key' => $from]);
+    }
+
+    /**
+     * オブジェクトをコピーする（元は消さない）。
+     *
+     * $ifMatch（metadata() の etag）を渡すと、中身がそのときと同じときだけコピーする
+     * （確かめてからコピーするまでの間に、署名付きURLで差し替えられていないように）
+     *
+     * @throws ImageNotFoundException コピー元が無いとき（アップロードの失敗や、一時置き場の期限切れ）
+     * @throws ImageChangedException  $ifMatch と中身が違うとき
+     */
+    public function copy(string $from, string $to, ?string $ifMatch = null): void
     {
         $bucket = $this->config('bucket');
 
-        $this->serverClient()->copyObject([
+        $params = [
             'Bucket'     => $bucket,
             'Key'        => $to,
             'CopySource' => rawurlencode($bucket . '/' . $from),
-        ]);
+        ];
 
-        $this->serverClient()->deleteObject(['Bucket' => $bucket, 'Key' => $from]);
+        if ($ifMatch !== null) {
+            $params['CopySourceIfMatch'] = $ifMatch;
+        }
+
+        try {
+            $this->serverClient()->copyObject($params);
+        } catch (S3Exception $e) {
+            if ($e->getAwsErrorCode() === 'NoSuchKey') {
+                throw new ImageNotFoundException($from);
+            }
+
+            if ($e->getStatusCode() === 412) {
+                throw new ImageChangedException($from);
+            }
+
+            throw $e;
+        }
     }
 
     /**
