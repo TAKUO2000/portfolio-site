@@ -370,7 +370,9 @@ Vercel の環境変数 `S3_IMAGE_HOST` に本番のバケットのホスト名�
 | プラン | Hobby（非商用の個人利用に限る） |
 | Root Directory | `nextjs-front` |
 | Functions のリージョン | `hnd1`（東京）。EC2 と同じリージョンにして、SSR の往復を短くする |
-| 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコードを作る（[DNS（Cloudflare）](#dnscloudflare)） |
+| 本番のブランチ | `main`（Settings → Environments → Production → Branch Tracking）。リポジトリの既定のブランチは `develop` なので、変えないと `develop` が本番に出る |
+| ビルドするブランチ | 本番だけ（Settings → Ignored Build Step に `if [ "$VERCEL_ENV" = "production" ]; then exit 1; else exit 0; fi`）。ステージング（#116）ができるまで、Preview の API の向き先が無く、ビルドが失敗するため |
+| 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコード（頂点の CNAME。Cloudflare の CNAME flattening で A として返る。DNS only）を手で作った（[DNS（Cloudflare）](#dnscloudflare)） |
 | 環境変数 | `NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`S3_IMAGE_HOST=<本番のバケット名>.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（秘密。下記） |
 
 `REVALIDATE_SECRET` は、記事の変更時に API が `/api/revalidate` を呼ぶときのシークレットです（`nextjs-front/app/api/revalidate/route.ts`）。トップページは記事一覧を静的なページとしてキャッシュし、記事が変わったときと1時間ごとに作り直します。API 側の `FRONTEND_REVALIDATE_SECRET` と同じ値にし、Production（本番）と Preview（`develop` のステージング）で別の値を入れます。
@@ -436,7 +438,7 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
 - **サンドボックスの中では、送信元の ID だけでなく宛先の ID（検証済みのアドレス）も認可の対象になる**。Resource を送信元ドメインの ID だけにすると、サンドボックスの中で試したときに `AccessDenied` になる。そのため Resource は `identity/*` にし、送信元のアドレスは条件 `ses:FromAddress` で絞る。こうすれば、本番アクセスが通ったあとも同じポリシーのままでよい
 - DMARC の一致は relaxed（既定）なので、`mail.takuosblog.com` の SPF と `takuosblog.com` の DKIM のどちらでも合格になる
 - DMARC は、レポートで SPF と DKIM が通り続けているのを確かめてから、`p=quarantine` などに上げる
-- 新しいアカウントの SES はサンドボックスの中にある（1日200通、検証済みのアドレスにしか送れない）。本番アクセスの申請が通るまでは、本番で登録の導線を出さない（またはデプロイを待つ）。申請の手順は [構築手順](setup.md#ses-の本番アクセスを申請する) を参照
+- 新しいアカウントの SES はサンドボックスの中にある（1日200通、検証済みのアドレスにしか送れない）。本番アクセスを申請して外してもらう（2026年11月に通った。1日の上限は 50,000通）。申請の手順は [構築手順](setup.md#ses-の本番アクセスを申請する) を参照
 
 ---
 
@@ -460,8 +462,11 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
 固定のパスワードがコードやシーダーに残らないようにするためです（#80）。
 
 ```bash
-# Session Manager で EC2 に接続してから実行する
+# Session Manager で EC2 に接続してから実行する（/opt/portfolio は root だけが入れる）
+sudo -i
+cd /opt/portfolio
 docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
+docker compose -f docker-compose.prod.yml exec app php artisan db:seed --class=MasterDataSeeder --force   # 本番のマスタ
 ```
 
 `user:create-admin` の仕様：
@@ -612,18 +617,18 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 **インフラ（#53）**
 
 - [x] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#109）
-- [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
+- [x] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#113）
 - [x] データ用 EBS のマウント（`user_data`）を作る（#112）
 - [x] `mysqldump` の systemd timer を作る（#114）
-- [ ] `mysqldump` のファイルから DB を復元する手順を一度試す（手順は [構築手順](setup.md#mysqldump-から復元する)）（#114）
+- [x] `mysqldump` のファイルから DB を復元する手順を一度試す（手順は [構築手順](setup.md#mysqldump-から復元する)）（#114）
 - [x] 本番の AWS リソース（`modules/app`・`envs/prod`）の Terraform のコード化（#112）
 - [x] tfstate のバケットの作り方を決める。`bootstrap/` で Terraform で作り、状態は作ったバケットへ移す（#110）
 - [x] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#110）
 - [x] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions の Environment（`staging`）のシークレットに登録する（#111）
 - [x] SES の送信元ドメインの ID、DKIM・MAIL FROM・DMARC の DNS レコードを作る（#111）
-- [ ] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
-- [ ] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#53 の `envs/prod`）
-- [ ] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#114）
+- [x] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
+- [x] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#112。本番からのパスワード再設定のメールが届き、SPF・DKIM が通るのを #115 で確かめた）
+- [x] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#114）
 - [x] GitHub Actions のデプロイワークフローを作る（#115）
 - [ ] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#53）
 
