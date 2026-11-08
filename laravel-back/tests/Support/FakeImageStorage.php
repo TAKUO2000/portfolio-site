@@ -38,6 +38,9 @@ class FakeImageStorage extends ImageStorage
     /** copy() の直前に呼ばれる。確かめてから移すまでの間の差し替えを再現する */
     public ?Closure $beforeMove = null;
 
+    /** copy() の直前に呼ばれ、例外を投げればコピーが失敗する（S3 の障害の再現） */
+    public ?Closure $failCopy = null;
+
     /** readHead() の直前に呼ばれる。HEAD で確かめてから先頭を読むまでの間の差し替えを再現する */
     public ?Closure $beforeReadHead = null;
 
@@ -107,6 +110,10 @@ class FakeImageStorage extends ImageStorage
 
     public function copy(string $from, string $to, ?string $ifMatch = null): void
     {
+        if ($this->failCopy !== null) {
+            ($this->failCopy)($from);
+        }
+
         if ($this->beforeMove !== null) {
             ($this->beforeMove)($from);
         }

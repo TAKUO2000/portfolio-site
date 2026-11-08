@@ -727,6 +727,71 @@ test('コピーの途中で差し替えが見つかったら、先にコピー�
     $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)->assertStatus(201);
 });
 
+test('DB の保存が失敗したら、本置き場にコピーした画像を消し、一時置き場は残して送り直せる', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $headerKey = 'tmp/18181818-1818-4181-8181-181818181818.png';
+    $bodyKey = 'tmp/19191919-1919-4191-8191-191919191919.png';
+    $storage->put($headerKey)->put($bodyKey);
+
+    // 画像のコピーのあと、記事を作るところで DB が一度だけ失敗する
+    $failed = false;
+    Article::creating(function () use (&$failed) {
+        if (! $failed) {
+            $failed = true;
+            throw new RuntimeException('DB の障害');
+        }
+    });
+
+    $payload = [
+        'category_id' => $this->category->id,
+        'title' => 'DB の保存が一度失敗する記事',
+        'summary' => 'テスト概要',
+        'body' => "![](/{$bodyKey})",
+        'status' => 'published',
+        'header_image_key' => $headerKey,
+    ];
+
+    $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)->assertStatus(500);
+
+    expect($storage->keys())->toBe([$headerKey, $bodyKey]);
+
+    // 同じ内容で送り直すと保存でき、一時置き場は消える
+    $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)->assertStatus(201);
+
+    expect($storage->keys())->toBe([
+        'images/18181818-1818-4181-8181-181818181818.png',
+        'images/19191919-1919-4191-8191-191919191919.png',
+    ]);
+});
+
+test('コピーが S3 の障害で失敗したら、先にコピーした画像を消し、一時置き場は残す', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $headerKey = 'tmp/20202020-2020-4202-8202-202020202020.png';
+    $bodyKey = 'tmp/21212121-2121-4212-8212-212121212121.png';
+    $storage->put($headerKey)->put($bodyKey);
+    // ヘッダー画像のコピーのあと、本文の画像のコピーで S3 が失敗する
+    $storage->failCopy = function (string $from) use ($bodyKey) {
+        if ($from === $bodyKey) {
+            throw new RuntimeException('S3 の障害');
+        }
+    };
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => 'コピーが失敗する記事',
+            'summary' => 'テスト概要',
+            'body' => "![](/{$bodyKey})",
+            'status' => 'published',
+            'header_image_key' => $headerKey,
+        ])
+        ->assertStatus(500);
+
+    expect($storage->keys())->toBe([$headerKey, $bodyKey]);
+});
+
 test('ヘッダー画像と本文で同じ画像を使っても、確かめるのは一度だけ', function () {
     useMinioStorage();
     $storage = fakeImageStorage();

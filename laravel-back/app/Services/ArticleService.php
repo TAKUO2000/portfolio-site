@@ -16,6 +16,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class ArticleService
 {
@@ -23,11 +24,11 @@ class ArticleService
 
     public function store(User $user, array $data): Article
     {
-        // 画像の移動はトランザクションの外。ストレージはロールバックできないため、
-        // DB側が失敗して残ったオブジェクトはimages:pruneに回収させる
+        // 画像のコピーはトランザクションの外（ストレージはロールバックできない）。
+        // 一時置き場は、DB の保存が成功してから消す（saveWithImages）
         $images = $this->publishImages(null, $data);
 
-        return DB::transaction(function () use ($user, $data, $images) {
+        return $this->saveWithImages($images, function () use ($user, $data, $images) {
             $article = $user->articles()->create([
                 'category_id'  => $data['category_id'],
                 'title'        => $data['title'],
@@ -49,7 +50,7 @@ class ArticleService
     {
         $images = $this->publishImages($article, $data);
 
-        return DB::transaction(function () use ($article, $data, $images) {
+        return $this->saveWithImages($images, function () use ($article, $data, $images) {
             $article->update([
                 'category_id'  => $data['category_id'],
                 'title'        => $data['title'],
@@ -66,6 +67,47 @@ class ArticleService
             // ArticleEditResourceが参照するリレーションを揃えてから返す
             return $article->load(['category', 'tags', 'images']);
         });
+    }
+
+    /**
+     * 記事を DB に保存し、成功したら一時置き場の画像を消す。
+     * DB の保存が失敗したら、この保存で本置き場へコピーした画像を消し、一時置き場はそのまま残す
+     * （同じ内容で送り直せるように）
+     *
+     * @param  array{copied: array<string, string>}  $images  publishImages() の結果
+     */
+    private function saveWithImages(array $images, \Closure $save): Article
+    {
+        try {
+            $article = DB::transaction($save);
+        } catch (Throwable $e) {
+            $this->discardImages(array_values($images['copied']));
+
+            throw $e;
+        }
+
+        $this->discardImages(array_keys($images['copied']));
+
+        return $article;
+    }
+
+    /**
+     * 後始末として画像を消す。失敗しても記録だけして、呼び出し元の結果（成功・例外）を変えない
+     * （一時置き場は1日で消え、本置き場の参照されない画像は images:prune が回収する）
+     *
+     * @param  list<string>  $keys
+     */
+    private function discardImages(array $keys): void
+    {
+        if ($keys === []) {
+            return;
+        }
+
+        try {
+            $this->imageStorage->delete($keys);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -172,8 +214,8 @@ class ArticleService
         }
 
         // この保存で本置き場へコピーしたキー（一時置き場 => 本置き場）。ヘッダー画像と本文で同じ画像を
-        // 使っていても、コピーは一度だけにする。一時置き場は、すべてのコピーが済んでからまとめて消す。
-        // 途中で失敗したら、コピーした分を消して一時置き場をそのまま残す（同じ内容で送り直せるように）
+        // 使っていても、コピーは一度だけにする。一時置き場は、DB の保存が成功してから消す（saveWithImages）。
+        // 途中で失敗したら（どんな例外でも）、コピーした分を消して一時置き場をそのまま残す（同じ内容で送り直せるように）
         $copied = [];
 
         try {
@@ -202,19 +244,13 @@ class ArticleService
                 $body = str_replace($key, $published, $body);
                 $bodyKeys[] = $published;
             }
-        } catch (ValidationException $e) {
-            if ($copied !== []) {
-                $this->imageStorage->delete(array_values($copied));
-            }
+        } catch (Throwable $e) {
+            $this->discardImages(array_values($copied));
 
             throw $e;
         }
 
-        if ($copied !== []) {
-            $this->imageStorage->delete(array_keys($copied));
-        }
-
-        return ['header_key' => $headerKey, 'body' => $body, 'body_keys' => $bodyKeys];
+        return ['header_key' => $headerKey, 'body' => $body, 'body_keys' => $bodyKeys, 'copied' => $copied];
     }
 
     /**
