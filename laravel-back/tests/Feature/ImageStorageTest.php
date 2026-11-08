@@ -54,14 +54,14 @@ test('キーが空なら、SDKの既定の探索で見つけた認証情報で�
 });
 
 /**
- * S3 への応答を差し替えた ImageStorage。copyObject の結果を $result で決める
+ * S3 への応答を差し替えた ImageStorage。呼ばれた順に $results を返す
  */
-function imageStorageRespondingWith(callable $result): ImageStorage
+function imageStorageRespondingWith(callable|Aws\ResultInterface ...$results): ImageStorage
 {
     config(['filesystems.disks.s3.bucket' => 'test-bucket']);
 
     $mock = new Aws\MockHandler;
-    $mock->append($result);
+    $mock->append(...$results);
 
     $client = new Aws\S3\S3Client([
         'region'      => 'ap-northeast-1',
@@ -94,23 +94,84 @@ test('移動元が無い以外の S3 のエラーは、そのまま投げる', f
         ->toThrow(Aws\S3\Exception\S3Exception::class);
 });
 
-test('オブジェクトが無いとき（HEAD が 404）は exists が false を返す', function () {
+test('headObject の応答から、大きさと種類を返す', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\Result(['ContentLength' => 1234, 'ContentType' => 'image/png', 'ETag' => '"abc"'])
+    );
+
+    expect($storage->metadata('tmp/a.png'))->toBe(['size' => 1234, 'type' => 'image/png', 'etag' => '"abc"']);
+});
+
+test('オブジェクトが無いとき（HEAD が 404）は metadata が null を返す', function () {
     $storage = imageStorageRespondingWith(
         fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
             'Not Found', $command, ['response' => new GuzzleHttp\Psr7\Response(404)]
         )
     );
 
-    expect($storage->exists('tmp/a.png'))->toBeFalse();
+    expect($storage->metadata('tmp/a.png'))->toBeNull();
 });
 
-test('404 以外のエラーのときは、exists は「無い」と取り違えずに投げる', function () {
+test('404 以外のエラーのときは、metadata は「無い」と取り違えずに投げる', function () {
     $storage = imageStorageRespondingWith(
         fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
             'Forbidden', $command, ['response' => new GuzzleHttp\Psr7\Response(403)]
         )
     );
 
-    expect(fn () => $storage->exists('tmp/a.png'))->toThrow(Aws\S3\Exception\S3Exception::class);
+    expect(fn () => $storage->metadata('tmp/a.png'))->toThrow(Aws\S3\Exception\S3Exception::class);
 });
+
+test('move に etag を渡すと、CopySourceIfMatch を付けてコピーする', function () {
+    $sent = null;
+    $storage = imageStorageRespondingWith(
+        function (Aws\CommandInterface $command) use (&$sent) {
+            $sent = $command->toArray();
+
+            return new Aws\Result([]);
+        },
+        // コピーのあとの削除
+        new Aws\Result([]),
+    );
+
+    $storage->move('tmp/a.png', 'images/a.png', '"abc"');
+
+    expect($sent['CopySourceIfMatch'])->toBe('"abc"');
+});
+
+test('etag と中身が違うとき（412）は ImageChangedException を投げる', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
+            'Precondition Failed', $command, ['code' => 'PreconditionFailed', 'response' => new GuzzleHttp\Psr7\Response(412)]
+        )
+    );
+
+    expect(fn () => $storage->move('tmp/a.png', 'images/a.png', '"abc"'))
+        ->toThrow(App\Services\ImageChangedException::class);
+});
+
+test('readHead は先頭のバイトだけを Range で取る', function () {
+    $sent = null;
+    $storage = imageStorageRespondingWith(function (Aws\CommandInterface $command) use (&$sent) {
+        $sent = $command->toArray();
+
+        return new Aws\Result(['Body' => GuzzleHttp\Psr7\Utils::streamFor("\x89PNG\r\n\x1a\n1234")]);
+    });
+
+    expect($storage->readHead('tmp/a.png', 12))->toBe("\x89PNG\r\n\x1a\n1234")
+        ->and($sent['Range'])->toBe('bytes=0-11');
+});
+
+test('readHead に etag を渡すと IfMatch を付けて読み、412 と 416 は ImageChangedException にする', function (int $status) {
+    $sent = null;
+    $storage = imageStorageRespondingWith(function (Aws\CommandInterface $command) use (&$sent, $status) {
+        $sent = $command->toArray();
+
+        return new Aws\S3\Exception\S3Exception('changed', $command, ['response' => new GuzzleHttp\Psr7\Response($status)]);
+    });
+
+    expect(fn () => $storage->readHead('tmp/a.png', 12, '"abc"'))
+        ->toThrow(App\Services\ImageChangedException::class)
+        ->and($sent['IfMatch'])->toBe('"abc"');
+})->with([412, 416]);
 

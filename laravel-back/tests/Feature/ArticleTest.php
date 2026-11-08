@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Requests\GetImageUploadUrlRequest;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Reaction;
@@ -489,6 +490,379 @@ test('本文の画像が見つからないときは、ヘッダー画像も動�
     $payload['body'] = '画像なしの本文';
     $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)
         ->assertStatus(201);
+});
+
+test('アップロードされた画像が上限より大きいとバリデーションエラーになり、一時置き場から消される', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/99999999-9999-4999-8999-999999999999.png';
+    // 署名付きURLは大きさを縛れないので、申告より大きいファイルが置かれうる
+    $storage->put($key, size: GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES + 1, type: 'image/png');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '大きすぎる画像の記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    expect($storage->keys())->toBe([]);
+});
+
+test('アップロードされた画像の種類がキーの拡張子と違うとバリデーションエラーになり、一時置き場から消される', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png';
+    // image/png と申告して発行した URL に、HTML を置かれた場合
+    $storage->put($key, type: 'text/html');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '画像でないファイルを貼った記事',
+            'summary' => 'テスト概要',
+            'body' => "![](/{$key})",
+            'status' => 'published',
+            'header_image_key' => pendingImageKey(),
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['body']);
+
+    expect($storage->keys())->not->toContain($key)
+        ->and(collect($storage->keys())->filter(fn ($k) => str_starts_with($k, 'images/'))->all())->toBe([]);
+});
+
+test('種類を画像と偽っても、中身が画像でなければバリデーションエラーになり、一時置き場から消される', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.png';
+    // Content-Type は PUT する人が自由に決められるので、HTML を image/png と名乗って置ける
+    $storage->put($key, type: 'image/png', head: '<html><body>');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '画像と偽ったファイルの記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    expect($storage->keys())->toBe([]);
+});
+
+test('確かめたあとに画像を差し替えられたら、本置き場に移さずにバリデーションエラーになる', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/cccccccc-cccc-4ccc-8ccc-cccccccccccc.png';
+    $storage->put($key);
+    // 確かめたあと、移す直前に、署名付きURLで別のファイルを置き直された場合
+    $storage->beforeMove = fn (string $from) => $storage->put($from, type: 'image/png', head: '<html><body>');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '差し替えられた画像の記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    // 差し替えられた中身は確かめていないので、一時置き場からも消す
+    expect($storage->keys())->toBe([]);
+});
+
+test('JPEG・PNG・WebP・GIF の画像はどれも保存できる', function (string $extension) {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = "tmp/dddddddd-dddd-4ddd-8ddd-dddddddddddd.{$extension}";
+    $storage->put($key);
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => "{$extension} の画像の記事",
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(201);
+
+    expect($storage->keys())->toBe(["images/dddddddd-dddd-4ddd-8ddd-dddddddddddd.{$extension}"]);
+})->with(['jpg', 'png', 'webp', 'gif']);
+
+test('画像の大きさは 1 バイト以上 5MB 以下だけを受け付ける', function (int $size, int $status) {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee.png';
+    $storage->put($key, size: $size);
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => "{$size} バイトの画像の記事",
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus($status);
+})->with([
+    '0 バイト' => [0, 422],
+    'ちょうど 5MB' => [GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES, 201],
+    '5MB + 1 バイト' => [GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES + 1, 422],
+]);
+
+test('中身がその種類の画像でなければ、どの種類でもバリデーションエラーになる', function (string $extension) {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = "tmp/12121212-1212-4121-8121-121212121212.{$extension}";
+    // Content-Type はキーの拡張子に合わせて申告し、中身だけ HTML にする
+    $storage->put($key, head: '<html><body>');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => "中身が {$extension} でない記事",
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    expect($storage->keys())->toBe([]);
+})->with(['jpg', 'png', 'webp', 'gif']);
+
+test('Content-Type は大文字や付加情報を含めて完全に一致したときだけ受け付ける', function (string $type) {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/13131313-1313-4131-8131-131313131313.png';
+    // ブラウザは File.type（image/png）をそのまま送るので、ほかの書き方は受け付けない仕様にする
+    $storage->put($key, type: $type, head: "\x89PNG\r\n\x1a\n\0\0\0\0");
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => "Content-Type が {$type} の記事",
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422);
+})->with(['image/PNG', 'image/png; charset=binary']);
+
+test('先頭を読む前に差し替えられたら、バリデーションエラーになり、一時置き場から消される', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/14141414-1414-4141-8141-141414141414.png';
+    $storage->put($key);
+    // HEAD で確かめたあと、先頭を読む前に置き直された場合
+    $storage->beforeReadHead = function (string $k) use ($storage) {
+        $storage->beforeReadHead = null;
+        $storage->put($k, type: 'image/png', head: '<html><body>');
+    };
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '先頭を読む前に差し替えられた記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    expect($storage->keys())->toBe([]);
+});
+
+test('コピーの途中で差し替えが見つかったら、先にコピーした画像を消し、ほかの一時置き場の画像は残す', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $headerKey = 'tmp/15151515-1515-4151-8151-151515151515.png';
+    $bodyKey = 'tmp/16161616-1616-4161-8161-161616161616.png';
+    $storage->put($headerKey)->put($bodyKey);
+    // ヘッダー画像のコピーのあと、本文の画像をコピーする直前に、本文の画像を置き直された場合
+    $storage->beforeMove = function (string $from) use ($storage, $bodyKey) {
+        if ($from === $bodyKey) {
+            $storage->put($bodyKey, type: 'image/png', head: '<html><body>');
+        }
+    };
+
+    $payload = [
+        'category_id' => $this->category->id,
+        'title' => 'コピーの途中で差し替えられた記事',
+        'summary' => 'テスト概要',
+        'body' => "![](/{$bodyKey})",
+        'status' => 'published',
+        'header_image_key' => $headerKey,
+    ];
+
+    $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['body']);
+
+    // 本置き場には何も残らず、ヘッダー画像は一時置き場に残る（差し替えられた本文の画像は消す）
+    expect($storage->keys())->toBe([$headerKey]);
+
+    // 本文を直して同じヘッダー画像で送り直すと、保存できる
+    $storage->beforeMove = null;
+    $payload['body'] = '画像なしの本文';
+    $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)->assertStatus(201);
+});
+
+test('DB の保存が失敗したら、本置き場にコピーした画像を消し、一時置き場は残して送り直せる', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $headerKey = 'tmp/18181818-1818-4181-8181-181818181818.png';
+    $bodyKey = 'tmp/19191919-1919-4191-8191-191919191919.png';
+    $storage->put($headerKey)->put($bodyKey);
+
+    // 画像のコピーのあと、記事を作るところで DB が一度だけ失敗する
+    $failed = false;
+    Article::creating(function () use (&$failed) {
+        if (! $failed) {
+            $failed = true;
+            throw new RuntimeException('DB の障害');
+        }
+    });
+
+    $payload = [
+        'category_id' => $this->category->id,
+        'title' => 'DB の保存が一度失敗する記事',
+        'summary' => 'テスト概要',
+        'body' => "![](/{$bodyKey})",
+        'status' => 'published',
+        'header_image_key' => $headerKey,
+    ];
+
+    $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)->assertStatus(500);
+
+    expect($storage->keys())->toBe([$headerKey, $bodyKey]);
+
+    // 同じ内容で送り直すと保存でき、一時置き場は消える
+    $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)->assertStatus(201);
+
+    expect($storage->keys())->toBe([
+        'images/18181818-1818-4181-8181-181818181818.png',
+        'images/19191919-1919-4191-8191-191919191919.png',
+    ]);
+});
+
+test('コピーが S3 の障害で失敗したら、先にコピーした画像を消し、一時置き場は残す', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $headerKey = 'tmp/20202020-2020-4202-8202-202020202020.png';
+    $bodyKey = 'tmp/21212121-2121-4212-8212-212121212121.png';
+    $storage->put($headerKey)->put($bodyKey);
+    // ヘッダー画像のコピーのあと、本文の画像のコピーで S3 が失敗する
+    $storage->failCopy = function (string $from) use ($bodyKey) {
+        if ($from === $bodyKey) {
+            throw new RuntimeException('S3 の障害');
+        }
+    };
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => 'コピーが失敗する記事',
+            'summary' => 'テスト概要',
+            'body' => "![](/{$bodyKey})",
+            'status' => 'published',
+            'header_image_key' => $headerKey,
+        ])
+        ->assertStatus(500);
+
+    expect($storage->keys())->toBe([$headerKey, $bodyKey]);
+});
+
+test('不正な画像を消すのに失敗しても、バリデーションエラー（422）を返す', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/22222222-2222-4222-8222-222222222223.png';
+    $storage->put($key, type: 'image/png', head: '<html><body>');
+    $storage->failDelete = fn () => throw new RuntimeException('S3 の障害');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '消せない不正な画像の記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+});
+
+test('ヘッダー画像と本文で同じ画像を使っても、確かめるのは一度だけ', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/17171717-1717-4171-8171-171717171717.png';
+    $storage->put($key);
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '同じ画像を確かめる回数の記事',
+            'summary' => 'テスト概要',
+            'body' => "![](/{$key}) ![](/{$key})",
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(201);
+
+    expect($storage->metadataCalls[$key])->toBe(1);
+});
+
+test('記事の更新でも、不正な画像はバリデーションエラーになり、記事は変わらない', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+
+    $created = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '更新する記事',
+            'summary' => '概要',
+            'body' => '元の本文',
+            'status' => 'draft',
+            'header_image_key' => pendingImageKey(),
+        ])->assertStatus(201);
+
+    $key = 'tmp/ffffffff-ffff-4fff-8fff-ffffffffffff.png';
+    $storage->put($key, type: 'image/png', head: '<html><body>');
+
+    $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$created->json('data.id'), [
+            'category_id' => $this->category->id,
+            'title' => '更新する記事',
+            'summary' => '概要',
+            'body' => "![](/{$key})",
+            'status' => 'draft',
+            'header_image_key' => $created->json('data.header_image_key'),
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['body']);
+
+    expect(Article::first()->body)->toBe('元の本文')
+        ->and($storage->keys())->not->toContain($key);
 });
 
 test('アプリが発行した形式でないheader_image_keyはバリデーションエラーになる', function () {

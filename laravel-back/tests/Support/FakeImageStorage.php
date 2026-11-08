@@ -2,8 +2,11 @@
 
 namespace Tests\Support;
 
+use App\Http\Requests\GetImageUploadUrlRequest;
+use App\Services\ImageChangedException;
 use App\Services\ImageNotFoundException;
 use App\Services\ImageStorage;
+use Closure;
 use DateTimeInterface;
 use Generator;
 use Illuminate\Support\Carbon;
@@ -19,10 +22,50 @@ class FakeImageStorage extends ImageStorage
     /** @var array<string, DateTimeInterface> キー => 最終更新日時 */
     private array $objects = [];
 
-    /** 置かれたことにするオブジェクト。最終更新日時を指定すれば古いオブジェクトを再現できる */
-    public function put(string $key, ?DateTimeInterface $lastModified = null): static
+    /** @var array<string, array{size: int, type: string, etag: string, head: string}> キー => 大きさ・種類・中身の目印・先頭のバイト */
+    private array $metadata = [];
+
+    /** 先頭のバイト（マジックナンバー）。種類を省いたときに、それらしい中身にする */
+    private const HEADS = [
+        'image/png'  => "\x89PNG\r\n\x1a\n\0\0\0\0",
+        'image/jpeg' => "\xFF\xD8\xFF\xE0\0\0\0\0\0\0\0\0",
+        'image/gif'  => "GIF89a\0\0\0\0\0\0",
+        'image/webp' => "RIFF\0\0\0\0WEBP",
+    ];
+
+    private int $version = 0;
+
+    /** copy() の直前に呼ばれる。確かめてから移すまでの間の差し替えを再現する */
+    public ?Closure $beforeMove = null;
+
+    /** delete() の直前に呼ばれ、例外を投げれば削除が失敗する（S3 の障害の再現） */
+    public ?Closure $failDelete = null;
+
+    /** copy() の直前に呼ばれ、例外を投げればコピーが失敗する（S3 の障害の再現） */
+    public ?Closure $failCopy = null;
+
+    /** readHead() の直前に呼ばれる。HEAD で確かめてから先頭を読むまでの間の差し替えを再現する */
+    public ?Closure $beforeReadHead = null;
+
+    /** metadata() が呼ばれた回数（キーごと） */
+    public array $metadataCalls = [];
+
+    /**
+     * 置かれたことにするオブジェクト。最終更新日時を指定すれば古いオブジェクトを再現できる。
+     * 大きさ・種類・先頭のバイトを省くと、キーの拡張子に合った小さな画像が置かれたことにする。
+     * 置き直すたびに中身の目印（ETag）が変わる
+     */
+    public function put(string $key, ?DateTimeInterface $lastModified = null, int $size = 1000, ?string $type = null, ?string $head = null): static
     {
+        $type ??= (string) array_search(pathinfo($key, PATHINFO_EXTENSION), GetImageUploadUrlRequest::EXTENSIONS_BY_MEDIA_TYPE, true);
+
         $this->objects[$key] = $lastModified ?? Carbon::now();
+        $this->metadata[$key] = [
+            'size' => $size,
+            'type' => $type,
+            'etag' => '"etag-' . (++$this->version) . '"',
+            'head' => $head ?? (self::HEADS[$type] ?? ''),
+        ];
 
         return $this;
     }
@@ -36,19 +79,58 @@ class FakeImageStorage extends ImageStorage
         return $keys;
     }
 
-    public function exists(string $key): bool
+    public function metadata(string $key): ?array
     {
-        return isset($this->objects[$key]);
+        $this->metadataCalls[$key] = ($this->metadataCalls[$key] ?? 0) + 1;
+
+        if (! isset($this->objects[$key])) {
+            return null;
+        }
+
+        ['size' => $size, 'type' => $type, 'etag' => $etag] = $this->metadata[$key];
+
+        return ['size' => $size, 'type' => $type, 'etag' => $etag];
     }
 
-    public function move(string $from, string $to): void
+    public function readHead(string $key, int $length, ?string $ifMatch = null): string
     {
+        if ($this->beforeReadHead !== null) {
+            ($this->beforeReadHead)($key);
+        }
+
+        if ($ifMatch !== null && $this->metadata[$key]['etag'] !== $ifMatch) {
+            throw new ImageChangedException($key);
+        }
+
+        return substr($this->metadata[$key]['head'], 0, $length);
+    }
+
+    public function move(string $from, string $to, ?string $ifMatch = null): void
+    {
+        $this->copy($from, $to, $ifMatch);
+        unset($this->objects[$from], $this->metadata[$from]);
+    }
+
+    public function copy(string $from, string $to, ?string $ifMatch = null): void
+    {
+        if ($this->failCopy !== null) {
+            ($this->failCopy)($from);
+        }
+
+        if ($this->beforeMove !== null) {
+            ($this->beforeMove)($from);
+        }
+
         if (! isset($this->objects[$from])) {
             throw new ImageNotFoundException($from);
         }
 
+        if ($ifMatch !== null && $this->metadata[$from]['etag'] !== $ifMatch) {
+            throw new ImageChangedException($from);
+        }
+
         $this->objects[$to] = $this->objects[$from];
-        unset($this->objects[$from]);
+        $this->metadata[$to] = $this->metadata[$from];
     }
 
     public function each(string $prefix): Generator
@@ -62,8 +144,12 @@ class FakeImageStorage extends ImageStorage
 
     public function delete(array $keys): void
     {
+        if ($this->failDelete !== null) {
+            ($this->failDelete)($keys);
+        }
+
         foreach ($keys as $key) {
-            unset($this->objects[$key]);
+            unset($this->objects[$key], $this->metadata[$key]);
         }
     }
 }
