@@ -670,8 +670,13 @@ docker rm -f restore-test && rm dump.sql.gz
 # EC2 の中で。dump.sql.gz は管理用のユーザーで S3 から取って、Session Manager などで EC2 に置く
 sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
 cd /opt/portfolio
+DUMP=/home/ssm-user/dump.sql.gz   # 置いた場所を絶対パスで指定する（root のシェルでは ~ が /root になるため）
+
+# 止める前に、ファイルがあって壊れていないかを確かめる（止めたあとで失敗すると、サイトが止まったままになる）
+gzip -t "$DUMP" && zcat "$DUMP" | tail -n 1 | grep -q '^-- Dump completed' && echo OK
+
 docker compose -f docker-compose.prod.yml stop app scheduler nginx
-gunzip -c dump.sql.gz | docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
+gunzip -c "$DUMP" | docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
   'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE"'
 docker compose -f docker-compose.prod.yml up -d
 ```
