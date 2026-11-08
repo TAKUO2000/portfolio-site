@@ -76,7 +76,7 @@ class ImageStorage
      * HEAD の応答には本文が無く、エラーの種類（NoSuchKey など）が分からないので、404 かどうかで決める。
      * 404 以外のエラー（権限など）は「無い」と取り違えないよう、そのまま投げる
      *
-     * etag は中身の目印。move() に渡すと、確かめたときと中身が同じときだけ移す
+     * etag は中身の目印。copy()・move()・readHead() に渡すと、確かめたときと中身が同じときだけ扱う
      *
      * @return array{size: int, type: string, etag: string}|null
      */
@@ -139,13 +139,26 @@ class ImageStorage
      * 一時置き場のオブジェクトを本置き場へ移す。
      * S3にはリネームが無いため、コピーしてから元を消す。
      *
-     * $ifMatch（metadata() の etag）を渡すと、中身がそのときと同じときだけ移す
-     * （確かめてから移すまでの間に、署名付きURLで差し替えられていないように）
-     *
      * @throws ImageNotFoundException 移動元が無いとき（アップロードの失敗や、一時置き場の期限切れ）
      * @throws ImageChangedException  $ifMatch と中身が違うとき
      */
     public function move(string $from, string $to, ?string $ifMatch = null): void
+    {
+        $this->copy($from, $to, $ifMatch);
+
+        $this->serverClient()->deleteObject(['Bucket' => $this->config('bucket'), 'Key' => $from]);
+    }
+
+    /**
+     * オブジェクトをコピーする（元は消さない）。
+     *
+     * $ifMatch（metadata() の etag）を渡すと、中身がそのときと同じときだけコピーする
+     * （確かめてからコピーするまでの間に、署名付きURLで差し替えられていないように）
+     *
+     * @throws ImageNotFoundException コピー元が無いとき（アップロードの失敗や、一時置き場の期限切れ）
+     * @throws ImageChangedException  $ifMatch と中身が違うとき
+     */
+    public function copy(string $from, string $to, ?string $ifMatch = null): void
     {
         $bucket = $this->config('bucket');
 
@@ -172,8 +185,6 @@ class ImageStorage
 
             throw $e;
         }
-
-        $this->serverClient()->deleteObject(['Bucket' => $bucket, 'Key' => $from]);
     }
 
     /**

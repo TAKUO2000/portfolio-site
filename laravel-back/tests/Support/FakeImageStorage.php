@@ -35,8 +35,14 @@ class FakeImageStorage extends ImageStorage
 
     private int $version = 0;
 
-    /** move() の直前に呼ばれる。確かめてから移すまでの間の差し替えを再現する */
+    /** copy() の直前に呼ばれる。確かめてから移すまでの間の差し替えを再現する */
     public ?Closure $beforeMove = null;
+
+    /** readHead() の直前に呼ばれる。HEAD で確かめてから先頭を読むまでの間の差し替えを再現する */
+    public ?Closure $beforeReadHead = null;
+
+    /** metadata() が呼ばれた回数（キーごと） */
+    public array $metadataCalls = [];
 
     /**
      * 置かれたことにするオブジェクト。最終更新日時を指定すれば古いオブジェクトを再現できる。
@@ -69,6 +75,8 @@ class FakeImageStorage extends ImageStorage
 
     public function metadata(string $key): ?array
     {
+        $this->metadataCalls[$key] = ($this->metadataCalls[$key] ?? 0) + 1;
+
         if (! isset($this->objects[$key])) {
             return null;
         }
@@ -80,6 +88,10 @@ class FakeImageStorage extends ImageStorage
 
     public function readHead(string $key, int $length, ?string $ifMatch = null): string
     {
+        if ($this->beforeReadHead !== null) {
+            ($this->beforeReadHead)($key);
+        }
+
         if ($ifMatch !== null && $this->metadata[$key]['etag'] !== $ifMatch) {
             throw new ImageChangedException($key);
         }
@@ -88,6 +100,12 @@ class FakeImageStorage extends ImageStorage
     }
 
     public function move(string $from, string $to, ?string $ifMatch = null): void
+    {
+        $this->copy($from, $to, $ifMatch);
+        unset($this->objects[$from], $this->metadata[$from]);
+    }
+
+    public function copy(string $from, string $to, ?string $ifMatch = null): void
     {
         if ($this->beforeMove !== null) {
             ($this->beforeMove)($from);
@@ -103,7 +121,6 @@ class FakeImageStorage extends ImageStorage
 
         $this->objects[$to] = $this->objects[$from];
         $this->metadata[$to] = $this->metadata[$from];
-        unset($this->objects[$from], $this->metadata[$from]);
     }
 
     public function each(string $prefix): Generator

@@ -171,34 +171,47 @@ class ArticleService
             }
         }
 
-        // この保存で移したキー（一時置き場 => 本置き場）。ヘッダー画像と本文で同じ画像を使っていても、
-        // 移すのは一度だけにする（二度目は移動元が無く失敗するため）
-        $moved = [];
+        // この保存で本置き場へコピーしたキー（一時置き場 => 本置き場）。ヘッダー画像と本文で同じ画像を
+        // 使っていても、コピーは一度だけにする。一時置き場は、すべてのコピーが済んでからまとめて消す。
+        // 途中で失敗したら、コピーした分を消して一時置き場をそのまま残す（同じ内容で送り直せるように）
+        $copied = [];
 
-        // ヘッダー画像は本文外の明示的な項目なので、解決できなければ黙って捨てずに弾く
-        $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys, $verified, $moved, 'header_image_key');
+        try {
+            // ヘッダー画像は本文外の明示的な項目なので、解決できなければ黙って捨てずに弾く
+            $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys, $verified, $copied, 'header_image_key');
 
-        if ($headerKey === null) {
-            throw ValidationException::withMessages([
-                'header_image_key' => 'この記事の画像ではありません。',
-            ]);
-        }
-
-        $body = $data['body'];
-        $bodyKeys = [];
-
-        // 同じ画像が複数回貼られていても移動は一度だけ（二度目は移動元が無く失敗するため）
-        foreach ($bodyCandidates as $key) {
-            $published = $this->publishKey($key, $ownedKeys, $verified, $moved, 'body');
-
-            if ($published === null) {
-                // 本文は自由記述なので、この記事のものでないキーはエラーにせず参照として扱わない。
-                // 見た目も変えないため、記事の書き方（コードブロック内の例示など）を壊さずに済む
-                continue;
+            if ($headerKey === null) {
+                throw ValidationException::withMessages([
+                    'header_image_key' => 'この記事の画像ではありません。',
+                ]);
             }
 
-            $body = str_replace($key, $published, $body);
-            $bodyKeys[] = $published;
+            $body = $data['body'];
+            $bodyKeys = [];
+
+            // 同じ画像が複数回貼られていてもコピーは一度だけ
+            foreach ($bodyCandidates as $key) {
+                $published = $this->publishKey($key, $ownedKeys, $verified, $copied, 'body');
+
+                if ($published === null) {
+                    // 本文は自由記述なので、この記事のものでないキーはエラーにせず参照として扱わない。
+                    // 見た目も変えないため、記事の書き方（コードブロック内の例示など）を壊さずに済む
+                    continue;
+                }
+
+                $body = str_replace($key, $published, $body);
+                $bodyKeys[] = $published;
+            }
+        } catch (ValidationException $e) {
+            if ($copied !== []) {
+                $this->imageStorage->delete(array_values($copied));
+            }
+
+            throw $e;
+        }
+
+        if ($copied !== []) {
+            $this->imageStorage->delete(array_keys($copied));
         }
 
         return ['header_key' => $headerKey, 'body' => $body, 'body_keys' => $bodyKeys];
@@ -283,7 +296,7 @@ class ArticleService
     /**
      * キーを本置き場のものに解決する。
      *
-     * - 一時置き場のキー : 本置き場へ移して新しいキーを返す
+     * - 一時置き場のキー : 本置き場へコピーして新しいキーを返す（一時置き場は publishImages がまとめて消す）
      * - 本置き場のキー   : 既にこの記事が参照している場合だけ引き継ぐ。そうしないと
      *                      他の記事の画像を指定するだけで自分の記事に紐付けられてしまう
      *
@@ -293,19 +306,19 @@ class ArticleService
      * バリデーションエラーにする。そのまま保存すると、読めない画像が記事に残るため
      *
      * @param  array<string, string>  $verified  確かめたときの中身の目印（一時置き場のキー => ETag）
-     * @param  array<string, string>  $moved  この保存で移したキー（一時置き場 => 本置き場）。移したら書き足す
+     * @param  array<string, string>  $copied  この保存でコピーしたキー（一時置き場 => 本置き場）。コピーしたら書き足す
      */
-    private function publishKey(string $key, array $ownedKeys, array $verified, array &$moved, string $field): ?string
+    private function publishKey(string $key, array $ownedKeys, array $verified, array &$copied, string $field): ?string
     {
         if (str_starts_with($key, ImageStorage::TMP_PREFIX)) {
-            if (isset($moved[$key])) {
-                return $moved[$key];
+            if (isset($copied[$key])) {
+                return $copied[$key];
             }
 
             $published = ImageStorage::IMAGE_PREFIX . substr($key, strlen(ImageStorage::TMP_PREFIX));
 
             try {
-                $this->imageStorage->move($key, $published, $verified[$key] ?? null);
+                $this->imageStorage->copy($key, $published, $verified[$key] ?? null);
             } catch (ImageNotFoundException) {
                 // 先に ensureUploaded で確かめているので、ここに来るのは、確かめたあとに消えたときだけ
                 throw $this->imageNotFound($field);
@@ -316,7 +329,7 @@ class ArticleService
                 throw $this->imageChanged($field);
             }
 
-            return $moved[$key] = $published;
+            return $copied[$key] = $published;
         }
 
         return isset($ownedKeys[$key]) ? $key : null;
