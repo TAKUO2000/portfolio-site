@@ -399,6 +399,20 @@ SSH は開けていないので、Session Manager で接続します。手元に
 aws ssm start-session --target "$(terraform output -raw instance_id)"
 ```
 
+Session Manager で入ると、`ssm-user` というユーザーになります。`.env` などの秘密を置いている `/opt/portfolio` は root だけが入れる（パーミッション 700）ので、compose を使うときは `sudo -i` で root のシェルに切り替えてから `cd` します。
+
+```bash
+sudo -i
+cd /opt/portfolio
+docker compose -f docker-compose.prod.yml ps
+```
+
+`php artisan tinker` は、設定を書こうとして `Writing to directory /var/www/.config/psysh is not allowed.` という警告を出します（イメージは `www-data` で動かし、書き込めるのを `storage/` と `bootstrap/cache/` だけにしているため）。動きには影響しませんが、`-e HOME=/tmp` を付けると出ません。
+
+```bash
+docker compose -f docker-compose.prod.yml exec -e HOME=/tmp app php artisan tinker --execute='echo App\Models\User::count();'
+```
+
 ### 本番のリソースを確かめる
 
 EC2 の中で：
@@ -434,26 +448,28 @@ tfstate に秘密が入っていないことは、[上の手順](#確かめる)�
 MySQL の root のパスワードは誰も持ちません（`MYSQL_RANDOM_ROOT_PASSWORD`。[EC2 上のコンテナ構成](design.md#ec2-上のコンテナ構成)）。ふだんの作業は、アプリ用のユーザー（`.env` の `DB_USERNAME`。`DB_DATABASE` のすべての権限を持つ）で行います。
 
 ```bash
+sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
 cd /opt/portfolio
 # アプリ用のユーザーで入る（パスワードは .env の DB_PASSWORD）
-sudo docker compose -f docker-compose.prod.yml exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'
+docker compose -f docker-compose.prod.yml exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'
 
 # バックアップもアプリ用のユーザーで取る。PROCESS の権限が無いので --no-tablespaces を付ける（#114 で timer にする）
-sudo docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
+docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
   'mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --single-transaction --no-tablespaces "$MYSQL_DATABASE"' > dump.sql
 ```
 
 ユーザーの作り直しや権限の付け直しなど、root でしかできない作業が要るときは、MySQL を権限の確認なしで起動し直して、root のパスワードを設定します。その間は（コンテナの中からなら）誰でも DB に入れるので、API を止めてから行い、終わったら元に戻します。動いている `mysql` も止めます（同じ `/data/mysql` を2つの mysqld が開くと、InnoDB のロックが取れずに起動できない）。
 
 ```bash
+sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
 cd /opt/portfolio
-sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx mysql
-sudo docker compose -f docker-compose.prod.yml run --rm -d --name mysql-recovery mysql \
+docker compose -f docker-compose.prod.yml stop app scheduler nginx mysql
+docker compose -f docker-compose.prod.yml run --rm -d --name mysql-recovery mysql \
   --skip-grant-tables --skip-networking
-sudo docker exec -it mysql-recovery mysql   # 中で FLUSH PRIVILEGES; のあと ALTER USER 'root'@'localhost' IDENTIFIED BY '...'; など
-sudo docker stop mysql-recovery
-sudo docker ps --filter name=mysql-recovery --format '{{.Names}}'   # 何も出ないこと（止まっている）
-sudo docker compose -f docker-compose.prod.yml up -d
+docker exec -it mysql-recovery mysql   # 中で FLUSH PRIVILEGES; のあと ALTER USER 'root'@'localhost' IDENTIFIED BY '...'; など
+docker stop mysql-recovery
+docker ps --filter name=mysql-recovery --format '{{.Names}}'   # 何も出ないこと（止まっている）
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 root のパスワードを設定した場合は、作業が終わったら `ALTER USER 'root'@'localhost' ACCOUNT LOCK;` で使えなくするか、値を Parameter Store に置かずに控えないでおきます。
@@ -519,9 +535,10 @@ aws sts get-caller-identity --query Account --output text | gh secret set AWS_AC
 GitHub の Actions の画面で「Deploy backend」の結果を見ます。最後のステップに、EC2 の上で実行したデプロイの出力（`docker compose ps` など）が出ます。EC2 の中で確かめるときは、Session Manager で入ります。
 
 ```bash
+sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
 cd /opt/portfolio
-sudo docker compose -f docker-compose.prod.yml ps
-sudo docker compose -f docker-compose.prod.yml logs --tail 100 app
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs --tail 100 app
 ```
 
 ### デプロイの手順（SSM ドキュメント）を直したとき
@@ -650,11 +667,13 @@ docker rm -f restore-test && rm dump.sql.gz
 本番の DB を mysqldump から戻すときは、`app`・`scheduler`・`nginx` を止めてから、アプリ用のユーザーで流し込みます（`DB_DATABASE` のすべての権限を持つ）。
 
 ```bash
-# EC2 の中で（/opt/portfolio）。dump.sql.gz は管理用のユーザーで S3 から取って、Session Manager などで EC2 に置く
-sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx
-gunzip -c dump.sql.gz | sudo docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
+# EC2 の中で。dump.sql.gz は管理用のユーザーで S3 から取って、Session Manager などで EC2 に置く
+sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
+cd /opt/portfolio
+docker compose -f docker-compose.prod.yml stop app scheduler nginx
+gunzip -c dump.sql.gz | docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
   'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE"'
-sudo docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 データ用 EBS ごと戻すときは、DLM のスナップショットから新しいボリュームを作って付け替えます。データ用 EBS は Terraform（`envs/prod` の `aws_ebs_volume.data`、`prevent_destroy`）が管理しているので、付け替えたら Terraform の状態も合わせる必要があります。手順は、必要になったときに決めます。
