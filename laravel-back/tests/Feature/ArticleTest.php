@@ -579,7 +579,82 @@ test('確かめたあとに画像を差し替えられたら、本置き場に�
         ->assertStatus(422)
         ->assertJsonValidationErrors(['header_image_key']);
 
-    expect(collect($storage->keys())->filter(fn ($k) => str_starts_with($k, 'images/'))->all())->toBe([]);
+    // 差し替えられた中身は確かめていないので、一時置き場からも消す
+    expect($storage->keys())->toBe([]);
+});
+
+test('JPEG・PNG・WebP・GIF の画像はどれも保存できる', function (string $extension) {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = "tmp/dddddddd-dddd-4ddd-8ddd-dddddddddddd.{$extension}";
+    $storage->put($key);
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => "{$extension} の画像の記事",
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(201);
+
+    expect($storage->keys())->toBe(["images/dddddddd-dddd-4ddd-8ddd-dddddddddddd.{$extension}"]);
+})->with(['jpg', 'png', 'webp', 'gif']);
+
+test('画像の大きさは 1 バイト以上 5MB 以下だけを受け付ける', function (int $size, int $status) {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee.png';
+    $storage->put($key, size: $size);
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => "{$size} バイトの画像の記事",
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus($status);
+})->with([
+    '0 バイト' => [0, 422],
+    'ちょうど 5MB' => [GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES, 201],
+]);
+
+test('記事の更新でも、不正な画像はバリデーションエラーになり、記事は変わらない', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+
+    $created = $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '更新する記事',
+            'summary' => '概要',
+            'body' => '元の本文',
+            'status' => 'draft',
+            'header_image_key' => pendingImageKey(),
+        ])->assertStatus(201);
+
+    $key = 'tmp/ffffffff-ffff-4fff-8fff-ffffffffffff.png';
+    $storage->put($key, type: 'image/png', head: '<html><body>');
+
+    $this->actingAs($this->adminUser)
+        ->putJson('/api/articles/'.$created->json('data.id'), [
+            'category_id' => $this->category->id,
+            'title' => '更新する記事',
+            'summary' => '概要',
+            'body' => "![](/{$key})",
+            'status' => 'draft',
+            'header_image_key' => $created->json('data.header_image_key'),
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['body']);
+
+    expect(Article::first()->body)->toBe('元の本文')
+        ->and($storage->keys())->not->toContain($key);
 });
 
 test('アプリが発行した形式でないheader_image_keyはバリデーションエラーになる', function () {

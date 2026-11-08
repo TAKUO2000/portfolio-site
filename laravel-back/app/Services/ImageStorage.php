@@ -104,15 +104,33 @@ class ImageStorage
 
     /**
      * オブジェクトの先頭の数バイト。ファイルの種類をマジックナンバーで確かめるのに使う
-     * （Content-Type は PUT した人が自由に決められるので、それだけでは種類を確かめられない）
+     * （Content-Type は PUT した人が自由に決められるので、それだけでは種類を確かめられない）。
+     *
+     * $ifMatch（metadata() の etag）を渡すと、そのときと同じ中身だけを読む
+     *
+     * @throws ImageChangedException $ifMatch と中身が違うとき（412）、または中身が空に差し替えられて範囲を読めないとき（416）
      */
-    public function readHead(string $key, int $length): string
+    public function readHead(string $key, int $length, ?string $ifMatch = null): string
     {
-        $result = $this->serverClient()->getObject([
+        $params = [
             'Bucket' => $this->config('bucket'),
             'Key'    => $key,
             'Range'  => 'bytes=0-' . ($length - 1),
-        ]);
+        ];
+
+        if ($ifMatch !== null) {
+            $params['IfMatch'] = $ifMatch;
+        }
+
+        try {
+            $result = $this->serverClient()->getObject($params);
+        } catch (S3Exception $e) {
+            if (in_array($e->getStatusCode(), [412, 416], true)) {
+                throw new ImageChangedException($key);
+            }
+
+            throw $e;
+        }
 
         return (string) $result['Body'];
     }

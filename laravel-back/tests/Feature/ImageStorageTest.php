@@ -162,3 +162,16 @@ test('readHead は先頭のバイトだけを Range で取る', function () {
         ->and($sent['Range'])->toBe('bytes=0-11');
 });
 
+test('readHead に etag を渡すと IfMatch を付けて読み、412 と 416 は ImageChangedException にする', function (int $status) {
+    $sent = null;
+    $storage = imageStorageRespondingWith(function (Aws\CommandInterface $command) use (&$sent, $status) {
+        $sent = $command->toArray();
+
+        return new Aws\S3\Exception\S3Exception('changed', $command, ['response' => new GuzzleHttp\Psr7\Response($status)]);
+    });
+
+    expect(fn () => $storage->readHead('tmp/a.png', 12, '"abc"'))
+        ->toThrow(App\Services\ImageChangedException::class)
+        ->and($sent['IfMatch'])->toBe('"abc"');
+})->with([412, 416]);
+

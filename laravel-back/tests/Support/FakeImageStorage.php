@@ -29,8 +29,8 @@ class FakeImageStorage extends ImageStorage
     private const HEADS = [
         'image/png'  => "\x89PNG\r\n\x1a\n\0\0\0\0",
         'image/jpeg' => "\xFF\xD8\xFF\xE0\0\0\0\0\0\0\0\0",
-        'image/gif'  => 'GIF89a\0\0\0\0\0\0',
-        'image/webp' => 'RIFF\0\0\0\0WEBP',
+        'image/gif'  => "GIF89a\0\0\0\0\0\0",
+        'image/webp' => "RIFF\0\0\0\0WEBP",
     ];
 
     private int $version = 0;
@@ -78,8 +78,12 @@ class FakeImageStorage extends ImageStorage
         return ['size' => $size, 'type' => $type, 'etag' => $etag];
     }
 
-    public function readHead(string $key, int $length): string
+    public function readHead(string $key, int $length, ?string $ifMatch = null): string
     {
+        if ($ifMatch !== null && $this->metadata[$key]['etag'] !== $ifMatch) {
+            throw new ImageChangedException($key);
+        }
+
         return substr($this->metadata[$key]['head'], 0, $length);
     }
 

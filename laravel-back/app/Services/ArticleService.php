@@ -229,13 +229,21 @@ class ArticleService
             true,
         );
 
-        // Content-Type は PUT した人が自由に決められるので、先頭のバイト（マジックナンバー）でも確かめる
-        if (
-            $metadata['size'] < 1
-            || $metadata['size'] > GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES
-            || $metadata['type'] !== $expectedType
-            || ! self::hasImageSignature($expectedType, $this->imageStorage->readHead($key, 12))
-        ) {
+        // Content-Type は PUT した人が自由に決められるので、先頭のバイト（マジックナンバー）でも確かめる。
+        // 先頭は、HEAD で確かめたのと同じ中身（ETag）から読む
+        try {
+            $valid = $metadata['size'] >= 1
+                && $metadata['size'] <= GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES
+                && $metadata['type'] === $expectedType
+                && self::hasImageSignature($expectedType, $this->imageStorage->readHead($key, 12, $metadata['etag']));
+        } catch (ImageChangedException) {
+            // HEAD のあとに差し替えられた。確かめていない中身なので、ほかの不正なファイルと同じく消す
+            $this->imageStorage->delete([$key]);
+
+            throw $this->imageChanged($field);
+        }
+
+        if (! $valid) {
             $this->imageStorage->delete([$key]);
 
             throw ValidationException::withMessages([
@@ -256,6 +264,13 @@ class ArticleService
             'image/webp' => str_starts_with($head, 'RIFF') && substr($head, 8, 4) === 'WEBP',
             default      => false,
         };
+    }
+
+    private function imageChanged(string $field): ValidationException
+    {
+        return ValidationException::withMessages([
+            $field => '画像がアップロードのあとに変わりました。もう一度アップロードしてください。',
+        ]);
     }
 
     private function imageNotFound(string $field): ValidationException
@@ -295,10 +310,10 @@ class ArticleService
                 // 先に ensureUploaded で確かめているので、ここに来るのは、確かめたあとに消えたときだけ
                 throw $this->imageNotFound($field);
             } catch (ImageChangedException) {
-                // 確かめたあとに、署名付きURLで別のファイルに差し替えられた。確かめていない中身は公開しない
-                throw ValidationException::withMessages([
-                    $field => '画像がアップロードのあとに変わりました。もう一度アップロードしてください。',
-                ]);
+                // 確かめたあとに、署名付きURLで別のファイルに差し替えられた。確かめていない中身は公開せず、消す
+                $this->imageStorage->delete([$key]);
+
+                throw $this->imageChanged($field);
             }
 
             return $moved[$key] = $published;
