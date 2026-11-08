@@ -161,9 +161,14 @@ class ArticleService
         // 422 にしたときに、先に移した画像だけが本置き場に残り、同じ内容で送り直すと今度はそれが
         // 「見つからない」になる、ということが起きないように。
         // 大きさと種類もここで確かめる（署名付きURLでは縛れないため。#129）
-        $this->ensureUploaded($data['header_image_key'], 'header_image_key');
-        foreach ($bodyCandidates as $key) {
-            $this->ensureUploaded($key, 'body');
+        // 確かめたときの中身の目印（キー => ETag）。移すときに、中身が同じときだけ移すのに使う。
+        // ヘッダー画像と本文で同じ画像を使っていても、確かめるのは一度だけ
+        $verified = [];
+        foreach ([$data['header_image_key'] => 'header_image_key'] + array_fill_keys($bodyCandidates, 'body') as $key => $field) {
+            $etag = $this->ensureUploaded($key, $field);
+            if ($etag !== null) {
+                $verified[$key] = $etag;
+            }
         }
 
         // この保存で移したキー（一時置き場 => 本置き場）。ヘッダー画像と本文で同じ画像を使っていても、
@@ -171,7 +176,7 @@ class ArticleService
         $moved = [];
 
         // ヘッダー画像は本文外の明示的な項目なので、解決できなければ黙って捨てずに弾く
-        $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys, $moved, 'header_image_key');
+        $headerKey = $this->publishKey($data['header_image_key'], $ownedKeys, $verified, $moved, 'header_image_key');
 
         if ($headerKey === null) {
             throw ValidationException::withMessages([
@@ -184,7 +189,7 @@ class ArticleService
 
         // 同じ画像が複数回貼られていても移動は一度だけ（二度目は移動元が無く失敗するため）
         foreach ($bodyCandidates as $key) {
-            $published = $this->publishKey($key, $ownedKeys, $moved, 'body');
+            $published = $this->publishKey($key, $ownedKeys, $verified, $moved, 'body');
 
             if ($published === null) {
                 // 本文は自由記述なので、この記事のものでないキーはエラーにせず参照として扱わない。
@@ -205,10 +210,10 @@ class ArticleService
      * 合っていなければ一時置き場から消し、公開される本置き場には移さない。
      * 本置き場のキーは、この記事のものかどうかを publishKey で判断するので、ここでは見ない
      */
-    private function ensureUploaded(string $key, string $field): void
+    private function ensureUploaded(string $key, string $field): ?string
     {
         if (! str_starts_with($key, ImageStorage::TMP_PREFIX)) {
-            return;
+            return null;
         }
 
         $metadata = $this->imageStorage->metadata($key);
@@ -224,10 +229,12 @@ class ArticleService
             true,
         );
 
+        // Content-Type は PUT した人が自由に決められるので、先頭のバイト（マジックナンバー）でも確かめる
         if (
             $metadata['size'] < 1
             || $metadata['size'] > GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES
             || $metadata['type'] !== $expectedType
+            || ! self::hasImageSignature($expectedType, $this->imageStorage->readHead($key, 12))
         ) {
             $this->imageStorage->delete([$key]);
 
@@ -235,6 +242,20 @@ class ArticleService
                 $field => '画像の形式か大きさが正しくありません（5MB 以下の JPEG・PNG・WebP・GIF）。もう一度アップロードしてください。',
             ]);
         }
+
+        return $metadata['etag'];
+    }
+
+    /** ファイルの先頭のバイトが、その種類の画像のマジックナンバーで始まっているか */
+    private static function hasImageSignature(string $type, string $head): bool
+    {
+        return match ($type) {
+            'image/png'  => str_starts_with($head, "\x89PNG\r\n\x1a\n"),
+            'image/jpeg' => str_starts_with($head, "\xFF\xD8\xFF"),
+            'image/gif'  => str_starts_with($head, 'GIF87a') || str_starts_with($head, 'GIF89a'),
+            'image/webp' => str_starts_with($head, 'RIFF') && substr($head, 8, 4) === 'WEBP',
+            default      => false,
+        };
     }
 
     private function imageNotFound(string $field): ValidationException
@@ -256,9 +277,10 @@ class ArticleService
      * ただし一時置き場のキーがストレージに無いとき（アップロードの失敗や期限切れ）は、どちらでも
      * バリデーションエラーにする。そのまま保存すると、読めない画像が記事に残るため
      *
+     * @param  array<string, string>  $verified  確かめたときの中身の目印（一時置き場のキー => ETag）
      * @param  array<string, string>  $moved  この保存で移したキー（一時置き場 => 本置き場）。移したら書き足す
      */
-    private function publishKey(string $key, array $ownedKeys, array &$moved, string $field): ?string
+    private function publishKey(string $key, array $ownedKeys, array $verified, array &$moved, string $field): ?string
     {
         if (str_starts_with($key, ImageStorage::TMP_PREFIX)) {
             if (isset($moved[$key])) {
@@ -268,10 +290,15 @@ class ArticleService
             $published = ImageStorage::IMAGE_PREFIX . substr($key, strlen(ImageStorage::TMP_PREFIX));
 
             try {
-                $this->imageStorage->move($key, $published);
+                $this->imageStorage->move($key, $published, $verified[$key] ?? null);
             } catch (ImageNotFoundException) {
                 // 先に ensureUploaded で確かめているので、ここに来るのは、確かめたあとに消えたときだけ
                 throw $this->imageNotFound($field);
+            } catch (ImageChangedException) {
+                // 確かめたあとに、署名付きURLで別のファイルに差し替えられた。確かめていない中身は公開しない
+                throw ValidationException::withMessages([
+                    $field => '画像がアップロードのあとに変わりました。もう一度アップロードしてください。',
+                ]);
             }
 
             return $moved[$key] = $published;

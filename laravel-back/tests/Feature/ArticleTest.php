@@ -537,6 +537,51 @@ test('アップロードされた画像の種類がキーの拡張子と違う�
         ->and(collect($storage->keys())->filter(fn ($k) => str_starts_with($k, 'images/'))->all())->toBe([]);
 });
 
+test('種類を画像と偽っても、中身が画像でなければバリデーションエラーになり、一時置き場から消される', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.png';
+    // Content-Type は PUT する人が自由に決められるので、HTML を image/png と名乗って置ける
+    $storage->put($key, type: 'image/png', head: '<html><body>');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '画像と偽ったファイルの記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    expect($storage->keys())->toBe([]);
+});
+
+test('確かめたあとに画像を差し替えられたら、本置き場に移さずにバリデーションエラーになる', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/cccccccc-cccc-4ccc-8ccc-cccccccccccc.png';
+    $storage->put($key);
+    // 確かめたあと、移す直前に、署名付きURLで別のファイルを置き直された場合
+    $storage->beforeMove = fn (string $from) => $storage->put($from, type: 'image/png', head: '<html><body>');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '差し替えられた画像の記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    expect(collect($storage->keys())->filter(fn ($k) => str_starts_with($k, 'images/'))->all())->toBe([]);
+});
+
 test('アプリが発行した形式でないheader_image_keyはバリデーションエラーになる', function () {
     useMinioStorage();
 

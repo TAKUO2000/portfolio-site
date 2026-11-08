@@ -76,7 +76,9 @@ class ImageStorage
      * HEAD の応答には本文が無く、エラーの種類（NoSuchKey など）が分からないので、404 かどうかで決める。
      * 404 以外のエラー（権限など）は「無い」と取り違えないよう、そのまま投げる
      *
-     * @return array{size: int, type: string}|null
+     * etag は中身の目印。move() に渡すと、確かめたときと中身が同じときだけ移す
+     *
+     * @return array{size: int, type: string, etag: string}|null
      */
     public function metadata(string $key): ?array
     {
@@ -86,7 +88,11 @@ class ImageStorage
                 'Key'    => $key,
             ]);
 
-            return ['size' => (int) $result['ContentLength'], 'type' => (string) $result['ContentType']];
+            return [
+                'size' => (int) $result['ContentLength'],
+                'type' => (string) $result['ContentType'],
+                'etag' => (string) $result['ETag'],
+            ];
         } catch (S3Exception $e) {
             if ($e->getStatusCode() === 404) {
                 return null;
@@ -97,24 +103,53 @@ class ImageStorage
     }
 
     /**
+     * オブジェクトの先頭の数バイト。ファイルの種類をマジックナンバーで確かめるのに使う
+     * （Content-Type は PUT した人が自由に決められるので、それだけでは種類を確かめられない）
+     */
+    public function readHead(string $key, int $length): string
+    {
+        $result = $this->serverClient()->getObject([
+            'Bucket' => $this->config('bucket'),
+            'Key'    => $key,
+            'Range'  => 'bytes=0-' . ($length - 1),
+        ]);
+
+        return (string) $result['Body'];
+    }
+
+    /**
      * 一時置き場のオブジェクトを本置き場へ移す。
      * S3にはリネームが無いため、コピーしてから元を消す。
      *
+     * $ifMatch（metadata() の etag）を渡すと、中身がそのときと同じときだけ移す
+     * （確かめてから移すまでの間に、署名付きURLで差し替えられていないように）
+     *
      * @throws ImageNotFoundException 移動元が無いとき（アップロードの失敗や、一時置き場の期限切れ）
+     * @throws ImageChangedException  $ifMatch と中身が違うとき
      */
-    public function move(string $from, string $to): void
+    public function move(string $from, string $to, ?string $ifMatch = null): void
     {
         $bucket = $this->config('bucket');
 
+        $params = [
+            'Bucket'     => $bucket,
+            'Key'        => $to,
+            'CopySource' => rawurlencode($bucket . '/' . $from),
+        ];
+
+        if ($ifMatch !== null) {
+            $params['CopySourceIfMatch'] = $ifMatch;
+        }
+
         try {
-            $this->serverClient()->copyObject([
-                'Bucket'     => $bucket,
-                'Key'        => $to,
-                'CopySource' => rawurlencode($bucket . '/' . $from),
-            ]);
+            $this->serverClient()->copyObject($params);
         } catch (S3Exception $e) {
             if ($e->getAwsErrorCode() === 'NoSuchKey') {
                 throw new ImageNotFoundException($from);
+            }
+
+            if ($e->getStatusCode() === 412) {
+                throw new ImageChangedException($from);
             }
 
             throw $e;
