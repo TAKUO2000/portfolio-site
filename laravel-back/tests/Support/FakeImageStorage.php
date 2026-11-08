@@ -2,6 +2,7 @@
 
 namespace Tests\Support;
 
+use App\Http\Requests\GetImageUploadUrlRequest;
 use App\Services\ImageNotFoundException;
 use App\Services\ImageStorage;
 use DateTimeInterface;
@@ -19,10 +20,20 @@ class FakeImageStorage extends ImageStorage
     /** @var array<string, DateTimeInterface> キー => 最終更新日時 */
     private array $objects = [];
 
-    /** 置かれたことにするオブジェクト。最終更新日時を指定すれば古いオブジェクトを再現できる */
-    public function put(string $key, ?DateTimeInterface $lastModified = null): static
+    /** @var array<string, array{size: int, type: string}> キー => 大きさと種類 */
+    private array $metadata = [];
+
+    /**
+     * 置かれたことにするオブジェクト。最終更新日時を指定すれば古いオブジェクトを再現できる。
+     * 大きさと種類を省くと、キーの拡張子に合った小さな画像が置かれたことにする
+     */
+    public function put(string $key, ?DateTimeInterface $lastModified = null, int $size = 1000, ?string $type = null): static
     {
         $this->objects[$key] = $lastModified ?? Carbon::now();
+        $this->metadata[$key] = [
+            'size' => $size,
+            'type' => $type ?? (string) array_search(pathinfo($key, PATHINFO_EXTENSION), GetImageUploadUrlRequest::EXTENSIONS_BY_MEDIA_TYPE, true),
+        ];
 
         return $this;
     }
@@ -36,9 +47,9 @@ class FakeImageStorage extends ImageStorage
         return $keys;
     }
 
-    public function exists(string $key): bool
+    public function metadata(string $key): ?array
     {
-        return isset($this->objects[$key]);
+        return isset($this->objects[$key]) ? $this->metadata[$key] : null;
     }
 
     public function move(string $from, string $to): void
@@ -48,7 +59,8 @@ class FakeImageStorage extends ImageStorage
         }
 
         $this->objects[$to] = $this->objects[$from];
-        unset($this->objects[$from]);
+        $this->metadata[$to] = $this->metadata[$from];
+        unset($this->objects[$from], $this->metadata[$from]);
     }
 
     public function each(string $prefix): Generator
@@ -63,7 +75,7 @@ class FakeImageStorage extends ImageStorage
     public function delete(array $keys): void
     {
         foreach ($keys as $key) {
-            unset($this->objects[$key]);
+            unset($this->objects[$key], $this->metadata[$key]);
         }
     }
 }

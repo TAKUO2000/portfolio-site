@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Requests\GetImageUploadUrlRequest;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Reaction;
@@ -489,6 +490,51 @@ test('本文の画像が見つからないときは、ヘッダー画像も動�
     $payload['body'] = '画像なしの本文';
     $this->actingAs($this->adminUser)->postJson('/api/articles', $payload)
         ->assertStatus(201);
+});
+
+test('アップロードされた画像が上限より大きいとバリデーションエラーになり、一時置き場から消される', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/99999999-9999-4999-8999-999999999999.png';
+    // 署名付きURLは大きさを縛れないので、申告より大きいファイルが置かれうる
+    $storage->put($key, size: GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES + 1, type: 'image/png');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '大きすぎる画像の記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+
+    expect($storage->keys())->toBe([]);
+});
+
+test('アップロードされた画像の種類がキーの拡張子と違うとバリデーションエラーになり、一時置き場から消される', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png';
+    // image/png と申告して発行した URL に、HTML を置かれた場合
+    $storage->put($key, type: 'text/html');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '画像でないファイルを貼った記事',
+            'summary' => 'テスト概要',
+            'body' => "![](/{$key})",
+            'status' => 'published',
+            'header_image_key' => pendingImageKey(),
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['body']);
+
+    expect($storage->keys())->not->toContain($key)
+        ->and(collect($storage->keys())->filter(fn ($k) => str_starts_with($k, 'images/'))->all())->toBe([]);
 });
 
 test('アプリが発行した形式でないheader_image_keyはバリデーションエラーになる', function () {

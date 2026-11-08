@@ -42,8 +42,9 @@ class ImageStorage
     /**
      * ブラウザから直接PUTさせるための署名付きURLを発行する。
      *
-     * ContentLengthを署名対象に含めることで、バリデーション済みのサイズと異なる
-     * ファイルをPUTしようとすると署名不一致で拒否される。
+     * 署名されるのは host だけで、ContentType と ContentLength は署名に含まれない（SDK が外す）。
+     * そのため、申告と違う大きさ・種類のファイルも置けてしまう。置かれたものは、記事に添付して
+     * 本置き場へ移す前に ArticleService が metadata() で確かめ、違えば消す（#129）
      */
     public function uploadUrl(string $key, string $mediaType, int $size): string
     {
@@ -71,22 +72,24 @@ class ImageStorage
     }
 
     /**
-     * オブジェクトがあるか。
+     * オブジェクトの大きさ（バイト）と種類（Content-Type）。無ければ null。
      * HEAD の応答には本文が無く、エラーの種類（NoSuchKey など）が分からないので、404 かどうかで決める。
      * 404 以外のエラー（権限など）は「無い」と取り違えないよう、そのまま投げる
+     *
+     * @return array{size: int, type: string}|null
      */
-    public function exists(string $key): bool
+    public function metadata(string $key): ?array
     {
         try {
-            $this->serverClient()->headObject([
+            $result = $this->serverClient()->headObject([
                 'Bucket' => $this->config('bucket'),
                 'Key'    => $key,
             ]);
 
-            return true;
+            return ['size' => (int) $result['ContentLength'], 'type' => (string) $result['ContentType']];
         } catch (S3Exception $e) {
             if ($e->getStatusCode() === 404) {
-                return false;
+                return null;
             }
 
             throw $e;

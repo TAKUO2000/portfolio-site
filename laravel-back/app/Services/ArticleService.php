@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Requests\GetImageUploadUrlRequest;
 use App\Models\Article;
 use App\Models\ArticleImage;
 use App\Models\Reaction;
@@ -156,9 +157,10 @@ class ArticleService
         preg_match_all('#' . ArticleImageKey::PATTERN . '#', $data['body'], $matches);
         $bodyCandidates = array_unique($matches[0]);
 
-        // 一時置き場の画像は、1つも動かす前にすべてあるかを確かめる。途中で見つからない画像があって
+        // 一時置き場の画像は、1つも動かす前にすべて確かめる。途中で見つからない画像があって
         // 422 にしたときに、先に移した画像だけが本置き場に残り、同じ内容で送り直すと今度はそれが
-        // 「見つからない」になる、ということが起きないように
+        // 「見つからない」になる、ということが起きないように。
+        // 大きさと種類もここで確かめる（署名付きURLでは縛れないため。#129）
         $this->ensureUploaded($data['header_image_key'], 'header_image_key');
         foreach ($bodyCandidates as $key) {
             $this->ensureUploaded($key, 'body');
@@ -198,13 +200,40 @@ class ArticleService
     }
 
     /**
-     * 一時置き場のキーなら、ストレージにあるかを確かめ、無ければバリデーションエラーにする。
+     * 一時置き場のキーなら、ストレージにあるか、大きさと種類がアップロードの決まりに合っているかを確かめる。
+     * 署名付きURLは大きさと種類を縛れないので、申告と違うファイル（大きすぎる、画像でない）が置かれうる。
+     * 合っていなければ一時置き場から消し、公開される本置き場には移さない。
      * 本置き場のキーは、この記事のものかどうかを publishKey で判断するので、ここでは見ない
      */
     private function ensureUploaded(string $key, string $field): void
     {
-        if (str_starts_with($key, ImageStorage::TMP_PREFIX) && ! $this->imageStorage->exists($key)) {
+        if (! str_starts_with($key, ImageStorage::TMP_PREFIX)) {
+            return;
+        }
+
+        $metadata = $this->imageStorage->metadata($key);
+
+        if ($metadata === null) {
             throw $this->imageNotFound($field);
+        }
+
+        // キーの拡張子は、URL を発行したときに申告された種類から決めている（ImageController）
+        $expectedType = array_search(
+            pathinfo($key, PATHINFO_EXTENSION),
+            GetImageUploadUrlRequest::EXTENSIONS_BY_MEDIA_TYPE,
+            true,
+        );
+
+        if (
+            $metadata['size'] < 1
+            || $metadata['size'] > GetImageUploadUrlRequest::MAX_FILE_SIZE_BYTES
+            || $metadata['type'] !== $expectedType
+        ) {
+            $this->imageStorage->delete([$key]);
+
+            throw ValidationException::withMessages([
+                $field => '画像の形式か大きさが正しくありません（5MB 以下の JPEG・PNG・WebP・GIF）。もう一度アップロードしてください。',
+            ]);
         }
     }
 

@@ -94,23 +94,30 @@ test('移動元が無い以外の S3 のエラーは、そのまま投げる', f
         ->toThrow(Aws\S3\Exception\S3Exception::class);
 });
 
-test('オブジェクトが無いとき（HEAD が 404）は exists が false を返す', function () {
+test('headObject の応答から、大きさと種類を返す', function () {
+    $storage = imageStorageRespondingWith(
+        fn (Aws\CommandInterface $command) => new Aws\Result(['ContentLength' => 1234, 'ContentType' => 'image/png'])
+    );
+
+    expect($storage->metadata('tmp/a.png'))->toBe(['size' => 1234, 'type' => 'image/png']);
+});
+
+test('オブジェクトが無いとき（HEAD が 404）は metadata が null を返す', function () {
     $storage = imageStorageRespondingWith(
         fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
             'Not Found', $command, ['response' => new GuzzleHttp\Psr7\Response(404)]
         )
     );
 
-    expect($storage->exists('tmp/a.png'))->toBeFalse();
+    expect($storage->metadata('tmp/a.png'))->toBeNull();
 });
 
-test('404 以外のエラーのときは、exists は「無い」と取り違えずに投げる', function () {
+test('404 以外のエラーのときは、metadata は「無い」と取り違えずに投げる', function () {
     $storage = imageStorageRespondingWith(
         fn (Aws\CommandInterface $command) => new Aws\S3\Exception\S3Exception(
             'Forbidden', $command, ['response' => new GuzzleHttp\Psr7\Response(403)]
         )
     );
 
-    expect(fn () => $storage->exists('tmp/a.png'))->toThrow(Aws\S3\Exception\S3Exception::class);
+    expect(fn () => $storage->metadata('tmp/a.png'))->toThrow(Aws\S3\Exception\S3Exception::class);
 });
-
