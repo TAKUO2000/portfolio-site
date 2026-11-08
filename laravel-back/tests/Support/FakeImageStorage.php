@@ -38,6 +38,9 @@ class FakeImageStorage extends ImageStorage
     /** copy() の直前に呼ばれる。確かめてから移すまでの間の差し替えを再現する */
     public ?Closure $beforeMove = null;
 
+    /** delete() の直前に呼ばれ、例外を投げれば削除が失敗する（S3 の障害の再現） */
+    public ?Closure $failDelete = null;
+
     /** copy() の直前に呼ばれ、例外を投げればコピーが失敗する（S3 の障害の再現） */
     public ?Closure $failCopy = null;
 
@@ -141,6 +144,10 @@ class FakeImageStorage extends ImageStorage
 
     public function delete(array $keys): void
     {
+        if ($this->failDelete !== null) {
+            ($this->failDelete)($keys);
+        }
+
         foreach ($keys as $key) {
             unset($this->objects[$key], $this->metadata[$key]);
         }

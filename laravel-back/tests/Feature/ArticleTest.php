@@ -792,6 +792,26 @@ test('コピーが S3 の障害で失敗したら、先にコピーした画像�
     expect($storage->keys())->toBe([$headerKey, $bodyKey]);
 });
 
+test('不正な画像を消すのに失敗しても、バリデーションエラー（422）を返す', function () {
+    useMinioStorage();
+    $storage = fakeImageStorage();
+    $key = 'tmp/22222222-2222-4222-8222-222222222223.png';
+    $storage->put($key, type: 'image/png', head: '<html><body>');
+    $storage->failDelete = fn () => throw new RuntimeException('S3 の障害');
+
+    $this->actingAs($this->adminUser)
+        ->postJson('/api/articles', [
+            'category_id' => $this->category->id,
+            'title' => '消せない不正な画像の記事',
+            'summary' => 'テスト概要',
+            'body' => '本文',
+            'status' => 'published',
+            'header_image_key' => $key,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['header_image_key']);
+});
+
 test('ヘッダー画像と本文で同じ画像を使っても、確かめるのは一度だけ', function () {
     useMinioStorage();
     $storage = fakeImageStorage();

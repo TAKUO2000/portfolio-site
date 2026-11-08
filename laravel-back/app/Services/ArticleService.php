@@ -287,13 +287,13 @@ class ArticleService
                 && self::hasImageSignature($expectedType, $this->imageStorage->readHead($key, 12, $metadata['etag']));
         } catch (ImageChangedException) {
             // HEAD のあとに差し替えられた。確かめていない中身なので、ほかの不正なファイルと同じく消す
-            $this->imageStorage->delete([$key]);
+            $this->discardImages([$key]);
 
             throw $this->imageChanged($field);
         }
 
         if (! $valid) {
-            $this->imageStorage->delete([$key]);
+            $this->discardImages([$key]);
 
             throw ValidationException::withMessages([
                 $field => '画像の形式か大きさが正しくありません（5MB 以下の JPEG・PNG・WebP・GIF）。もう一度アップロードしてください。',
@@ -360,7 +360,7 @@ class ArticleService
                 throw $this->imageNotFound($field);
             } catch (ImageChangedException) {
                 // 確かめたあとに、署名付きURLで別のファイルに差し替えられた。確かめていない中身は公開せず、消す
-                $this->imageStorage->delete([$key]);
+                $this->discardImages([$key]);
 
                 throw $this->imageChanged($field);
             }
