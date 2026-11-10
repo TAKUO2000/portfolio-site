@@ -18,6 +18,7 @@
 10. [デプロイする（GitHub Actions）](#デプロイするgithub-actions)
 11. [証明書を取る（初回）](#証明書を取る初回)
 12. [バックアップと監視を確かめる](#バックアップと監視を確かめる)
+13. [ステージングを作る・消す](#ステージングを作る消す)
 
 ---
 
@@ -192,6 +193,7 @@ gh secret list --env staging
 | ECR | リポジトリ `portfolio/app`。タグの上書きを禁止し、プッシュ時にスキャンする。タグなしは1日で消し、`main-` は直近の20個、`develop-` は直近の10個だけ残す |
 | GitHub の OIDC プロバイダー | GitHub Actions がアクセスキーなしでロールを引き受けるため |
 | デプロイ用のロール | `github-deploy-prod`（`main` のワークフローだけ）・`github-deploy-stg`（`develop` のワークフローだけ）。[GitHub Actions のロール](design.md#github-actions-のロール) |
+| ステージングを作るロール | `github-terraform-stg`（Environment「staging」のジョブだけ）と、それが作るロールに付けさせる権限の上限 `portfolio-stg-boundary`（[ステージングを作る・消す](#ステージングを作る消す)） |
 | デプロイの部品の置き場 | バケット `takuosblog-deploy`。公開はすべて塞ぎ、HTTPS 以外は拒否する |
 | SSM ドキュメント | `portfolio-deploy`。EC2 で決まったデプロイの手順だけを実行する（[デプロイ](design.md#デプロイ)） |
 | AWS Budgets | 月 $20。実績が 80%、月末の予測が 100% を超えたらメールで知らせる。クレジットを差し引く前の金額で比べる |
@@ -683,3 +685,110 @@ docker compose -f docker-compose.prod.yml up -d
 
 データ用 EBS ごと戻すときは、DLM のスナップショットから新しいボリュームを作って付け替えます。データ用 EBS は Terraform（`envs/prod` の `aws_ebs_volume.data`、`prevent_destroy`）が管理しているので、付け替えたら Terraform の状態も合わせる必要があります。手順は、必要になったときに決めます。
 
+
+---
+
+## ステージングを作る・消す
+
+ステージング（`envs/stg`）は、確かめたいときだけ GitHub Actions の「Staging」（`.github/workflows/staging.yml`）で作り、終わったら消します（[ステージング環境](design.md#ステージング環境)）。**動かしている間は課金されます**（1時間あたり約 $0.02）。
+
+### 最初に一度だけ
+
+**1. ステージングを作るロールを作る（手元から `envs/shared` を apply）**
+
+`envs/shared` に、`github-terraform-stg`（ステージングを作る・消すロール）と、それが作るロールに付ける権限の上限 `portfolio-stg-boundary` があります（[GitHub Actions のロール](design.md#github-actions-のロール)）。
+
+```bash
+cd infra/terraform/envs/shared
+export CLOUDFLARE_API_TOKEN="$(cat ~/.config/portfolio/cloudflare-api-token)"
+terraform plan    # github-terraform-stg と portfolio-stg-boundary が増えるだけなのを確かめる
+terraform apply
+```
+
+**2. ステージングの秘密を Parameter Store に入れる**
+
+本番と同じ名前で、本番とは別の値を `/portfolio/stg/` に入れます（[秘密情報を Parameter Store に入れる](#秘密情報を-parameter-store-に入れる)）。ステージングを destroy しても消えないので、一度入れれば済みます。
+
+```bash
+export AWS_PROFILE=portfolio
+
+aws ssm put-parameter --name /portfolio/stg/APP_KEY --type SecureString \
+  --value "base64:$(openssl rand -base64 32)"
+
+aws ssm put-parameter --name /portfolio/stg/DB_PASSWORD --type SecureString \
+  --value "$(openssl rand -hex 32)"
+
+aws ssm put-parameter --name /portfolio/stg/FRONTEND_REVALIDATE_SECRET --type SecureString \
+  --value "$(openssl rand -hex 32)"
+
+aws ssm get-parameters-by-path --path /portfolio/stg/ --query 'Parameters[].[Name,Type]' --output table
+```
+
+**3. Cloudflare のゾーンの ID を GitHub に入れる**
+
+ワークフローは `AWS_ACCOUNT_ID`（リポジトリのシークレット。[デプロイする](#最初に一度だけ)）と、Environment「staging」の `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ZONE_ID` を使います。ゾーンの ID は `envs/shared` の `terraform.tfvars` と同じ値です。
+
+```bash
+read -rs ZONE   # ゾーンの ID を貼り付けて Enter
+printf '%s' "$ZONE" | gh secret set CLOUDFLARE_ZONE_ID --env staging && unset ZONE
+gh secret list --env staging   # CLOUDFLARE_API_TOKEN と CLOUDFLARE_ZONE_ID
+```
+
+**4. Vercel の Preview を `stg.takuosblog.com` にする**
+
+| 場所 | 設定 |
+| --- | --- |
+| Settings → Git → Ignored Build Step | `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`（本番と `develop` だけビルドする） |
+| Settings → Domains | `stg.takuosblog.com` を足し、Git Branch に `develop` を選ぶ |
+| Settings → Environment Variables（Preview） | `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com`、`S3_IMAGE_HOST=takuosblog-images-stg.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（`/portfolio/stg/FRONTEND_REVALIDATE_SECRET` の値。Sensitive にする） |
+
+`REVALIDATE_SECRET` の値は `aws ssm get-parameter --name /portfolio/stg/FRONTEND_REVALIDATE_SECRET --with-decryption --query Parameter.Value --output text` で見ます。
+
+**5. Cloudflare に `stg.takuosblog.com` のレコードを作る**
+
+Vercel の Domains に表示される値（CNAME）で、Cloudflare のダッシュボードから手で作ります。**Proxy status は DNS only** にします。ステージングを消しても残します（Terraform では管理しない）。
+
+### 作る
+
+1. Actions の画面で「Staging」→ **Run workflow**。ブランチは `main`、action は `apply`。終わると、ジョブの概要にインスタンス ID とパブリック IP が出る
+2. `user_data` が終わるのを5分ほど待ち、「Deploy backend」→ **Run workflow** をブランチ `develop`（`image_tag` は空）で実行する。この時点では証明書が無いので、nginx は起動を繰り返す（想定どおり）
+3. Session Manager で入り、証明書を取って、管理者とサンプルデータを作る
+
+```bash
+# 手元で（インスタンス ID はジョブの概要に出たもの）
+aws ssm start-session --target <インスタンス ID>
+```
+
+```bash
+# EC2 の中で
+sudo portfolio-cert-init <メールアドレス>   # 週5回の制限にかかったら --staging を付ける（infra/design.md の「ステージング環境」の注意点）
+
+sudo -i
+cd /opt/portfolio
+docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin   # 対話的にパスワードを入れる
+docker compose -f docker-compose.prod.yml exec app php artisan db:seed --force
+```
+
+4. Vercel の Deployments で、`develop` の最新のデプロイを **Redeploy** する（ステージングが無い間のビルドは失敗しているため）
+5. `https://stg.takuosblog.com` を**シークレットウィンドウ**で開き、ログインして確かめる
+
+### 消す
+
+Actions の画面で「Staging」→ **Run workflow**。ブランチは `main`、action は `destroy`。EC2・VPC・画像バケット（中身ごと）・`api.stg` のレコードが消えます。`/portfolio/stg/*` の秘密、`stg.takuosblog.com` のレコード、Vercel の設定は残ります。
+
+### 権限を確かめる（初めて作ったとき）
+
+ステージングから本番に届かないことを確かめます。`github-terraform-stg` で本番の状態（`prod/`）を読めないことは、ワークフローが毎回確かめます（読めたら失敗する）。
+
+```bash
+# EC2 の中で（ステージング）。どれも AccessDenied になればよい
+aws ssm get-parameter --name /portfolio/prod/APP_KEY --region ap-northeast-1
+aws s3 ls s3://takuosblog-images-prod/
+aws s3 cp /etc/hostname s3://takuosblog-images-prod/tmp/stg-test
+
+# 自分の環境のものは読める
+aws ssm get-parameters-by-path --path /portfolio/stg/ --region ap-northeast-1 --query 'Parameters[].Name'
+aws s3 ls s3://takuosblog-images-stg/
+```
+
+本番の画像バケットの `images/*` は誰でも読めるように公開しているので、`images/` の読み取りは成功します（想定どおり）。
