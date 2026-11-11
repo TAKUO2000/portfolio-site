@@ -22,3 +22,8 @@ output "deploy_bucket_arn" {
   description = "デプロイの部品の置き場（EC2 のインスタンスロールに、自分の環境の分の読み取りを許可する）"
   value       = aws_s3_bucket.deploy.arn
 }
+
+output "terraform_stg_role_arn" {
+  description = "ステージングを作る・消すロール（.github/workflows/staging.yml が引き受ける）"
+  value       = aws_iam_role.terraform_stg.arn
+}

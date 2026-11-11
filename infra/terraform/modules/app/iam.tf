@@ -22,6 +22,9 @@ data "aws_iam_policy_document" "assume_ec2" {
 resource "aws_iam_role" "app" {
   name               = "portfolio-${var.env}-app"
   assume_role_policy = data.aws_iam_policy_document.assume_ec2.json
+
+  # ステージングは GitHub Actions（github-terraform-stg）が作るので、権限の上限を必ず付ける（envs/shared の terraform_stg.tf）
+  permissions_boundary = var.permissions_boundary_arn
 }
 
 resource "aws_iam_instance_profile" "app" {

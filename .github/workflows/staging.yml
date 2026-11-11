@@ -1,0 +1,116 @@
+# ステージング（infra/terraform/envs/stg）を作る・消す（infra/design.md の「ステージング環境」）。
+# 手動の実行だけ。Actions の画面で「Staging」→ Run workflow で、ブランチは main、action に apply か destroy を選ぶ。
+#
+# Environment「staging」のジョブでだけ動く。Environment で実行できるブランチは main だけで、
+# github-terraform-stg のロールと Cloudflare のトークンは、このジョブからしか使えない（infra/design.md の「GitHub Actions のロール」）。
+#
+# 作ったあと（develop のデプロイ・証明書・管理者・サンプルデータ）は手で行う（infra/setup.md の「ステージングを作る・消す」）
+name: Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: apply（作る）か destroy（消す）
+        required: true
+        type: choice
+        options:
+          - apply
+          - destroy
+
+# 作ると消すを同時に流さない（途中で打ち切らない。打ち切ると状態のロックが残る）
+concurrency:
+  group: staging-terraform
+  cancel-in-progress: false
+
+# 外部のアクションは、タグではなくコミットの SHA で固定する（更新は .github/dependabot.yml で追う）
+permissions:
+  id-token: write # OIDC のトークンを受け取る
+  contents: read
+
+jobs:
+  terraform:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: infra/terraform/envs/stg
+    env:
+      AWS_REGION: ap-northeast-1
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_aws_account_id: ${{ secrets.AWS_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      # CLOUDFLARE_API_TOKEN（ゾーン全体の DNS を書き換えられる）は、外部のアクションに渡さないよう、
+      # Terraform を動かすステップの env にだけ置く
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Assume the Terraform role for staging
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-terraform-stg
+          aws-region: ${{ env.AWS_REGION }}
+
+      # このロールで本番の状態を読めないこと（stg/ のキーだけに絞れていること）を、毎回確かめる。
+      # 読めてしまったら、権限が広がっているので止める（403 以外のエラーも、確かめられないので止める）
+      - name: Check that the role cannot read the production state
+        working-directory: .
+        run: |
+          if out=$(aws s3api head-object --bucket takuosblog-tfstate --key prod/terraform.tfstate 2>&1); then
+            echo "::error::github-terraform-stg で prod/ の状態を読めてしまいます。envs/shared の terraform_stg.tf を確かめてください"
+            exit 1
+          elif grep -q '(403)' <<< "$out"; then
+            echo "prod/ の状態は読めません（想定どおり）"
+          else
+            echo "::error::確かめられませんでした: $out"
+            exit 1
+          fi
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.15.8
+          # ラッパーは標準出力を加工するので使わない（terraform output -raw をそのまま読むため）
+          terraform_wrapper: false
+
+      - name: Init
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: terraform init -lockfile=readonly
+
+      - name: Apply
+        if: inputs.action == 'apply'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          terraform plan -out=tfplan
+          terraform apply tfplan
+
+      - name: Destroy
+        if: inputs.action == 'destroy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: terraform destroy -auto-approve
+
+      # 作ったあとに使う値を、ジョブの概要に出す（秘密は含まない）
+      - name: Summary
+        if: inputs.action == 'apply'
+        run: |
+          {
+            echo "## ステージングを作りました"
+            echo ""
+            echo "| 項目 | 値 |"
+            echo "| --- | --- |"
+            echo "| インスタンス ID | \`$(terraform output -raw instance_id)\` |"
+            echo "| パブリック IP（api.stg.takuosblog.com） | \`$(terraform output -raw public_ip)\` |"
+            echo "| 画像バケットのホスト名（Vercel の S3_IMAGE_HOST） | \`$(terraform output -raw image_bucket_host)\` |"
+            echo ""
+            echo "次は「Deploy backend」を develop で手動実行し、証明書・管理者・サンプルデータを用意します（infra/setup.md の「ステージングを作る・消す」）。"
+            echo "確かめ終わったら、このワークフローを destroy で実行します（動かしている間は課金されます）。"
+          } >> "$GITHUB_STEP_SUMMARY"
