@@ -763,7 +763,9 @@ aws ssm start-session --target <インスタンス ID>
 
 ```bash
 # EC2 の中で
-sudo portfolio-cert-init <メールアドレス>   # 週5回の制限にかかったら --staging を付ける（infra/design.md の「ステージング環境」の注意点）
+sudo portfolio-cert-init <メールアドレス>
+# 週5回の制限にかかったときは、試験用の認証局で取る（ブラウザは信頼しない）。--staging は最初の引数に置く
+# sudo portfolio-cert-init --staging <メールアドレス>
 
 sudo -i
 cd /opt/portfolio
@@ -794,3 +796,12 @@ aws s3 ls s3://takuosblog-images-stg/
 ```
 
 本番の画像バケットの `images/*` は誰でも読めるように公開しているので、`images/` の読み取りは成功します（想定どおり）。
+
+### コンテナの中からインスタンスロールで動くかを確かめる（初めて作ったとき）
+
+Laravel はアクセスキーを持たず、コンテナの中から IMDS でインスタンスロールの認証情報を取って、S3 と SES を使います（IMDS のホップ数の上限を 2 にしているため。[セキュリティ](design.md#セキュリティ)）。ブラウザから実際に使って確かめます。
+
+1. **画像のアップロード（S3）**：`https://stg.takuosblog.com` で記事を作り、画像を貼って保存する。記事の画像が表示され、URL が `takuosblog-images-stg` の `images/` を指していればよい
+2. **メールの送信（SES）**：ログアウトして「パスワードを忘れた」から、管理者のメールアドレスに再設定のメールを送る。届けばよい（送信元は `no-reply@takuosblog.com`）
+
+どちらかが失敗したら、EC2 の中で `docker compose -f docker-compose.prod.yml logs --tail 100 app` を見ます。`AccessDenied` なら、インスタンスロールのポリシーと権限の上限（`portfolio-stg-boundary`）の両方に、その操作が入っているかを確かめます。

@@ -136,7 +136,7 @@ DB だけをプライベートサブネットに分ける構成は採らない�
 | --- | --- |
 | tfstate | `stg/` のキーの読み書きだけ（`prod/`・`shared/` の状態は読めない）。キーの名前の一覧は読める |
 | EC2・VPC | 作る・変える・消す操作を許可したうえで、**`Env` タグが `stg` 以外のリソースへの操作を拒否（Deny）する**。本番の VPC やサブネットの中に作ることも、本番の EC2 のタグを書き換えることもできない。`Env` を `stg` 以外にして作ることも拒否する（`Env=prod` の EC2 を作ると、本番のデプロイの対象を取り違えさせられるため）。`envs/stg` は `default_tags` で全部に `Env=stg` を付ける |
-| IAM | `portfolio-stg-*` のロールとインスタンスプロファイルだけ。ロールを作る・ポリシーを足すときは、権限の上限 `portfolio-stg-boundary` が付いていることを条件にする。付けられる管理ポリシーは `AmazonSSMManagedInstanceCore` だけ。`iam:PassRole` は `portfolio-stg-app` を EC2 に渡すときだけ |
+| IAM | `portfolio-stg-*` のロールとインスタンスプロファイルだけ。ロールを作る・ポリシーを足すときは、権限の上限 `portfolio-stg-boundary` が付いていることを条件にする。付けられる管理ポリシーは `AmazonSSMManagedInstanceCore` だけ。`iam:PassRole` は `portfolio-stg-app` だけ（インスタンスプロファイルに入れるときにも要るので、渡す先のサービスでは絞らない。このロールにも上限が付いている） |
 | S3 | stg の画像バケット（`takuosblog-images-stg`）だけ |
 | Parameter Store | 秘密でない設定（`/portfolio/stg/config/*`）だけ。秘密（`/portfolio/stg/APP_KEY` など）は読めない |
 

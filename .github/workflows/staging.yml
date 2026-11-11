@@ -43,7 +43,8 @@ jobs:
       TF_INPUT: "false"
       TF_VAR_aws_account_id: ${{ secrets.AWS_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # CLOUDFLARE_API_TOKEN（ゾーン全体の DNS を書き換えられる）は、外部のアクションに渡さないよう、
+      # Terraform を動かすステップの env にだけ置く
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,16 +80,22 @@ jobs:
           terraform_wrapper: false
 
       - name: Init
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: terraform init -lockfile=readonly
 
       - name: Apply
         if: inputs.action == 'apply'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           terraform plan -out=tfplan
           terraform apply tfplan
 
       - name: Destroy
         if: inputs.action == 'destroy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: terraform destroy -auto-approve
 
       # 作ったあとに使う値を、ジョブの概要に出す（秘密は含まない）

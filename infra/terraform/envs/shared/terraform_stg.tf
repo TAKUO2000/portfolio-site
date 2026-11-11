@@ -244,17 +244,13 @@ data "aws_iam_policy_document" "terraform_stg" {
     resources = ["arn:aws:iam::${local.account_id}:instance-profile/${local.stg_name_prefix}-*"]
   }
 
-  # EC2 に渡せるのは、ステージングのインスタンスロールだけ
+  # 渡せるのは、ステージングのインスタンスロールだけ。インスタンスプロファイルに入れるとき（AddRoleToInstanceProfile）にも
+  # PassRole が要り、そのときは iam:PassedToService で絞れないので、条件は付けない。
+  # このロールにも権限の上限が付いているので、どこに渡しても本番には届かない
   statement {
     sid       = "PassStgAppRole"
     actions   = ["iam:PassRole"]
     resources = ["arn:aws:iam::${local.account_id}:role/${local.stg_name_prefix}-app"]
-
-    condition {
-      test     = "StringEquals"
-      variable = "iam:PassedToService"
-      values   = ["ec2.amazonaws.com"]
-    }
   }
 
   # --- S3：stg の画像バケットだけ（作る・設定する・中身ごと消す） ---
