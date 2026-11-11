@@ -52,6 +52,26 @@ function usePrefersReducedMotion() {
   return prefersReducedMotion;
 }
 
+/**
+ * カーソルの無い端末（スマホなど）かどうか。
+ * マウスをつないだタブレットなどは途中で変わるので、変わったら追いかける
+ */
+function useHasNoHover() {
+  // SSRではmatchMediaが無いので、初期値はfalse（カーソルを追う）にしてマウント後に確定させる
+  const [hasNoHover, setHasNoHover] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(hover: none) and (pointer: coarse)");
+    const update = () => setHasNoHover(query.matches);
+
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return hasNoHover;
+}
+
 /** カーソルを指さす手の3Dモデル。大きさは親要素かclassNameで決める */
 export default function PointingHandCanvas({
   className,
@@ -62,6 +82,7 @@ export default function PointingHandCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const isVisible = useIsVisible(containerRef);
   const prefersReducedMotion = usePrefersReducedMotion();
+  const hasNoHover = useHasNoHover();
 
   // 画面外では描画を止める。視差効果を減らす設定なら初回だけ描画して静止させる
   const frameloop = !isVisible
@@ -87,6 +108,9 @@ export default function PointingHandCanvas({
               position={modelPosition}
               rotation={modelRotation}
               scale={modelScale}
+              // カーソルの無い端末では、触らなくてもボタンを順番に指す。
+              // 画面の外（描画を止めている）と、視差効果を減らす設定のときは、自分では動かさない
+              autoPoint={hasNoHover && isVisible && !prefersReducedMotion}
             />
           </Suspense>
         </Canvas>

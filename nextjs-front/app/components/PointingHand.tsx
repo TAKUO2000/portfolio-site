@@ -29,6 +29,8 @@ const PLANE_NORMAL = new THREE.Vector3(0, 0, 1);
 const UP = new THREE.Vector3(0, 1, 0);
 /** この属性を付けた要素にホバーしている間は、カーソルではなく要素の中心を指す */
 export const POINT_TARGET_ATTR = "data-point-target";
+/** カーソルの無い端末で、指す先のボタンを切り替える間隔 */
+const AUTO_POINT_INTERVAL_MS = 3000;
 
 /**
  * aimAtが毎フレーム使い回す作業用オブジェクト。
@@ -96,17 +98,58 @@ export function aimAt(
   return scratch.quaternion.setFromRotationMatrix(scratch.lookMatrix);
 }
 
+function centerOf(element: Element) {
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+/**
+ * カーソルの無い端末で、次に指すボタンを返す。
+ * 中心がCanvasの中にあるボタン（指せるもの）だけを、並んだ順に一周する。
+ * 今のボタンが指せなくなっていたら（スクロールで外れたなど）最初から指し直す。指せるものが無ければnull
+ */
+export function nextAutoTarget(
+  candidates: readonly Element[],
+  canvasRect: DOMRect,
+  current: Element | null,
+): Element | null {
+  const pointable = candidates.filter((element) => {
+    const { x, y } = centerOf(element);
+    return (
+      x >= canvasRect.left &&
+      x <= canvasRect.right &&
+      y >= canvasRect.top &&
+      y <= canvasRect.bottom
+    );
+  });
+  if (pointable.length === 0) return null;
+
+  const index = current ? pointable.indexOf(current) : -1;
+  return pointable[(index + 1) % pointable.length];
+}
+
 type Props = Omit<ThreeElements["group"], "rotation"> & {
   /** カーソルがCanvasの外にあるときの角度（ラジアン） */
   rotation?: [number, number, number];
+  /**
+   * カーソルの無い端末（スマホなど）で、触らなくてもボタンを順番に指す。
+   * 画面の外にあるときと、視差効果を減らす設定のときは、渡す側でfalseにする
+   */
+  autoPoint?: boolean;
 };
 
-export function Model({ rotation = [0, 0, 0], ...props }: Props) {
+export function Model({
+  rotation = [0, 0, 0],
+  autoPoint = false,
+  ...props
+}: Props) {
   const { nodes, materials } = useGLTF(
     "/models/pointing-hand.glb",
   ) as unknown as GLTFResult;
   const groupRef = useRef<THREE.Group>(null);
   const lastPointer = useRef<LastPointer | null>(null); // ウィンドウの外に出たらnull
+  // 自分で指しているボタン。実際のカーソルやタッチ（lastPointer）があれば、そちらを優先する
+  const autoPointer = useRef<LastPointer | null>(null);
   const scratch = useMemo(() => createAimScratch(), []);
   const gl = useThree((state) => state.gl);
   const [rx, ry, rz] = rotation;
@@ -155,14 +198,46 @@ export function Model({ rotation = [0, 0, 0], ...props }: Props) {
     };
   }, []);
 
+  // カーソルの無い端末では、指す先のボタンを一定の間隔で順番に切り替える。
+  // 触れている間はタッチの位置を指し（lastPointerが優先）、離すとすぐ自動の指さしに戻る。
+  // autoPointがfalse（画面の外・視差効果を減らす設定・マウスのある端末）の間は、タイマーを回さない
+  useEffect(() => {
+    if (!autoPoint) {
+      autoPointer.current = null;
+      return;
+    }
+
+    const advance = () => {
+      const target = nextAutoTarget(
+        Array.from(document.querySelectorAll(`[${POINT_TARGET_ATTR}]`)),
+        gl.domElement.getBoundingClientRect(),
+        autoPointer.current?.target ?? null,
+      );
+      autoPointer.current = target ? { ...centerOf(target), target } : null;
+    };
+
+    advance();
+    const timer = window.setInterval(advance, AUTO_POINT_INTERVAL_MS);
+    return () => {
+      window.clearInterval(timer);
+      autoPointer.current = null;
+    };
+  }, [autoPoint, gl]);
+
   useFrame(({ camera }, delta) => {
     const group = groupRef.current;
     if (!group) return;
 
+    // 自動で指しているボタンも、スクロールで位置が変わるので、中心を毎フレーム測り直す
+    const auto = autoPointer.current;
+    if (auto?.target) {
+      Object.assign(auto, centerOf(auto.target));
+    }
+
     // スクロールでCanvasが動いても判定がずれないよう、位置は毎フレーム測り直す
     const goal = aimAt(
       scratch,
-      lastPointer.current,
+      lastPointer.current ?? auto,
       gl.domElement,
       camera,
       group,
