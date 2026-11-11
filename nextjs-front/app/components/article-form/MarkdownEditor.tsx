@@ -7,6 +7,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import type { PendingImage } from "@/app/types/models";
 import { markdownPreviewSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
+import { articleRemarkPlugins } from "@/app/lib/articleMarkdown";
 import {
   ALLOWED_IMAGE_TYPES,
   ALLOWED_IMAGE_TYPES_ACCEPT,
@@ -273,6 +274,7 @@ export default function MarkdownEditor({
             {body ? (
               <ReactMarkdown
                 urlTransform={previewUrlTransform}
+                remarkPlugins={articleRemarkPlugins}
                 rehypePlugins={[
                   rehypeRaw,
                   [rehypeSanitize, markdownPreviewSanitizeSchema],

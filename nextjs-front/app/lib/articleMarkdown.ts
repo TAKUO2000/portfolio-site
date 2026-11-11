@@ -1,12 +1,17 @@
 import type { Element, ElementContent, Root } from "hast";
 import type { PluggableList } from "unified";
 import { unified } from "unified";
+import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import { markdownSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
+
+// 表・URLの自動のリンク・打ち消し線・チェックボックス（GitHubの拡張。GFM）を読む。
+// 公開の記事のページ・エディタのプレビュー・目次で同じものを使い、見た目と目次をそろえる
+export const articleRemarkPlugins: PluggableList = [remarkGfm];
 
 // rehype-sanitizeは既存のidに"user-content-"を付けるため、
 // slugはsanitizeの後で付けて目次のリンク先と素直に一致させる
@@ -53,6 +58,7 @@ function collectHeadings(nodes: ElementContent[], headings: TocHeading[]) {
 export function extractHeadings(markdown: string): TocHeading[] {
   const processor = unified()
     .use(remarkParse)
+    .use(articleRemarkPlugins)
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(articleRehypePlugins);
   const tree = processor.runSync(processor.parse(markdown)) as Root;
