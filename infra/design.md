@@ -123,12 +123,26 @@ DB だけをプライベートサブネットに分ける構成は採らない�
 | --- | --- | --- |
 | `github-deploy-prod` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/main` | ECR の `portfolio/app` への push。デプロイの部品の `bundles/main-*` の読み書き。EC2 を探すための `ec2:DescribeInstances`。`Env=prod` タグの EC2 に、デプロイ用の SSM ドキュメントだけを `ssm:SendCommand` で実行し、結果を読む |
 | `github-deploy-stg` | `repo:TAKUO2000/portfolio-site:ref:refs/heads/develop` | ECR への push。デプロイの部品の `bundles/develop-*` の読み書き。`Env=stg` タグの EC2 に、デプロイ用の SSM ドキュメントだけを実行する。ステージングの有無を確かめるための `ec2:DescribeInstances` |
-| `github-terraform-stg` | `repo:TAKUO2000/portfolio-site:environment:staging` | `envs/stg` の apply / destroy に必要な権限（VPC・EC2・S3 の stg バケット・IAM など）。作る IAM ロールには permissions boundary を必須にし、自分より強い権限のロールを作れないようにする |
+| `github-terraform-stg` | `repo:TAKUO2000/portfolio-site:environment:staging` | `envs/stg` の apply / destroy に必要な権限（下の「`github-terraform-stg` の絞り方」）。作る IAM ロールには permissions boundary（`portfolio-stg-boundary`）を必須にし、本番に届くロールを作れないようにする |
 
 - **SSM Run Command は、EC2 の root でコマンドを実行できる**（実質的に EC2 のシェルと同じ）。`AWS-RunShellScript` のような任意のコマンドを実行できるドキュメントは許可せず、決まった手順（`.env` と `.env.production` の作り直し、`docker compose pull` と `up -d`、`migrate`）だけを実行する独自の SSM ドキュメント（`portfolio-deploy`）を作って、それだけを許可する
 - `github-terraform-stg` は、GitHub の Environment（`staging`）に結び付ける。Environment の設定で、実行できるブランチを `main` だけに限定する。`workflow_dispatch` で手動実行したときだけ使う
 - **`envs/shared` と `envs/prod` は GitHub Actions から apply しない**。手元から、MFA を付けた管理用のユーザーで apply する。この2つを Actions から apply できるロールを作ると、ワークフローを書き換えられただけでアカウント全体を奪われるため
 - Cloudflare の API トークンも、ステージングの DNS レコードを作るために GitHub Actions のシークレットに置く。対象ゾーンの DNS 編集権限だけに絞り、リポジトリ全体ではなく Environment（`staging`）のシークレットにする（`github-terraform-stg` と同じ Environment のジョブからしか読めない）
+
+**`github-terraform-stg` の絞り方**（`envs/shared/terraform_stg.tf`）：ワークフローを書き換えられてこのロールを使われても、本番に届かないようにします。
+
+| 対象 | 許可すること |
+| --- | --- |
+| tfstate | `stg/` のキーの読み書きだけ（`prod/`・`shared/` の状態は読めない）。キーの名前の一覧は読める |
+| EC2・VPC | 作る・変える・消す操作を許可したうえで、**`Env` タグが `stg` 以外のリソースへの操作を拒否（Deny）する**。本番の VPC やサブネットの中に作ることも、本番の EC2 のタグを書き換えることもできない。`Env` を `stg` 以外にして作ることも拒否する（`Env=prod` の EC2 を作ると、本番のデプロイの対象を取り違えさせられるため）。`envs/stg` は `default_tags` で全部に `Env=stg` を付ける |
+| IAM | `portfolio-stg-*` のロールとインスタンスプロファイルだけ。ロールを作る・ポリシーを足すときは、権限の上限 `portfolio-stg-boundary` が付いていることを条件にする。付けられる管理ポリシーは `AmazonSSMManagedInstanceCore` だけ。`iam:PassRole` は `portfolio-stg-app` だけ（インスタンスプロファイルに入れるときにも要るので、渡す先のサービスでは絞らない。このロールにも上限が付いている） |
+| S3 | stg の画像バケット（`takuosblog-images-stg`）だけ |
+| Parameter Store | 秘密でない設定（`/portfolio/stg/config/*`）だけ。秘密（`/portfolio/stg/APP_KEY` など）は読めない |
+
+`portfolio-stg-boundary` は、ステージングの EC2 が必要とするもの（stg の画像バケット、`/portfolio/stg/*`、`bundles/develop-*`、ECR の pull、SSM のエージェント、`Portfolio/stg/*` のメトリクス、`no-reply@takuosblog.com` からの SES の送信）だけを並べたポリシーです。ロールの実際の権限は、ロールのポリシーと上限の両方で許可されたものだけになるので、`portfolio-stg-*` のロールにどんなポリシーを付けても、本番のリソースには届きません。`modules/app` のインスタンスロールに権限を足したときは、上限にも足します（足さないと、ステージングでだけ AccessDenied になる）。
+
+ステージングの DNS レコード（`api.stg`）を作れる Cloudflare のトークンは、ゾーン全体の DNS を書き換えられます。AWS の権限のように `api.stg` だけには絞れないので、ここは Environment で実行できるブランチを `main` に絞ることで守ります。
 
 ### データの置き場所
 
@@ -370,8 +384,11 @@ Vercel の環境変数 `S3_IMAGE_HOST` に本番のバケットのホスト名�
 | プラン | Hobby（非商用の個人利用に限る） |
 | Root Directory | `nextjs-front` |
 | Functions のリージョン | `hnd1`（東京）。EC2 と同じリージョンにして、SSR の往復を短くする |
-| 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコードを作る（[DNS（Cloudflare）](#dnscloudflare)） |
-| 環境変数 | `NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`S3_IMAGE_HOST=<本番のバケット名>.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（秘密。下記） |
+| 本番のブランチ | `main`（Settings → Environments → Production → Branch Tracking）。リポジトリの既定のブランチは `develop` なので、変えないと `develop` が本番に出る |
+| ビルドするブランチ | 本番と `develop`（ステージング）だけ（Settings → Build and Deployment → Ignored Build Step に `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`）。ほかのブランチの Preview は API の向き先が無く、ビルドが失敗するため |
+| 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコード（頂点の CNAME。Cloudflare の CNAME flattening で A として返る。DNS only）を手で作った（[DNS（Cloudflare）](#dnscloudflare)） |
+| 独自ドメイン（ステージング） | `stg.takuosblog.com` を Preview の `develop` ブランチに割り当てる（Settings → Domains で、Preview の `develop` に接続する）。Cloudflare のレコード（CNAME。DNS only）は手で作る |
+| 環境変数 | Production：`NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`S3_IMAGE_HOST=<本番のバケット名>.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（秘密。下記）。Preview：[ステージング環境](#環境変数)の値。同じ名前で Production と Preview に別の値を入れ、本番の値（とくに `REVALIDATE_SECRET`）を Preview には渡さない。`NEXT_PUBLIC_` の変数はブラウザに埋め込まれるので、種類は Secret ではなく Config にする |
 
 `REVALIDATE_SECRET` は、記事の変更時に API が `/api/revalidate` を呼ぶときのシークレットです（`nextjs-front/app/api/revalidate/route.ts`）。トップページは記事一覧を静的なページとしてキャッシュし、記事が変わったときと1時間ごとに作り直します。API 側の `FRONTEND_REVALIDATE_SECRET` と同じ値にし、Production（本番）と Preview（`develop` のステージング）で別の値を入れます。
 
@@ -403,7 +420,7 @@ Hobby プランでは、画像最適化（`next/image`）の回数に月ごと�
 - **プロキシ（オレンジの雲）は使わない**。Vercel は Cloudflare のプロキシを通さない設定を推奨している。API 側も、certbot が Let's Encrypt の証明書を直接取得できるように（HTTP-01 の確認が EC2 に届くように）、まずは DNS only にする
 - Cloudflare のプロキシで API を守る構成（DDoS 対策・キャッシュ・オリジン証明書）は、必要になったら検討する
 - Terraform の Cloudflare プロバイダーで `api` と `api.stg` のレコードを作る（`envs/prod`・`envs/stg`）。Cloudflare の API トークンは、対象ゾーンの DNS 編集権限だけに絞り、GitHub Actions の Environment（`staging`）のシークレットに置く
-- Vercel 向けのレコード（`takuosblog.com` と `stg.takuosblog.com`）は、Vercel の画面に表示される値を見て手で作ってもよい
+- Vercel 向けのレコード（`takuosblog.com` と `stg.takuosblog.com`）は、Vercel の画面に表示される値を見て手で作る。ステージングを消しても残す（Terraform で管理しない）
 
 ---
 
@@ -436,7 +453,7 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
 - **サンドボックスの中では、送信元の ID だけでなく宛先の ID（検証済みのアドレス）も認可の対象になる**。Resource を送信元ドメインの ID だけにすると、サンドボックスの中で試したときに `AccessDenied` になる。そのため Resource は `identity/*` にし、送信元のアドレスは条件 `ses:FromAddress` で絞る。こうすれば、本番アクセスが通ったあとも同じポリシーのままでよい
 - DMARC の一致は relaxed（既定）なので、`mail.takuosblog.com` の SPF と `takuosblog.com` の DKIM のどちらでも合格になる
 - DMARC は、レポートで SPF と DKIM が通り続けているのを確かめてから、`p=quarantine` などに上げる
-- 新しいアカウントの SES はサンドボックスの中にある（1日200通、検証済みのアドレスにしか送れない）。本番アクセスの申請が通るまでは、本番で登録の導線を出さない（またはデプロイを待つ）。申請の手順は [構築手順](setup.md#ses-の本番アクセスを申請する) を参照
+- 新しいアカウントの SES はサンドボックスの中にある（1日200通、検証済みのアドレスにしか送れない）。本番アクセスを申請して外してもらう（2026年11月に通った。1日の上限は 50,000通）。申請の手順は [構築手順](setup.md#ses-の本番アクセスを申請する) を参照
 
 ---
 
@@ -460,8 +477,11 @@ DNS のレコードは Terraform の Cloudflare プロバイダーで作りま�
 固定のパスワードがコードやシーダーに残らないようにするためです（#80）。
 
 ```bash
-# Session Manager で EC2 に接続してから実行する
+# Session Manager で EC2 に接続してから実行する（/opt/portfolio は root だけが入れる）
+sudo -i
+cd /opt/portfolio
 docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin
+docker compose -f docker-compose.prod.yml exec app php artisan db:seed --class=MasterDataSeeder --force   # 本番のマスタ
 ```
 
 `user:create-admin` の仕様：
@@ -542,12 +562,16 @@ SSM ドキュメントの引数はイメージのタグだけで、`^(main|devel
 
 ### 使い方
 
-1. GitHub Actions の手動実行（`workflow_dispatch`、`github-terraform-stg` のロール）で `envs/stg` を `terraform apply` する
-2. EC2 の起動後、`develop` の最新イメージを SSM Run Command でデプロイする（`migrate` まで行う）
-3. Session Manager で接続し、`php artisan user:create-admin` で管理者を作ってから、サンプルデータを入れる（[管理者アカウントの作成](#管理者アカウントの作成)）
+1. GitHub Actions の「Staging」（`.github/workflows/staging.yml`。`workflow_dispatch`、`github-terraform-stg` のロール）を `apply` で実行し、`envs/stg` を作る
+2. EC2 の起動（`user_data`、5分ほど）を待ってから、「Deploy backend」を `develop` で手動実行し、`develop` の最新のイメージをデプロイする（`migrate` まで行う）
+3. Session Manager で接続し、`portfolio-cert-init` で証明書を取る（下の「注意点」）
+4. `php artisan user:create-admin` で管理者を作ってから、サンプルデータを入れる（[管理者アカウントの作成](#管理者アカウントの作成)）
    - サンプルデータは `php artisan db:seed --force` で入れる。ステージング（`APP_ENV=staging`）では固定のパスワードのユーザーは作られない
-4. 起動している間は、`develop` に push するたびに同じ手順でデプロイする。ステージングが無いときはデプロイを飛ばす（EC2 のタグで有無を確かめる）
-5. 確認が終わったら、手動実行で `terraform destroy` する
+5. Vercel で `develop` の最新のデプロイを Redeploy する（ステージングが無い間のビルドは失敗しているため）
+6. 起動している間は、`develop` に push するたびに同じ手順でデプロイする。ステージングが無いときはデプロイを飛ばす（EC2 のタグで有無を確かめる）
+7. 確認が終わったら、「Staging」を `destroy` で実行する
+
+2〜5 をワークフローで続けて行わないのは、ステージングを作るロールに、デプロイや EC2 でコマンドを動かす権限まで持たせないためです。管理者のパスワードは手で入れる作り（#80）なので、どのみち手作業が残ります。具体的なコマンドは [構築手順](setup.md#ステージングを作る消す) にあります。
 
 ### 環境変数
 
@@ -560,12 +584,18 @@ SSM ドキュメントの引数はイメージのタグだけで、`^(main|devel
 | `SESSION_DOMAIN` | `.stg.takuosblog.com` |
 | `SESSION_COOKIE` | `portfolio_stg_session`（本番のセッション Cookie と名前を変える） |
 
-Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com` と、stg バケットのホスト名の `S3_IMAGE_HOST` を設定します。
+Vercel の Preview 環境には、次の値を設定します。どれも作り直しても変わらないので、一度入れれば済みます。
+
+| 環境変数 | Preview の値 |
+| --- | --- |
+| `NEXT_PUBLIC_API_BASE_URL` | `https://api.stg.takuosblog.com` |
+| `S3_IMAGE_HOST` | `takuosblog-images-stg.s3.ap-northeast-1.amazonaws.com` |
+| `REVALIDATE_SECRET` | `/portfolio/stg/FRONTEND_REVALIDATE_SECRET` と同じ値（本番とは別の値） |
 
 ### 注意点
 
 - **ステージングはシークレットウィンドウ（または別のブラウザプロファイル）で開く**。本番の Cookie は `.takuosblog.com` に向けて発行されるため、`stg.takuosblog.com` にも送られる。本番にログインしたブラウザでステージングを開くと `XSRF-TOKEN` が2つ存在する状態になり、CSRF エラー（419）が起きることがある
-- **TLS 証明書は作るたびに取り直す**。作るたびに certbot の初回の取得（`--standalone`）から行う。Let's Encrypt には同じホスト名の証明書を週5回までという発行制限があり、超えると最長1週間は取得できない。1週間に何度も作り直すときは気をつける。手順を試すだけなら、`--staging`（Let's Encrypt のテスト用の環境。ブラウザは信頼しない）で取得する
+- **TLS 証明書は作るたびに取り直す**。作るたびに certbot の初回の取得（`portfolio-cert-init`）から行う。Let's Encrypt には同じホスト名の証明書を週5回までという発行制限があり、超えると最長1週間は取得できない。ステージングを週5回以上作り直すことはまず無いので、取った証明書を残して使い回すしくみ（秘密鍵を S3 に置き、その権限を足す）は作らない（#116 で決めた）。超えたときは、その週は `--staging`（Let's Encrypt のテスト用の環境。ブラウザは信頼しない）で取って我慢する
 - **ステージングが無い間、`stg.takuosblog.com` は API につながらずエラーになる**。Vercel の Preview はそのまま残るが、気にしない
 - **ステージングが無い間は、`develop` への push で Vercel の Preview のビルドが失敗する**。トップページがビルドのときに API から記事一覧を取るため。`stg.takuosblog.com` は最後に成功したデプロイのまま残る。ステージングを作ったら、Vercel で `develop` の最新のデプロイを Redeploy する
 - **固定のパスワードの管理者を作らない**。`UserSeeder` は `admin@example.com` / `password` の管理者を作る。ステージングはインターネットに公開されるので、作ると誰でも管理者としてログインできてしまう。そのため `UserSeeder` は `local` と `testing` 以外では中断する（`APP_ENV` を `local` にしない）
@@ -612,20 +642,20 @@ Vercel の Preview 環境には `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuos
 **インフラ（#53）**
 
 - [x] 本番用の `Dockerfile.prod`、`docker-compose.prod.yml`、entrypoint、nginx の設定（`prod.conf`）を作る（#109）
-- [ ] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#53）
+- [x] certbot の初回の取得スクリプト（`renew --dry-run` まで）と、更新用の systemd timer を作る（#113）
 - [x] データ用 EBS のマウント（`user_data`）を作る（#112）
 - [x] `mysqldump` の systemd timer を作る（#114）
-- [ ] `mysqldump` のファイルから DB を復元する手順を一度試す（手順は [構築手順](setup.md#mysqldump-から復元する)）（#114）
+- [x] `mysqldump` のファイルから DB を復元する手順を一度試す（手順は [構築手順](setup.md#mysqldump-から復元する)）（#114）
 - [x] 本番の AWS リソース（`modules/app`・`envs/prod`）の Terraform のコード化（#112）
 - [x] tfstate のバケットの作り方を決める。`bootstrap/` で Terraform で作り、状態は作ったバケットへ移す（#110）
 - [x] ルートユーザーで「IAM ユーザーおよびロールによる請求情報へのアクセス」を有効にする（Budgets と Cost Explorer を IAM ユーザーで見るため）。`envs/shared` は手元から apply するので、GitHub Actions のロールに Budgets の権限は与えない（#110）
 - [x] Cloudflare の API トークン（DNS 編集権限だけのもの）を作り、GitHub Actions の Environment（`staging`）のシークレットに登録する（#111）
 - [x] SES の送信元ドメインの ID、DKIM・MAIL FROM・DMARC の DNS レコードを作る（#111）
-- [ ] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
-- [ ] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#53 の `envs/prod`）
-- [ ] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#114）
+- [x] SES の本番アクセス（サンドボックスの解除）の審査が通る（#111）
+- [x] インスタンスロールに `ses:SendRawEmail` を付け、本番の環境変数を `MAIL_MAILER=ses` にする（#112。本番からのパスワード再設定のメールが届き、SPF・DKIM が通るのを #115 で確かめた）
+- [x] SES のバウンス率と苦情率（CloudWatch の `Reputation.BounceRate`・`Reputation.ComplaintRate`）にアラームを付ける。率が高いとアカウントの送信が止められるため。ほかの CloudWatch のアラームと一緒に作る（#114）
 - [x] GitHub Actions のデプロイワークフローを作る（#115）
-- [ ] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#53）
+- [x] ステージングを作る・消すワークフロー（`workflow_dispatch`）を作る（#116）
 
 **アプリ側**
 

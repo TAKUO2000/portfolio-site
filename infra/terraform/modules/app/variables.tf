@@ -100,3 +100,9 @@ variable "extra_user_data" {
   type        = string
   default     = ""
 }
+
+variable "permissions_boundary_arn" {
+  description = "EC2 のインスタンスロールに付ける permissions boundary（権限の上限）。ステージングだけ指定する（本番は手元から apply するので付けない）"
+  type        = string
+  default     = null
+}

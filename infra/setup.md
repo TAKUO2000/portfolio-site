@@ -18,6 +18,7 @@
 10. [デプロイする（GitHub Actions）](#デプロイするgithub-actions)
 11. [証明書を取る（初回）](#証明書を取る初回)
 12. [バックアップと監視を確かめる](#バックアップと監視を確かめる)
+13. [ステージングを作る・消す](#ステージングを作る消す)
 
 ---
 
@@ -192,6 +193,7 @@ gh secret list --env staging
 | ECR | リポジトリ `portfolio/app`。タグの上書きを禁止し、プッシュ時にスキャンする。タグなしは1日で消し、`main-` は直近の20個、`develop-` は直近の10個だけ残す |
 | GitHub の OIDC プロバイダー | GitHub Actions がアクセスキーなしでロールを引き受けるため |
 | デプロイ用のロール | `github-deploy-prod`（`main` のワークフローだけ）・`github-deploy-stg`（`develop` のワークフローだけ）。[GitHub Actions のロール](design.md#github-actions-のロール) |
+| ステージングを作るロール | `github-terraform-stg`（Environment「staging」のジョブだけ）と、それが作るロールに付けさせる権限の上限 `portfolio-stg-boundary`（[ステージングを作る・消す](#ステージングを作る消す)） |
 | デプロイの部品の置き場 | バケット `takuosblog-deploy`。公開はすべて塞ぎ、HTTPS 以外は拒否する |
 | SSM ドキュメント | `portfolio-deploy`。EC2 で決まったデプロイの手順だけを実行する（[デプロイ](design.md#デプロイ)） |
 | AWS Budgets | 月 $20。実績が 80%、月末の予測が 100% を超えたらメールで知らせる。クレジットを差し引く前の金額で比べる |
@@ -399,6 +401,20 @@ SSH は開けていないので、Session Manager で接続します。手元に
 aws ssm start-session --target "$(terraform output -raw instance_id)"
 ```
 
+Session Manager で入ると、`ssm-user` というユーザーになります。`.env` などの秘密を置いている `/opt/portfolio` は root だけが入れる（パーミッション 700）ので、compose を使うときは `sudo -i` で root のシェルに切り替えてから `cd` します。
+
+```bash
+sudo -i
+cd /opt/portfolio
+docker compose -f docker-compose.prod.yml ps
+```
+
+`php artisan tinker` は、設定を書こうとして `Writing to directory /var/www/.config/psysh is not allowed.` という警告を出します（イメージは `www-data` で動かし、書き込めるのを `storage/` と `bootstrap/cache/` だけにしているため）。動きには影響しませんが、`-e HOME=/tmp` を付けると出ません。
+
+```bash
+docker compose -f docker-compose.prod.yml exec -e HOME=/tmp app php artisan tinker --execute='echo App\Models\User::count();'
+```
+
 ### 本番のリソースを確かめる
 
 EC2 の中で：
@@ -434,26 +450,28 @@ tfstate に秘密が入っていないことは、[上の手順](#確かめる)�
 MySQL の root のパスワードは誰も持ちません（`MYSQL_RANDOM_ROOT_PASSWORD`。[EC2 上のコンテナ構成](design.md#ec2-上のコンテナ構成)）。ふだんの作業は、アプリ用のユーザー（`.env` の `DB_USERNAME`。`DB_DATABASE` のすべての権限を持つ）で行います。
 
 ```bash
+sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
 cd /opt/portfolio
 # アプリ用のユーザーで入る（パスワードは .env の DB_PASSWORD）
-sudo docker compose -f docker-compose.prod.yml exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'
+docker compose -f docker-compose.prod.yml exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'
 
 # バックアップもアプリ用のユーザーで取る。PROCESS の権限が無いので --no-tablespaces を付ける（#114 で timer にする）
-sudo docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
+docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
   'mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --single-transaction --no-tablespaces "$MYSQL_DATABASE"' > dump.sql
 ```
 
 ユーザーの作り直しや権限の付け直しなど、root でしかできない作業が要るときは、MySQL を権限の確認なしで起動し直して、root のパスワードを設定します。その間は（コンテナの中からなら）誰でも DB に入れるので、API を止めてから行い、終わったら元に戻します。動いている `mysql` も止めます（同じ `/data/mysql` を2つの mysqld が開くと、InnoDB のロックが取れずに起動できない）。
 
 ```bash
+sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
 cd /opt/portfolio
-sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx mysql
-sudo docker compose -f docker-compose.prod.yml run --rm -d --name mysql-recovery mysql \
+docker compose -f docker-compose.prod.yml stop app scheduler nginx mysql
+docker compose -f docker-compose.prod.yml run --rm -d --name mysql-recovery mysql \
   --skip-grant-tables --skip-networking
-sudo docker exec -it mysql-recovery mysql   # 中で FLUSH PRIVILEGES; のあと ALTER USER 'root'@'localhost' IDENTIFIED BY '...'; など
-sudo docker stop mysql-recovery
-sudo docker ps --filter name=mysql-recovery --format '{{.Names}}'   # 何も出ないこと（止まっている）
-sudo docker compose -f docker-compose.prod.yml up -d
+docker exec -it mysql-recovery mysql   # 中で FLUSH PRIVILEGES; のあと ALTER USER 'root'@'localhost' IDENTIFIED BY '...'; など
+docker stop mysql-recovery
+docker ps --filter name=mysql-recovery --format '{{.Names}}'   # 何も出ないこと（止まっている）
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 root のパスワードを設定した場合は、作業が終わったら `ALTER USER 'root'@'localhost' ACCOUNT LOCK;` で使えなくするか、値を Parameter Store に置かずに控えないでおきます。
@@ -519,9 +537,10 @@ aws sts get-caller-identity --query Account --output text | gh secret set AWS_AC
 GitHub の Actions の画面で「Deploy backend」の結果を見ます。最後のステップに、EC2 の上で実行したデプロイの出力（`docker compose ps` など）が出ます。EC2 の中で確かめるときは、Session Manager で入ります。
 
 ```bash
+sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
 cd /opt/portfolio
-sudo docker compose -f docker-compose.prod.yml ps
-sudo docker compose -f docker-compose.prod.yml logs --tail 100 app
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs --tail 100 app
 ```
 
 ### デプロイの手順（SSM ドキュメント）を直したとき
@@ -650,12 +669,139 @@ docker rm -f restore-test && rm dump.sql.gz
 本番の DB を mysqldump から戻すときは、`app`・`scheduler`・`nginx` を止めてから、アプリ用のユーザーで流し込みます（`DB_DATABASE` のすべての権限を持つ）。
 
 ```bash
-# EC2 の中で（/opt/portfolio）。dump.sql.gz は管理用のユーザーで S3 から取って、Session Manager などで EC2 に置く
-sudo docker compose -f docker-compose.prod.yml stop app scheduler nginx
-gunzip -c dump.sql.gz | sudo docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
+# EC2 の中で。dump.sql.gz は管理用のユーザーで S3 から取って、Session Manager などで EC2 に置く
+sudo -i                # /opt/portfolio は root だけが入れる（パーミッション 700）
+cd /opt/portfolio
+DUMP=/home/ssm-user/dump.sql.gz   # 置いた場所を絶対パスで指定する（root のシェルでは ~ が /root になるため）
+
+# 止める前に、ファイルがあって壊れていないかを確かめる（止めたあとで失敗すると、サイトが止まったままになる）
+gzip -t "$DUMP" && zcat "$DUMP" | tail -n 1 | grep -q '^-- Dump completed' && echo OK
+
+docker compose -f docker-compose.prod.yml stop app scheduler nginx
+gunzip -c "$DUMP" | docker compose -f docker-compose.prod.yml exec -T mysql sh -c \
   'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE"'
-sudo docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 データ用 EBS ごと戻すときは、DLM のスナップショットから新しいボリュームを作って付け替えます。データ用 EBS は Terraform（`envs/prod` の `aws_ebs_volume.data`、`prevent_destroy`）が管理しているので、付け替えたら Terraform の状態も合わせる必要があります。手順は、必要になったときに決めます。
 
+
+---
+
+## ステージングを作る・消す
+
+ステージング（`envs/stg`）は、確かめたいときだけ GitHub Actions の「Staging」（`.github/workflows/staging.yml`）で作り、終わったら消します（[ステージング環境](design.md#ステージング環境)）。**動かしている間は課金されます**（1時間あたり約 $0.02）。
+
+### 最初に一度だけ
+
+**1. ステージングを作るロールを作る（手元から `envs/shared` を apply）**
+
+`envs/shared` に、`github-terraform-stg`（ステージングを作る・消すロール）と、それが作るロールに付ける権限の上限 `portfolio-stg-boundary` があります（[GitHub Actions のロール](design.md#github-actions-のロール)）。
+
+```bash
+cd infra/terraform/envs/shared
+export CLOUDFLARE_API_TOKEN="$(cat ~/.config/portfolio/cloudflare-api-token)"
+terraform plan    # github-terraform-stg と portfolio-stg-boundary が増えるだけなのを確かめる
+terraform apply
+```
+
+**2. ステージングの秘密を Parameter Store に入れる**
+
+本番と同じ名前で、本番とは別の値を `/portfolio/stg/` に入れます（[秘密情報を Parameter Store に入れる](#秘密情報を-parameter-store-に入れる)）。ステージングを destroy しても消えないので、一度入れれば済みます。
+
+```bash
+export AWS_PROFILE=portfolio
+
+aws ssm put-parameter --name /portfolio/stg/APP_KEY --type SecureString \
+  --value "base64:$(openssl rand -base64 32)"
+
+aws ssm put-parameter --name /portfolio/stg/DB_PASSWORD --type SecureString \
+  --value "$(openssl rand -hex 32)"
+
+aws ssm put-parameter --name /portfolio/stg/FRONTEND_REVALIDATE_SECRET --type SecureString \
+  --value "$(openssl rand -hex 32)"
+
+aws ssm get-parameters-by-path --path /portfolio/stg/ --query 'Parameters[].[Name,Type]' --output table
+```
+
+**3. Cloudflare のゾーンの ID を GitHub に入れる**
+
+ワークフローは `AWS_ACCOUNT_ID`（リポジトリのシークレット。[デプロイする](#最初に一度だけ)）と、Environment「staging」の `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ZONE_ID` を使います。ゾーンの ID は `envs/shared` の `terraform.tfvars` と同じ値です。
+
+```bash
+read -rs ZONE   # ゾーンの ID を貼り付けて Enter
+printf '%s' "$ZONE" | gh secret set CLOUDFLARE_ZONE_ID --env staging && unset ZONE
+gh secret list --env staging   # CLOUDFLARE_API_TOKEN と CLOUDFLARE_ZONE_ID
+```
+
+**4. Vercel の Preview を `stg.takuosblog.com` にする**
+
+| 場所 | 設定 |
+| --- | --- |
+| Settings → Build and Deployment → Ignored Build Step | Behavior を自分でコマンドを書くものにし、Command に `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`（本番と `develop` だけビルドする） |
+| Settings → Domains | `stg.takuosblog.com` を足し、Connect to an environment で Preview、ブランチに `develop` を選ぶ |
+| Settings → Environment Variables | 先に、本番の3つ（`NEXT_PUBLIC_API_BASE_URL`・`S3_IMAGE_HOST`・`REVALIDATE_SECRET`）の対象を **Production だけ**にする（Preview に付いていると、同じ名前を足せず、`develop` のビルドに本番の値と秘密が渡る）。そのうえで、対象を Preview だけにして `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com`・`S3_IMAGE_HOST=takuosblog-images-stg.s3.ap-northeast-1.amazonaws.com`（どちらも種類は Config）、`REVALIDATE_SECRET`（`/portfolio/stg/FRONTEND_REVALIDATE_SECRET` の値。種類は Secret）を足す |
+
+`REVALIDATE_SECRET` の値は `aws ssm get-parameter --name /portfolio/stg/FRONTEND_REVALIDATE_SECRET --with-decryption --query Parameter.Value --output text` で見ます。
+
+**5. Cloudflare に `stg.takuosblog.com` のレコードを作る**
+
+Vercel の Domains に表示される値（CNAME）で、Cloudflare のダッシュボードから手で作ります。**Proxy status は DNS only** にします。ステージングを消しても残します（Terraform では管理しない）。
+
+レコードを作ると Vercel に「Your domain is properly configured, but you don't have a production deployment.」と出ますが、`develop` のデプロイがまだ無いだけです。ステージングを作って `develop` のビルドが成功すると消えます（`vercel --prod` は実行しない）。
+
+### 作る
+
+1. Actions の画面で「Staging」→ **Run workflow**。ブランチは `main`、action は `apply`。終わると、ジョブの概要にインスタンス ID とパブリック IP が出る
+2. `user_data` が終わるのを5分ほど待ち、「Deploy backend」→ **Run workflow** をブランチ `develop`（`image_tag` は空）で実行する。この時点では証明書が無いので、nginx は起動を繰り返す（想定どおり）
+3. Session Manager で入り、証明書を取って、管理者とサンプルデータを作る
+
+```bash
+# 手元で（インスタンス ID はジョブの概要に出たもの）
+aws ssm start-session --target <インスタンス ID>
+```
+
+```bash
+# EC2 の中で
+sudo portfolio-cert-init <メールアドレス>
+# 週5回の制限にかかったときは、試験用の認証局で取る（ブラウザは信頼しない）。--staging は最初の引数に置く
+# sudo portfolio-cert-init --staging <メールアドレス>
+
+sudo -i
+cd /opt/portfolio
+docker compose -f docker-compose.prod.yml exec app php artisan user:create-admin   # 対話的にパスワードを入れる
+docker compose -f docker-compose.prod.yml exec app php artisan db:seed --force
+```
+
+4. Vercel の Deployments で、`develop` の最新のデプロイを **Redeploy** する（ステージングが無い間のビルドは失敗しているため）
+5. `https://stg.takuosblog.com` を**シークレットウィンドウ**で開き、ログインして確かめる
+
+### 消す
+
+Actions の画面で「Staging」→ **Run workflow**。ブランチは `main`、action は `destroy`。EC2・VPC・画像バケット（中身ごと）・`api.stg` のレコードが消えます。`/portfolio/stg/*` の秘密、`stg.takuosblog.com` のレコード、Vercel の設定は残ります。
+
+### 権限を確かめる（初めて作ったとき）
+
+ステージングから本番に届かないことを確かめます。`github-terraform-stg` で本番の状態（`prod/`）を読めないことは、ワークフローが毎回確かめます（読めたら失敗する）。
+
+```bash
+# EC2 の中で（ステージング）。どれも AccessDenied になればよい
+aws ssm get-parameter --name /portfolio/prod/APP_KEY --region ap-northeast-1
+aws s3 ls s3://takuosblog-images-prod/
+aws s3 cp /etc/hostname s3://takuosblog-images-prod/tmp/stg-test
+
+# 自分の環境のものは読める
+aws ssm get-parameters-by-path --path /portfolio/stg/ --region ap-northeast-1 --query 'Parameters[].Name'
+aws s3 ls s3://takuosblog-images-stg/
+```
+
+本番の画像バケットの `images/*` は誰でも読めるように公開しているので、`images/` の読み取りは成功します（想定どおり）。
+
+### コンテナの中からインスタンスロールで動くかを確かめる（初めて作ったとき）
+
+Laravel はアクセスキーを持たず、コンテナの中から IMDS でインスタンスロールの認証情報を取って、S3 と SES を使います（IMDS のホップ数の上限を 2 にしているため。[セキュリティ](design.md#セキュリティ)）。ブラウザから実際に使って確かめます。
+
+1. **画像のアップロード（S3）**：`https://stg.takuosblog.com` で記事を作り、画像を貼って保存する。記事の画像が表示され、URL が `takuosblog-images-stg` の `images/` を指していればよい
+2. **メールの送信（SES）**：ログアウトして「パスワードを忘れた」から、管理者のメールアドレスに再設定のメールを送る。届けばよい（送信元は `no-reply@takuosblog.com`）
+
+どちらかが失敗したら、EC2 の中で `docker compose -f docker-compose.prod.yml logs --tail 100 app` を見ます。`AccessDenied` なら、インスタンスロールのポリシーと権限の上限（`portfolio-stg-boundary`）の両方に、その操作が入っているかを確かめます。
