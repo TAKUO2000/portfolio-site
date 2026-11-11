@@ -728,11 +728,17 @@ aws ssm get-parameters-by-path --path /portfolio/stg/ --query 'Parameters[].[Nam
 
 ワークフローは `AWS_ACCOUNT_ID`（リポジトリのシークレット。[デプロイする](#最初に一度だけ)）と、Environment「staging」の `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ZONE_ID` を使います。ゾーンの ID は `envs/shared` の `terraform.tfvars` と同じ値です。
 
+`gh secret set` は、空の値を渡されても登録に成功してしまいます（`read` が値を受け取れなかった、ファイルのパスを誤った、など）。空のまま「Staging」を動かすと、plan が `var.cloudflare_zone_id is ""` で止まります。値の形（32桁の16進数）を確かめてから登録します。
+
 ```bash
-read -rs ZONE   # ゾーンの ID を貼り付けて Enter
-printf '%s' "$ZONE" | gh secret set CLOUDFLARE_ZONE_ID --env staging && unset ZONE
+# envs/shared の terraform.tfvars から読む（値は画面に出ない）
+v=$(sed -n 's/^cloudflare_zone_id *= *"\(.*\)".*/\1/p' infra/terraform/envs/shared/terraform.tfvars)
+[[ $v =~ ^[0-9a-f]{32}$ ]] && printf '%s' "$v" | gh secret set CLOUDFLARE_ZONE_ID --env staging || echo "値を読めませんでした"
+unset v
 gh secret list --env staging   # CLOUDFLARE_API_TOKEN と CLOUDFLARE_ZONE_ID
 ```
+
+リポジトリのルートで実行します（ほかのディレクトリでは、`terraform.tfvars` のパスが変わります）。
 
 **4. Vercel の Preview を `stg.takuosblog.com` にする**
 
@@ -775,6 +781,9 @@ docker compose -f docker-compose.prod.yml exec app php artisan db:seed --force
 
 4. Vercel の Deployments で、`develop` の最新のデプロイを **Redeploy** する（ステージングが無い間のビルドは失敗しているため）
 5. `https://stg.takuosblog.com` を**シークレットウィンドウ**で開き、ログインして確かめる
+   - Vercel のログインを求められるので、Vercel にログインする（Preview には Vercel の認証がかかる）
+   - 開いているシークレットウィンドウは、先に**すべて閉じてから**開く。同じシークレットのセッションで本番を開いていると、本番の `XSRF-TOKEN`（`.takuosblog.com`）も送られ、ログインが `CSRF token mismatch`（419）になる
+   - 記事を投稿・更新しても、トップページにはすぐには出ない（Vercel の認証に止められるため。1時間待つか、Vercel で Redeploy する）
 
 ### 消す
 
