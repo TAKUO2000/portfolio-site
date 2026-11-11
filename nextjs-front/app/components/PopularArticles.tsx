@@ -38,7 +38,8 @@ export default function PopularArticles({
                   className="group relative grid overflow-hidden bg-white shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-lg md:grid-cols-[288px_1fr]"
                 >
                   <article className="contents">
-                    <div className="relative aspect-16/10 w-full bg-black md:aspect-auto md:h-45.5">
+                    {/* 文章が長くて行が高くなっても、画像の下に余白ができないよう、行の高さいっぱいに広げる */}
+                    <div className="relative aspect-16/10 w-full bg-black md:aspect-auto md:h-full md:min-h-45.5">
                       {article.header_image && (
                         <Image
                           src={article.header_image}
@@ -72,12 +73,13 @@ export default function PopularArticles({
                         />
                       </div>
 
-                      <h3 className="text-xl font-bold leading-tight md:text-2xl">
+                      {/* 区切りの無い長い英数字も、カードの幅で折り返す */}
+                      <h3 className="text-xl font-bold leading-tight wrap-break-word md:text-2xl">
                         {article.title}
                       </h3>
 
                       {/* 右下のアイコンと重ならないよう余白を空ける */}
-                      <p className="mt-2 line-clamp-2 flex-1 pr-28 text-base leading-relaxed text-gray-700">
+                      <p className="mt-2 line-clamp-2 flex-1 pr-28 text-base leading-relaxed text-gray-700 wrap-break-word">
                         {article.summary}
                       </p>
                     </div>

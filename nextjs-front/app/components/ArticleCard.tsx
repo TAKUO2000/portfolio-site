@@ -118,7 +118,7 @@ export function SmallArticleCard({
         />
 
         <div className="min-w-0">
-          <h3 className="line-clamp-2 text-sm font-bold leading-snug">
+          <h3 className="line-clamp-2 text-sm font-bold leading-snug wrap-break-word">
             {title}
           </h3>
           <ArticleMeta
@@ -194,10 +194,11 @@ export function VerticalArticleCard({
               <span className="text-xs text-gray-500">+{tags.length - 3}</span>
             )}
           </div>
-          <h3 className="line-clamp-2 min-h-[2lh] text-lg font-bold leading-snug">
+          {/* 区切りの無い長い英数字も、カードの幅で折り返す（日本語は今までどおり） */}
+          <h3 className="line-clamp-2 min-h-[2lh] text-lg font-bold leading-snug wrap-break-word">
             {title}
           </h3>
-          <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-snug text-gray-700">
+          <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-snug text-gray-700 wrap-break-word">
             {summary}
           </p>
           {/* Topページのカードと同じく、ホバーでラベルが開く */}
@@ -248,11 +249,11 @@ export function TextArticleCard({
       className="group block border-l-2 border-gray-300 pl-4 transition-colors hover:border-black"
     >
       <article>
-        <h3 className="line-clamp-2 text-base font-bold leading-snug">
+        <h3 className="line-clamp-2 text-base font-bold leading-snug wrap-break-word">
           {title}
         </h3>
         {summary && (
-          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-gray-700">
+          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-gray-700 wrap-break-word">
             {summary}
           </p>
         )}
