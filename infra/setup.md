@@ -738,15 +738,17 @@ gh secret list --env staging   # CLOUDFLARE_API_TOKEN と CLOUDFLARE_ZONE_ID
 
 | 場所 | 設定 |
 | --- | --- |
-| Settings → Git → Ignored Build Step | `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`（本番と `develop` だけビルドする） |
-| Settings → Domains | `stg.takuosblog.com` を足し、Git Branch に `develop` を選ぶ |
-| Settings → Environment Variables（Preview） | `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com`、`S3_IMAGE_HOST=takuosblog-images-stg.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（`/portfolio/stg/FRONTEND_REVALIDATE_SECRET` の値。Sensitive にする） |
+| Settings → Build and Deployment → Ignored Build Step | Behavior を自分でコマンドを書くものにし、Command に `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`（本番と `develop` だけビルドする） |
+| Settings → Domains | `stg.takuosblog.com` を足し、Connect to an environment で Preview、ブランチに `develop` を選ぶ |
+| Settings → Environment Variables | 先に、本番の3つ（`NEXT_PUBLIC_API_BASE_URL`・`S3_IMAGE_HOST`・`REVALIDATE_SECRET`）の対象を **Production だけ**にする（Preview に付いていると、同じ名前を足せず、`develop` のビルドに本番の値と秘密が渡る）。そのうえで、対象を Preview だけにして `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com`・`S3_IMAGE_HOST=takuosblog-images-stg.s3.ap-northeast-1.amazonaws.com`（どちらも種類は Config）、`REVALIDATE_SECRET`（`/portfolio/stg/FRONTEND_REVALIDATE_SECRET` の値。種類は Secret）を足す |
 
 `REVALIDATE_SECRET` の値は `aws ssm get-parameter --name /portfolio/stg/FRONTEND_REVALIDATE_SECRET --with-decryption --query Parameter.Value --output text` で見ます。
 
 **5. Cloudflare に `stg.takuosblog.com` のレコードを作る**
 
 Vercel の Domains に表示される値（CNAME）で、Cloudflare のダッシュボードから手で作ります。**Proxy status は DNS only** にします。ステージングを消しても残します（Terraform では管理しない）。
+
+レコードを作ると Vercel に「Your domain is properly configured, but you don't have a production deployment.」と出ますが、`develop` のデプロイがまだ無いだけです。ステージングを作って `develop` のビルドが成功すると消えます（`vercel --prod` は実行しない）。
 
 ### 作る
 

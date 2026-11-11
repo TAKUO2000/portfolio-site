@@ -385,10 +385,10 @@ Vercel の環境変数 `S3_IMAGE_HOST` に本番のバケットのホスト名�
 | Root Directory | `nextjs-front` |
 | Functions のリージョン | `hnd1`（東京）。EC2 と同じリージョンにして、SSR の往復を短くする |
 | 本番のブランチ | `main`（Settings → Environments → Production → Branch Tracking）。リポジトリの既定のブランチは `develop` なので、変えないと `develop` が本番に出る |
-| ビルドするブランチ | 本番と `develop`（ステージング）だけ（Settings → Git → Ignored Build Step に `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`）。ほかのブランチの Preview は API の向き先が無く、ビルドが失敗するため |
+| ビルドするブランチ | 本番と `develop`（ステージング）だけ（Settings → Build and Deployment → Ignored Build Step に `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`）。ほかのブランチの Preview は API の向き先が無く、ビルドが失敗するため |
 | 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコード（頂点の CNAME。Cloudflare の CNAME flattening で A として返る。DNS only）を手で作った（[DNS（Cloudflare）](#dnscloudflare)） |
-| 独自ドメイン（ステージング） | `stg.takuosblog.com` を Preview の `develop` ブランチに割り当てる（Settings → Domains → Git Branch に `develop`）。Cloudflare のレコード（CNAME。DNS only）は手で作る |
-| 環境変数 | Production：`NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`S3_IMAGE_HOST=<本番のバケット名>.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（秘密。下記）。Preview：[ステージング環境](#環境変数)の値 |
+| 独自ドメイン（ステージング） | `stg.takuosblog.com` を Preview の `develop` ブランチに割り当てる（Settings → Domains で、Preview の `develop` に接続する）。Cloudflare のレコード（CNAME。DNS only）は手で作る |
+| 環境変数 | Production：`NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`S3_IMAGE_HOST=<本番のバケット名>.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（秘密。下記）。Preview：[ステージング環境](#環境変数)の値。同じ名前で Production と Preview に別の値を入れ、本番の値（とくに `REVALIDATE_SECRET`）を Preview には渡さない。`NEXT_PUBLIC_` の変数はブラウザに埋め込まれるので、種類は Secret ではなく Config にする |
 
 `REVALIDATE_SECRET` は、記事の変更時に API が `/api/revalidate` を呼ぶときのシークレットです（`nextjs-front/app/api/revalidate/route.ts`）。トップページは記事一覧を静的なページとしてキャッシュし、記事が変わったときと1時間ごとに作り直します。API 側の `FRONTEND_REVALIDATE_SECRET` と同じ値にし、Production（本番）と Preview（`develop` のステージング）で別の値を入れます。
 
