@@ -95,3 +95,31 @@ describe("記事の本文の描画（GFM）", () => {
     ).toEqual(["まとめ"]);
   });
 });
+
+describe("記事の本文の描画（GFM の脚注）", () => {
+  const md = "本文[^1]\n\n[^1]: 注";
+
+  test("本文の脚注の番号から、脚注へ飛べる（リンク先のidがある）", () => {
+    const html = renderArticle(md);
+    const refHref = html.match(/<a href="#([^"]+)"[^>]*data-footnote-ref/)?.[1];
+
+    expect(refHref).toBeDefined();
+    expect(html).toContain(`id="${refHref}"`);
+  });
+
+  test("脚注の戻るリンクから、本文の番号へ戻れる", () => {
+    const html = renderArticle(md);
+    const backHref = html.match(
+      /<a href="#([^"]+)"[^>]*data-footnote-backref/,
+    )?.[1];
+
+    expect(backHref).toBeDefined();
+    expect(html).toContain(`id="${backHref}"`);
+  });
+
+  test("脚注の見出し（Footnotes）は目次に出さない", () => {
+    expect(extractHeadings(`## まとめ\n\n${md}`).map((h) => h.text)).toEqual([
+      "まとめ",
+    ]);
+  });
+});
