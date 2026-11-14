@@ -49,3 +49,15 @@ describe("Hero", () => {
     expect(latest.querySelector("span")).toBeNull();
   });
 });
+
+describe("Hero の短い文言の折り返し", () => {
+  // 「サイトについて」は390px未満の幅では1行に収まらない。言葉の途中（「サイトについ／て」）で切れないよう、文節で折り返す
+  it("短い文言は、収まらないときに文節の切れ目で折り返す", () => {
+    const link = screen.getAllByRole("link")[2];
+    const short = Array.from(link.querySelectorAll("span")).find(
+      (span) => span.textContent === "サイトについて",
+    );
+
+    expect(short?.classList.contains("[word-break:auto-phrase]")).toBe(true);
+  });
+});

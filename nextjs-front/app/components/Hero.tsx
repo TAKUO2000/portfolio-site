@@ -10,7 +10,8 @@ const PointingHandCanvas = dynamic(() => import("./PointingHandCanvas"), {
 const SCROLL_DURATION_MS = 900;
 
 export default function Hero() {
-  // shortLabel：スマホの幅（md未満）では3つを横に並べるので、1行に収まらない文言だけ短くする
+  // shortLabel：スマホの幅（md未満）では3つを横に並べるので、長い文言だけ短くする。
+  // それでも390px未満では1行に収まらないので、文節の切れ目で折り返す（「サイトに／ついて」。auto-phrase は Chrome・Edge）
   const navLinks: { href: string; label: string; shortLabel?: string }[] = [
     { href: "#latest-article", label: "最新記事" },
     { href: "#popular-articles", label: "人気記事" },
@@ -92,7 +93,9 @@ export default function Hero() {
           >
             {link.shortLabel ? (
               <>
-                <span className="md:hidden">{link.shortLabel}</span>
+                <span className="[word-break:auto-phrase] md:hidden">
+                  {link.shortLabel}
+                </span>
                 <span className="hidden md:inline">{link.label}</span>
               </>
             ) : (

@@ -55,9 +55,12 @@ export default function AboutSite({
           />
         </div>
 
-        {/* md以上は、見出しと文章を画像の高さの真ん中に寄せる（見出しは上の行の下端、文章は下の行の上端） */}
+        {/*
+          md以上は、見出しと文章を画像の高さの真ん中に寄せる（見出しは上の行の下端、文章は下の行の上端）。
+          360px未満の幅では、30pxの「TAKUO2000」が画像の横に収まらず重なるので、24pxにする
+        */}
         <h2
-          className={`text-3xl font-bold leading-tight [grid-area:title] md:self-end md:text-5xl ${layout.title}`}
+          className={`text-2xl font-bold leading-tight [grid-area:title] min-[360px]:text-3xl md:self-end md:text-5xl ${layout.title}`}
         >
           {title.map((line, index) => (
             <span key={index} className="block">

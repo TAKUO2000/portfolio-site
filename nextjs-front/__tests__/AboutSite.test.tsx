@@ -99,3 +99,14 @@ describe("AboutSite の説明文の折り返し", () => {
     expect(heading.className).toContain("md:text-end");
   });
 });
+
+describe("AboutSite の見出しの大きさ", () => {
+  // 30pxの「TAKUO2000」（約173px）は、360px未満の幅だと画像（104px）の横に収まらず、画像に重なる
+  it("見出しは、360px未満で24px、360px以上で30px、md以上で48px", () => {
+    const { heading } = renderAbout("me");
+
+    expect(heading.classList.contains("text-2xl")).toBe(true);
+    expect(heading.classList.contains("min-[360px]:text-3xl")).toBe(true);
+    expect(heading.classList.contains("md:text-5xl")).toBe(true);
+  });
+});
