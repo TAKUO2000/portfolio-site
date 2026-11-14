@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
+import { useMediaQuery } from "@/app/lib/useMediaQuery";
 import { Model } from "./PointingHand";
 import ErrorBoundary from "./ui/ErrorBoundary";
 
@@ -15,7 +16,16 @@ type Props = {
   modelRotation?: [number, number, number];
   /** 手の大きさ。奥に置くと小さく映るので、見た目を保つならここで補う */
   modelScale?: number;
+  /** スマホの幅（Tailwindのsm未満、639px以下）での手の大きさ。省略するとmodelScaleと同じ */
+  mobileModelScale?: number;
 };
+
+/** Tailwindのsm（640px）未満。スマホの幅 */
+const MOBILE_QUERY = "(max-width: 639px)";
+/** OSの「視差効果を減らす」設定 */
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+/** カーソルの無い端末（スマホなど）。マウスをつないだタブレットなどは途中で変わる */
+const NO_HOVER_QUERY = "(hover: none) and (pointer: coarse)";
 
 /** 画面内に入っているかを監視する。IntersectionObserverが無い環境では常にtrue */
 function useIsVisible(ref: React.RefObject<HTMLElement | null>) {
@@ -35,54 +45,19 @@ function useIsVisible(ref: React.RefObject<HTMLElement | null>) {
   return isVisible;
 }
 
-/** OSの「視差効果を減らす」設定が有効かどうか */
-function usePrefersReducedMotion() {
-  // SSRではmatchMediaが無いので、初期値はfalseにしてマウント後に確定させる
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setPrefersReducedMotion(query.matches);
-
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
-  return prefersReducedMotion;
-}
-
-/**
- * カーソルの無い端末（スマホなど）かどうか。
- * マウスをつないだタブレットなどは途中で変わるので、変わったら追いかける
- */
-function useHasNoHover() {
-  // SSRではmatchMediaが無いので、初期値はfalse（カーソルを追う）にしてマウント後に確定させる
-  const [hasNoHover, setHasNoHover] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(hover: none) and (pointer: coarse)");
-    const update = () => setHasNoHover(query.matches);
-
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
-  return hasNoHover;
-}
-
 /** カーソルを指さす手の3Dモデル。大きさは親要素かclassNameで決める */
 export default function PointingHandCanvas({
   className,
   modelPosition,
   modelRotation,
   modelScale,
+  mobileModelScale = modelScale,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isVisible = useIsVisible(containerRef);
-  const prefersReducedMotion = usePrefersReducedMotion();
-  const hasNoHover = useHasNoHover();
+  const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
+  const hasNoHover = useMediaQuery(NO_HOVER_QUERY);
+  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   // 画面外では描画を止める。視差効果を減らす設定なら初回だけ描画して静止させる
   const frameloop = !isVisible
@@ -107,7 +82,7 @@ export default function PointingHandCanvas({
             <Model
               position={modelPosition}
               rotation={modelRotation}
-              scale={modelScale}
+              scale={isMobile ? mobileModelScale : modelScale}
               // カーソルの無い端末では、触っていない間、指先がゆっくり円を描く。
               // 視差効果を減らす設定のときは動かさない（画面の外では frameloop が止まるので動きも止まる）
               idleSway={hasNoHover && !prefersReducedMotion}

@@ -60,12 +60,14 @@ export default function Hero() {
     <section className="relative bg-[#f4f1eb] text-center py-24 px-6 min-h-screen flex flex-col items-center justify-center">
       {/* 背景の3D。ボタンのクリックを邪魔しないようポインターイベントは素通しにする */}
       {/* yは見出しの中心の裏。大きくするほど指も長く映るので、
-          指先がボタンからはみ出さない範囲でscaleを決めている */}
+          指先がボタンからはみ出さない範囲でscaleを決めている。
+          スマホの幅では画面が狭く、手が大きく見えるので、少し小さくする */}
       <PointingHandCanvas
         className="absolute inset-0 pointer-events-none"
         modelPosition={[0, 0.59, -0.6]}
         modelRotation={[0, 0, 0]}
         modelScale={1.3}
+        mobileModelScale={1.1}
       />
       <h1 className="relative text-5xl sm:text-7xl font-extrabold mb-3">
         TAKUO_Log
