@@ -10,10 +10,15 @@ const PointingHandCanvas = dynamic(() => import("./PointingHandCanvas"), {
 const SCROLL_DURATION_MS = 900;
 
 export default function Hero() {
-  const navLinks = [
+  // shortLabel：スマホの幅（md未満）では3つを横に並べるので、1行に収まらない文言だけ短くする
+  const navLinks: { href: string; label: string; shortLabel?: string }[] = [
     { href: "#latest-article", label: "最新記事" },
     { href: "#popular-articles", label: "人気記事" },
-    { href: "#about-site", label: "このサイトについて" },
+    {
+      href: "#about-site",
+      label: "このサイトについて",
+      shortLabel: "サイトについて",
+    },
   ];
   // 画面内スクロールの実装(HTML idを利用して実装)
   const scrollToSection = (
@@ -75,16 +80,24 @@ export default function Hero() {
       <p className="relative text-lg text-[#010101] mb-8">
         TAKUO2000が読んだ本と、学んだ技術の保管庫。
       </p>
-      <div className="relative mt-20 sm:mt-40 flex flex-wrap justify-center gap-4 sm:gap-10">
+      {/* md未満は3つを横に等分して並べる（折り返して詰まって見えないように）。md以上は今までどおり */}
+      <div className="relative mt-20 grid w-full grid-cols-3 gap-2 md:mt-40 md:flex md:w-auto md:justify-center md:gap-10">
         {navLinks.map((link) => (
           <a
             key={link.href}
             href={link.href}
             onClick={(event) => scrollToSection(event, link.href)}
             data-point-target // ホバー中は手がこのボタンの中心を指す
-            className="bg-black text-white text-base px-6 sm:px-10 py-4 hover:opacity-70 transition-opacity"
+            className="flex min-h-14 items-center justify-center bg-black px-1 py-2 text-center text-sm text-white transition-opacity hover:opacity-70 md:min-h-0 md:px-10 md:py-4 md:text-base"
           >
-            {link.label}
+            {link.shortLabel ? (
+              <>
+                <span className="md:hidden">{link.shortLabel}</span>
+                <span className="hidden md:inline">{link.label}</span>
+              </>
+            ) : (
+              link.label
+            )}
           </a>
         ))}
       </div>
