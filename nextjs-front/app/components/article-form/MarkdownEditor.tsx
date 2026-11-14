@@ -8,6 +8,10 @@ import rehypeSanitize from "rehype-sanitize";
 import type { PendingImage } from "@/app/types/models";
 import { markdownPreviewSanitizeSchema } from "@/app/lib/markdownSanitizeSchema";
 import {
+  articleRemarkPlugins,
+  rehypeFixFootnoteLinks,
+} from "@/app/lib/articleMarkdown";
+import {
   ALLOWED_IMAGE_TYPES,
   ALLOWED_IMAGE_TYPES_ACCEPT,
   MAX_IMAGE_FILE_SIZE_BYTES,
@@ -273,9 +277,11 @@ export default function MarkdownEditor({
             {body ? (
               <ReactMarkdown
                 urlTransform={previewUrlTransform}
+                remarkPlugins={articleRemarkPlugins}
                 rehypePlugins={[
                   rehypeRaw,
                   [rehypeSanitize, markdownPreviewSanitizeSchema],
+                  rehypeFixFootnoteLinks,
                 ]}
               >
                 {body}

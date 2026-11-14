@@ -8,6 +8,7 @@ import TagBox from "@/app/components/ui/TagBox";
 import ArticleSidebar from "@/app/components/ui/ArticleSidebar";
 import {
   articleRehypePlugins,
+  articleRemarkPlugins,
   extractHeadings,
 } from "@/app/lib/articleMarkdown";
 import { fetchArticle } from "@/app/lib/articles";
@@ -66,7 +67,10 @@ export default async function ArticlePage({
               {article.title}
             </h1>
             <div className="prose prose-neutral [&_ul>li::marker]:text-black [&_:is(h1,h2,h3)]:scroll-mt-8 max-w-none wrap-break-word">
-              <ReactMarkdown rehypePlugins={articleRehypePlugins}>
+              <ReactMarkdown
+                remarkPlugins={articleRemarkPlugins}
+                rehypePlugins={articleRehypePlugins}
+              >
                 {article.body}
               </ReactMarkdown>
             </div>

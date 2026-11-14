@@ -24,7 +24,7 @@ export const SITE_DATA = {
   description: "TAKUO2000が読んだ本と、学んだ技術の保管庫。",
 
   aboutSite: {
-    title: ["About", "This", "Site"],
+    title: ["About", "This Site"],
     description:
       "読んだ本のこと、手を動かして学んだ技術のこと、日々のちょっとした気づきなんかを書き残している場所です。あとで見返して、こんなこと考えてたなと思い出せるようにしています。",
   },
