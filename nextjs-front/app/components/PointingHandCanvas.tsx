@@ -108,9 +108,9 @@ export default function PointingHandCanvas({
               position={modelPosition}
               rotation={modelRotation}
               scale={modelScale}
-              // カーソルの無い端末では、触らなくてもボタンを順番に指す。
-              // 画面の外（描画を止めている）と、視差効果を減らす設定のときは、自分では動かさない
-              autoPoint={hasNoHover && isVisible && !prefersReducedMotion}
+              // カーソルの無い端末では、触っていない間ゆっくり揺れる。
+              // 視差効果を減らす設定のときは揺らさない（画面の外では frameloop が止まるので揺れも止まる）
+              idleSway={hasNoHover && !prefersReducedMotion}
             />
           </Suspense>
         </Canvas>
