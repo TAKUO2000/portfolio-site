@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import AboutSite from "@/app/components/AboutSite";
+import { SITE_DATA } from "@/app/constants/siteData";
 
 afterEach(() => {
   cleanup();
@@ -61,5 +62,22 @@ describe("AboutSite", () => {
 
     expect(heading.className).toContain("text-end");
     expect(heading.className).toContain("md:text-start");
+  });
+});
+
+describe("AboutSite の文章の大きさ", () => {
+  // パソコンの幅では、見出し（48px）に対して14pxだと小さく見えるので、16pxにする。スマホの幅は14pxのまま
+  it("説明文は、md未満で14px、md以上で16px", () => {
+    const { text } = renderAbout("site");
+
+    expect(text.className).toContain("text-sm");
+    expect(text.className).toContain("md:text-base");
+  });
+});
+
+describe("サイトの紹介の見出し", () => {
+  // 「This」と「Site」を別の行にすると、スマホの幅で3行になり、間延びする
+  it("「About」と「This Site」の2行にする", () => {
+    expect(SITE_DATA.aboutSite.title).toEqual(["About", "This Site"]);
   });
 });

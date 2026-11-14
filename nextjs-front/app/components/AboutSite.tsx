@@ -69,7 +69,7 @@ export default function AboutSite({
         </h2>
 
         <p
-          className={`text-sm leading-relaxed text-gray-700 [grid-area:text] md:self-start ${layout.text}`}
+          className={`text-sm leading-relaxed text-gray-700 [grid-area:text] md:self-start md:text-base ${layout.text}`}
         >
           {text}
         </p>
