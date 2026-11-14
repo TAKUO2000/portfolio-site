@@ -596,6 +596,8 @@ Vercel の Preview 環境には、次の値を設定します。どれも作り�
 
 - **ステージングはシークレットウィンドウ（または別のブラウザプロファイル）で開く**。本番の Cookie は `.takuosblog.com` に向けて発行されるため、`stg.takuosblog.com` にも送られる。本番にログインしたブラウザでステージングを開くと `XSRF-TOKEN` が2つ存在する状態になり、CSRF エラー（419）が起きることがある
 - **TLS 証明書は作るたびに取り直す**。作るたびに certbot の初回の取得（`portfolio-cert-init`）から行う。Let's Encrypt には同じホスト名の証明書を週5回までという発行制限があり、超えると最長1週間は取得できない。ステージングを週5回以上作り直すことはまず無いので、取った証明書を残して使い回すしくみ（秘密鍵を S3 に置き、その権限を足す）は作らない（#116 で決めた）。超えたときは、その週は `--staging`（Let's Encrypt のテスト用の環境。ブラウザは信頼しない）で取って我慢する
+- **`stg.takuosblog.com` には Vercel の認証（Deployment Protection）がかかる**。既定の「Standard Protection」は、本番の独自ドメイン以外のすべてのデプロイを、Vercel にログインした人だけに見せる。確かめるときは、シークレットウィンドウで Vercel にログインしてから開く（ステージングの API の Cookie には影響しない）。確かめ途中の画面を公開しないよう、保護は外さない
+- **そのため、ステージングでは記事を変えてもトップページがすぐには作り直されない**。API が呼ぶ `https://stg.takuosblog.com/api/revalidate` は、Next.js に届く前に Vercel の認証の画面へ転送される（POST で 302）。1時間ごとの作り直しか、Vercel の Redeploy で追いつく。本番には保護が無いので、記事を変えるとすぐに作り直される（#116 で確かめた）。保護を飛ばすシークレット（`x-vercel-protection-bypass`）を API に持たせる方法もあるが、ステージングのためだけにコードと秘密を増やさない（#136 で決めた）
 - **ステージングが無い間、`stg.takuosblog.com` は API につながらずエラーになる**。Vercel の Preview はそのまま残るが、気にしない
 - **ステージングが無い間は、`develop` への push で Vercel の Preview のビルドが失敗する**。トップページがビルドのときに API から記事一覧を取るため。`stg.takuosblog.com` は最後に成功したデプロイのまま残る。ステージングを作ったら、Vercel で `develop` の最新のデプロイを Redeploy する
 - **固定のパスワードの管理者を作らない**。`UserSeeder` は `admin@example.com` / `password` の管理者を作る。ステージングはインターネットに公開されるので、作ると誰でも管理者としてログインできてしまう。そのため `UserSeeder` は `local` と `testing` 以外では中断する（`APP_ENV` を `local` にしない）

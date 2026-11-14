@@ -105,14 +105,26 @@ export default function SignIn() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-neutral-600">
-          <Link
-            className="font-semibold text-neutral-950"
-            href="/auth/forgot-password"
-          >
-            パスワードを忘れた方はこちら
-          </Link>
-        </p>
+        <div className="space-y-3">
+          <p className="text-center text-sm text-neutral-600">
+            <Link
+              className="font-semibold text-neutral-950"
+              href="/auth/forgot-password"
+            >
+              パスワードを忘れた方はこちら
+            </Link>
+          </p>
+          {/* 会員登録のページの「すでにアカウントをお持ちですか？ ログイン」と同じ見た目にそろえる */}
+          <p className="text-center text-sm text-neutral-600">
+            アカウントをお持ちでない方は{" "}
+            <Link
+              className="font-semibold text-neutral-950"
+              href="/auth/sign-up"
+            >
+              新規登録
+            </Link>
+          </p>
+        </div>
       </section>
     </main>
   );

@@ -32,7 +32,11 @@ export default function LatestArticle({
               href={`/articles/${article.id}`}
               className="group relative grid overflow-hidden bg-white shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-lg md:grid-cols-2"
             >
-              <div className="relative aspect-16/10 w-full bg-black">
+              {/*
+                md以上は文章の列と横並びになる。文章が長いと行が高くなるので、画像の枠も行の高さいっぱいに広げ、
+                画像の下に余白ができないようにする（短いときは16:10相当の高さを保つ）
+              */}
+              <div className="relative aspect-16/10 w-full bg-black md:aspect-auto md:h-full md:min-h-62">
                 {article.header_image && (
                   <Image
                     src={article.header_image}
@@ -68,12 +72,13 @@ export default function LatestArticle({
                 </div>
 
                 {/* 最新記事は主役なので、人気記事のカードより一段大きくする */}
-                <h3 className="text-2xl font-bold leading-tight md:text-3xl">
+                {/* 区切りの無い長い英数字も、カードの幅で折り返す */}
+                <h3 className="text-2xl font-bold leading-tight wrap-break-word md:text-3xl">
                   {article.title}
                 </h3>
 
                 {/* 右下のアイコンと重ならないよう余白を空ける */}
-                <p className="mt-2 line-clamp-3 flex-1 pr-28 text-base leading-relaxed text-gray-700 md:line-clamp-4">
+                <p className="mt-2 line-clamp-3 flex-1 pr-28 text-base leading-relaxed text-gray-700 wrap-break-word md:line-clamp-4">
                   {article.summary}
                 </p>
               </div>

@@ -31,6 +31,19 @@ const UP = new THREE.Vector3(0, 1, 0);
 export const POINT_TARGET_ATTR = "data-point-target";
 
 /**
+ * カーソルの無い端末（スマホなど）で、指先がゆっくり円を描くように手を回す。
+ * 縦（pitch）と横（yaw）を同じ周期・同じ幅にし、4分の1周ずらすと円になる。
+ * ボタンを順番に指す案は、スマホの幅だとボタンが詰まって並び、どこを指しているか分かりにくいのでやめた（#138）
+ */
+export const SWAY_RADIUS = 0.15; // 円の大きさ（中心からの角度。ラジアン）
+export const SWAY_PERIOD_SECONDS = 5; // 1周にかける時間
+/**
+ * 円の中心を、最初の角度から横にずらす量（ラジアン。負で画面の左）。
+ * 人差し指がモデルの右寄りにあるので、最初の角度のまま回すと右上で円を描いて見えるため、左に寄せる
+ */
+export const SWAY_CENTER_YAW = -0.2;
+
+/**
  * aimAtが毎フレーム使い回す作業用オブジェクト。
  * 毎フレームnewするとGCが走るので使い回すが、Modelが複数マウントされたときに
  * 上書きし合わないよう、インスタンスごとに1つ作る。
@@ -96,17 +109,53 @@ export function aimAt(
   return scratch.quaternion.setFromRotationMatrix(scratch.lookMatrix);
 }
 
+const swayEuler = new THREE.Euler();
+const swayCenter = new THREE.Quaternion().setFromEuler(
+  new THREE.Euler(0, SWAY_CENTER_YAW, 0),
+);
+const swayOffset = new THREE.Quaternion();
+
+/**
+ * 最初の角度（base）を左に寄せた向きを中心に、経過時間に応じて円を描くように回した向きを out に書いて返す。
+ * 毎フレーム呼ぶので、out は呼ぶ側が使い回す
+ */
+export function swayQuaternion(
+  base: THREE.Quaternion,
+  elapsedSeconds: number,
+  out: THREE.Quaternion,
+): THREE.Quaternion {
+  const phase = (2 * Math.PI * elapsedSeconds) / SWAY_PERIOD_SECONDS;
+  swayEuler.set(
+    SWAY_RADIUS * Math.sin(phase),
+    SWAY_RADIUS * Math.cos(phase),
+    0,
+  );
+  swayOffset.setFromEuler(swayEuler);
+  // 最初の角度 → 左に寄せた中心 → 中心のまわりの円、の順に回す
+  return out.copy(base).multiply(swayCenter).multiply(swayOffset);
+}
+
 type Props = Omit<ThreeElements["group"], "rotation"> & {
   /** カーソルがCanvasの外にあるときの角度（ラジアン） */
   rotation?: [number, number, number];
+  /**
+   * カーソルの無い端末（スマホなど）で、触っていない間、指先がゆっくり円を描くように回る。
+   * 視差効果を減らす設定のときは、渡す側でfalseにする（画面の外では描画ごと止まる）
+   */
+  idleSway?: boolean;
 };
 
-export function Model({ rotation = [0, 0, 0], ...props }: Props) {
+export function Model({
+  rotation = [0, 0, 0],
+  idleSway = false,
+  ...props
+}: Props) {
   const { nodes, materials } = useGLTF(
     "/models/pointing-hand.glb",
   ) as unknown as GLTFResult;
   const groupRef = useRef<THREE.Group>(null);
   const lastPointer = useRef<LastPointer | null>(null); // ウィンドウの外に出たらnull
+  const swayGoal = useMemo(() => new THREE.Quaternion(), []);
   const scratch = useMemo(() => createAimScratch(), []);
   const gl = useThree((state) => state.gl);
   const [rx, ry, rz] = rotation;
@@ -155,7 +204,7 @@ export function Model({ rotation = [0, 0, 0], ...props }: Props) {
     };
   }, []);
 
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, clock }, delta) => {
     const group = groupRef.current;
     if (!group) return;
 
@@ -167,10 +216,12 @@ export function Model({ rotation = [0, 0, 0], ...props }: Props) {
       camera,
       group,
     );
-    group.quaternion.slerp(
-      goal ?? initialQuaternion,
-      1 - Math.exp(-FOLLOW_SPEED * delta),
-    );
+    // カーソルやタッチが無いときは、最初の角度に戻る。カーソルの無い端末では、左に寄せた中心のまわりで円を描く。
+    // 触っている間はタッチの位置を指し（goalがある）、離すと円の動きに戻る
+    const rest = idleSway
+      ? swayQuaternion(initialQuaternion, clock.elapsedTime, swayGoal)
+      : initialQuaternion;
+    group.quaternion.slerp(goal ?? rest, 1 - Math.exp(-FOLLOW_SPEED * delta));
   });
 
   return (
