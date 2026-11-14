@@ -2,6 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import Hero from "@/app/components/Hero";
 
+/**
+ * 要素のクラスを1つずつの配列にする。className の文字列に toContain を使うと部分一致になり、
+ * 「text-end」が「md:text-end」でも通ってしまうので、配列にして完全一致で比べる
+ */
+function classesOf(element: Element | null | undefined): string[] {
+  return element ? Array.from(element.classList) : [];
+}
+
 // 3Dの手はWebGLを使うので、テストでは描かない
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
 
@@ -36,9 +44,9 @@ describe("Hero", () => {
       (span) => span.textContent === "このサイトについて",
     );
 
-    expect(short?.className).toContain("md:hidden");
-    expect(full?.className).toContain("hidden");
-    expect(full?.className).toContain("md:inline");
+    expect(classesOf(short)).toContain("md:hidden");
+    expect(classesOf(full)).toContain("hidden");
+    expect(classesOf(full)).toContain("md:inline");
   });
 
   it("短くしない文言は、どの幅でもそのまま表示する", () => {
