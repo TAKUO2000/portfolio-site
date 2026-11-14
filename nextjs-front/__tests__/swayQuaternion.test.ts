@@ -1,32 +1,46 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import {
+  SWAY_CENTER_YAW,
   SWAY_PERIODS_SECONDS,
   SWAY_PITCH,
   SWAY_YAW,
   swayQuaternion,
 } from "@/app/components/PointingHand";
 
-const base = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.1, -0.2, 0));
+const base = new THREE.Quaternion();
+/** 揺れの中心（最初の角度から、横に SWAY_CENTER_YAW だけ回した向き） */
+const center = new THREE.Quaternion().setFromEuler(
+  new THREE.Euler(0, SWAY_CENTER_YAW, 0),
+);
 
-/** baseからどれだけ回っているか（ラジアン） */
-function angleFromBase(seconds: number) {
-  return swayQuaternion(base, seconds, new THREE.Quaternion()).angleTo(base);
+/** 揺れの中心からどれだけ回っているか（ラジアン） */
+function angleFromCenter(seconds: number) {
+  return swayQuaternion(base, seconds, new THREE.Quaternion()).angleTo(center);
 }
 
 describe("swayQuaternion", () => {
-  it("0秒のときは、最初の角度のまま", () => {
-    expect(angleFromBase(0)).toBeCloseTo(0, 6);
+  it("0秒のときは、揺れの中心を向く", () => {
+    expect(angleFromCenter(0)).toBeCloseTo(0, 6);
   });
 
-  it("時間がたつと、最初の角度から離れる（揺れている）", () => {
-    expect(angleFromBase(1)).toBeGreaterThan(0.05);
+  // 人差し指がモデルの右寄りにあるので、最初の角度のまま揺らすと右上で8の字を書いて見える
+  it("揺れの中心は、最初の角度より左（画面の-X）に寄っている", () => {
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(
+      swayQuaternion(base, 0, new THREE.Quaternion()),
+    );
+
+    expect(forward.x).toBeLessThan(0);
+  });
+
+  it("時間がたつと、中心から離れる（揺れている）", () => {
+    expect(angleFromCenter(1)).toBeGreaterThan(0.05);
   });
 
   it("揺れの大きさは、決めた幅を超えない", () => {
     const max = Math.hypot(SWAY_YAW, SWAY_PITCH) + 1e-6;
     for (let t = 0; t < 30; t += 0.25) {
-      expect(angleFromBase(t)).toBeLessThanOrEqual(max);
+      expect(angleFromCenter(t)).toBeLessThanOrEqual(max);
     }
   });
 

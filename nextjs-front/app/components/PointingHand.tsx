@@ -38,6 +38,11 @@ export const POINT_TARGET_ATTR = "data-point-target";
 export const SWAY_PITCH = 0.12; // 縦の揺れの幅（ラジアン）
 export const SWAY_YAW = 0.22; // 横の揺れの幅（ラジアン）
 export const SWAY_PERIODS_SECONDS = [4, 6] as const; // [縦, 横] の周期
+/**
+ * 揺れの中心を、最初の角度から横にずらす量（ラジアン。負で画面の左）。
+ * 人差し指がモデルの右寄りにあるので、最初の角度のまま揺らすと右上で8の字を書いて見えるため、左に寄せる
+ */
+export const SWAY_CENTER_YAW = -0.2;
 
 /**
  * aimAtが毎フレーム使い回す作業用オブジェクト。
@@ -109,7 +114,7 @@ const swayEuler = new THREE.Euler();
 const swayOffset = new THREE.Quaternion();
 
 /**
- * 最初の角度（base）から、経過時間に応じて揺らした向きを out に書いて返す。
+ * 最初の角度（base）を左に寄せた向きを中心に、経過時間に応じて揺らした向きを out に書いて返す。
  * 毎フレーム呼ぶので、out は呼ぶ側が使い回す
  */
 export function swayQuaternion(
@@ -120,7 +125,8 @@ export function swayQuaternion(
   const [pitchPeriod, yawPeriod] = SWAY_PERIODS_SECONDS;
   swayEuler.set(
     SWAY_PITCH * Math.sin((2 * Math.PI * elapsedSeconds) / pitchPeriod),
-    SWAY_YAW * Math.sin((2 * Math.PI * elapsedSeconds) / yawPeriod),
+    SWAY_CENTER_YAW +
+      SWAY_YAW * Math.sin((2 * Math.PI * elapsedSeconds) / yawPeriod),
     0,
   );
   swayOffset.setFromEuler(swayEuler);
