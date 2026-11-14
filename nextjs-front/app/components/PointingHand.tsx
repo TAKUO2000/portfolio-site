@@ -31,16 +31,15 @@ const UP = new THREE.Vector3(0, 1, 0);
 export const POINT_TARGET_ATTR = "data-point-target";
 
 /**
- * カーソルの無い端末（スマホなど）で、手を最初の角度のまわりでゆっくり揺らす。
- * 縦（pitch）と横（yaw）で周期を変えて、規則的に見えないようにする（8の字に近い動き）。
+ * カーソルの無い端末（スマホなど）で、指先がゆっくり円を描くように手を回す。
+ * 縦（pitch）と横（yaw）を同じ周期・同じ幅にし、4分の1周ずらすと円になる。
  * ボタンを順番に指す案は、スマホの幅だとボタンが詰まって並び、どこを指しているか分かりにくいのでやめた（#138）
  */
-export const SWAY_PITCH = 0.12; // 縦の揺れの幅（ラジアン）
-export const SWAY_YAW = 0.22; // 横の揺れの幅（ラジアン）
-export const SWAY_PERIODS_SECONDS = [4, 6] as const; // [縦, 横] の周期
+export const SWAY_RADIUS = 0.15; // 円の大きさ（中心からの角度。ラジアン）
+export const SWAY_PERIOD_SECONDS = 5; // 1周にかける時間
 /**
- * 揺れの中心を、最初の角度から横にずらす量（ラジアン。負で画面の左）。
- * 人差し指がモデルの右寄りにあるので、最初の角度のまま揺らすと右上で8の字を書いて見えるため、左に寄せる
+ * 円の中心を、最初の角度から横にずらす量（ラジアン。負で画面の左）。
+ * 人差し指がモデルの右寄りにあるので、最初の角度のまま回すと右上で円を描いて見えるため、左に寄せる
  */
 export const SWAY_CENTER_YAW = -0.2;
 
@@ -111,10 +110,13 @@ export function aimAt(
 }
 
 const swayEuler = new THREE.Euler();
+const swayCenter = new THREE.Quaternion().setFromEuler(
+  new THREE.Euler(0, SWAY_CENTER_YAW, 0),
+);
 const swayOffset = new THREE.Quaternion();
 
 /**
- * 最初の角度（base）を左に寄せた向きを中心に、経過時間に応じて揺らした向きを out に書いて返す。
+ * 最初の角度（base）を左に寄せた向きを中心に、経過時間に応じて円を描くように回した向きを out に書いて返す。
  * 毎フレーム呼ぶので、out は呼ぶ側が使い回す
  */
 export function swayQuaternion(
@@ -122,22 +124,22 @@ export function swayQuaternion(
   elapsedSeconds: number,
   out: THREE.Quaternion,
 ): THREE.Quaternion {
-  const [pitchPeriod, yawPeriod] = SWAY_PERIODS_SECONDS;
+  const phase = (2 * Math.PI * elapsedSeconds) / SWAY_PERIOD_SECONDS;
   swayEuler.set(
-    SWAY_PITCH * Math.sin((2 * Math.PI * elapsedSeconds) / pitchPeriod),
-    SWAY_CENTER_YAW +
-      SWAY_YAW * Math.sin((2 * Math.PI * elapsedSeconds) / yawPeriod),
+    SWAY_RADIUS * Math.sin(phase),
+    SWAY_RADIUS * Math.cos(phase),
     0,
   );
   swayOffset.setFromEuler(swayEuler);
-  return out.copy(base).multiply(swayOffset);
+  // 最初の角度 → 左に寄せた中心 → 中心のまわりの円、の順に回す
+  return out.copy(base).multiply(swayCenter).multiply(swayOffset);
 }
 
 type Props = Omit<ThreeElements["group"], "rotation"> & {
   /** カーソルがCanvasの外にあるときの角度（ラジアン） */
   rotation?: [number, number, number];
   /**
-   * カーソルの無い端末（スマホなど）で、触っていない間、最初の角度のまわりでゆっくり揺れる。
+   * カーソルの無い端末（スマホなど）で、触っていない間、指先がゆっくり円を描くように回る。
    * 視差効果を減らす設定のときは、渡す側でfalseにする（画面の外では描画ごと止まる）
    */
   idleSway?: boolean;
@@ -214,8 +216,8 @@ export function Model({
       camera,
       group,
     );
-    // カーソルやタッチが無いときは、最初の角度に戻る。カーソルの無い端末では、その角度のまわりで揺れる。
-    // 触っている間はタッチの位置を指し（goalがある）、離すと揺れに戻る
+    // カーソルやタッチが無いときは、最初の角度に戻る。カーソルの無い端末では、左に寄せた中心のまわりで円を描く。
+    // 触っている間はタッチの位置を指し（goalがある）、離すと円の動きに戻る
     const rest = idleSway
       ? swayQuaternion(initialQuaternion, clock.elapsedTime, swayGoal)
       : initialQuaternion;

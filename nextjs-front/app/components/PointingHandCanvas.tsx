@@ -108,8 +108,8 @@ export default function PointingHandCanvas({
               position={modelPosition}
               rotation={modelRotation}
               scale={modelScale}
-              // カーソルの無い端末では、触っていない間ゆっくり揺れる。
-              // 視差効果を減らす設定のときは揺らさない（画面の外では frameloop が止まるので揺れも止まる）
+              // カーソルの無い端末では、触っていない間、指先がゆっくり円を描く。
+              // 視差効果を減らす設定のときは動かさない（画面の外では frameloop が止まるので動きも止まる）
               idleSway={hasNoHover && !prefersReducedMotion}
             />
           </Suspense>
