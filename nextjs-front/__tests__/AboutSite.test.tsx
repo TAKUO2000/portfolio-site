@@ -81,3 +81,21 @@ describe("サイトの紹介の見出し", () => {
     expect(SITE_DATA.aboutSite.title).toEqual(["About", "This Site"]);
   });
 });
+
+describe("AboutSite の説明文の折り返し", () => {
+  // 日本語はほぼ1文字ごとに折り返せるので、「気づ／き」のように言葉の途中で切れ、最後の行に「す。」だけが残ることがある
+  it("文節の切れ目で折り返し、最後の行が短くなりすぎないようにする", () => {
+    const { text } = renderAbout("site");
+
+    expect(text.className).toContain("[word-break:auto-phrase]");
+    expect(text.className).toContain("text-pretty");
+  });
+
+  // 複数行の日本語を右寄せにすると、行の始まりがばらばらになり、折り返しの不揃いが目立つ
+  it("説明文は、どの幅でも左寄せにする（見出しの右寄せは残す）", () => {
+    const { text, heading } = renderAbout("site");
+
+    expect(text.className).not.toContain("text-end");
+    expect(heading.className).toContain("md:text-end");
+  });
+});

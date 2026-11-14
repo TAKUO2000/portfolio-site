@@ -20,12 +20,10 @@ const LAYOUT = {
   site: {
     grid: "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'icon_title'_'text_text'] md:[grid-template-areas:'icon_title'_'icon_text']",
     title: "text-start md:text-end",
-    text: "md:text-end",
   },
   me: {
     grid: "grid-cols-[minmax(0,1fr)_auto] [grid-template-areas:'title_icon'_'text_text'] md:[grid-template-areas:'title_icon'_'text_icon']",
     title: "text-end md:text-start",
-    text: "",
   },
 } as const;
 
@@ -68,9 +66,12 @@ export default function AboutSite({
           ))}
         </h2>
 
-        <p
-          className={`text-sm leading-relaxed text-gray-700 [grid-area:text] md:self-start md:text-base ${layout.text}`}
-        >
+        {/*
+          説明文は、どの幅でも左寄せにする（複数行の日本語を右寄せにすると、行の始まりがばらばらで読みにくい）。
+          日本語はほぼ1文字ごとに折り返せるので、文節の切れ目でだけ折り返し（auto-phrase。<html lang="ja"> が要る。
+          対応していないブラウザは今までどおりの折り返し）、最後の行が短くなりすぎないようにする（text-pretty）
+        */}
+        <p className="text-sm leading-relaxed text-pretty text-gray-700 [grid-area:text] [word-break:auto-phrase] md:self-start md:text-base">
           {text}
         </p>
       </div>
