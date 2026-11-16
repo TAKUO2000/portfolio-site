@@ -81,6 +81,7 @@ jobs:
           echo "スレッド: $(wc -l < .review-context/threads.jsonl) 件、会話のコメント: $(wc -l < .review-context/comments.jsonl) 件"
 
       - uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1.0.276
+        id: review
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "claude"
@@ -142,8 +143,11 @@ jobs:
             --max-turns 100
             --allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"
 
-      # bot が投稿できずに終わっても、アクションは成功で終わる。総評が無ければ、ここでジョブを失敗にして気づけるようにする
+      # bot が投稿できずに終わっても、アクションは成功で終わる。総評が無ければ、ここでジョブを失敗にして気づけるようにする。
+      # このファイルを変える PR では、アクションがレビューを飛ばす（既定ブランチの内容と同じでないと動かない）。
+      # そのときは conclusion が空なので、確かめない
       - name: 総評が投稿されたことを確かめる
+        if: steps.review.outputs.conclusion == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           STARTED_AT: ${{ steps.context.outputs.started_at }}
