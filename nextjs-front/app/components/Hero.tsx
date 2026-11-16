@@ -63,24 +63,35 @@ export default function Hero() {
   };
 
   return (
-    <section className="relative bg-[#f4f1eb] text-center py-24 px-6 min-h-screen flex flex-col items-center justify-center">
-      {/* 背景の3D。ボタンのクリックを邪魔しないようポインターイベントは素通しにする */}
-      {/* yは見出しの中心の裏。大きくするほど指も長く映るので、
-          指先がボタンからはみ出さない範囲でscaleを決めている。
-          スマホの幅では画面が狭く、手が大きく見えるので、少し小さくする */}
-      <PointingHandCanvas
-        className="absolute inset-0 pointer-events-none"
-        modelPosition={[0, 0.59, -0.6]}
-        modelRotation={[0, 0, 0]}
-        modelScale={1.3}
-        mobileModelScale={1.1}
-      />
-      <h1 className="relative text-5xl sm:text-7xl font-extrabold mb-3">
-        TAKUO_Log
-      </h1>
-      <p className="relative text-lg text-[#010101] mb-8">
-        TAKUO2000が読んだ本と、学んだ技術の保管庫。
-      </p>
+    // md未満は、ヘッダー（globals.css の --header-h）と合わせてちょうど1画面にする（ページを開いたときに Hero だけが映る）。
+    // 中身は、上下中央より少し下に置く（下の「余りの高さを分ける」を参照）
+    <section className="relative bg-[#f4f1eb] text-center px-6 py-6 min-h-[calc(100svh_-_var(--header-h))] flex flex-col items-center justify-center max-md:overflow-hidden md:min-h-screen md:py-24">
+      {/* 余りの高さを分ける（md未満だけ）。上6：下4。ボタンの下の余白を減らしつつ、ボタンが下端に寄りすぎないようにする。
+          手が見出しの上に伸びるので、中身を少し下げたほうがつり合う。寄せ具合は、この flex-6 と下の flex-4 で変える */}
+      <div className="flex-6 md:hidden" aria-hidden="true" />
+      {/* md未満は、見出しと手をこの枠にまとめる。md以上は枠を無いものとして扱い（contents）、今までどおり section の中に並べる */}
+      <div className="max-w-full min-w-0 max-md:relative md:contents">
+        {/* 背景の3D。ボタンのクリックを邪魔しないようポインターイベントは素通しにする */}
+        {/* yは見出しの中心の裏。大きくするほど指も長く映るので、
+            指先がボタンからはみ出さない範囲でscaleを決めている。
+            スマホの幅では画面が狭く、手が大きく見えるので、少し小さくする */}
+        {/* 手の大きさと位置は描画の枠の高さで決まる。md未満は、画面の高さで手の大きさが変わらないよう、
+            枠を高さ600pxの固定にし、枠の中心が見出しの中心の104px下に来るよう上にずらす
+            （-172px = 見出しの中心 24px + 104px − 枠の半分 300px。はみ出す分は section で切る） */}
+        <PointingHandCanvas
+          className="absolute -inset-x-6 -top-43 h-150 pointer-events-none md:inset-x-0 md:top-0 md:h-full"
+          modelPosition={[0, 0.59, -0.6]}
+          modelRotation={[0, 0, 0]}
+          modelScale={1.3}
+          mobileModelScale={1.1}
+        />
+        <h1 className="relative text-5xl sm:text-7xl font-extrabold mb-3">
+          TAKUO_Log
+        </h1>
+        <p className="relative text-lg text-[#010101] mb-8">
+          TAKUO2000が読んだ本と、学んだ技術の保管庫。
+        </p>
+      </div>
       {/* md未満は3つを横に等分して並べる（折り返して詰まって見えないように）。md以上は今までどおり */}
       <div className="relative mt-20 grid w-full grid-cols-3 gap-2 md:mt-40 md:flex md:w-auto md:justify-center md:gap-10">
         {navLinks.map((link) => (
@@ -104,6 +115,7 @@ export default function Hero() {
           </a>
         ))}
       </div>
+      <div className="flex-4 md:hidden" aria-hidden="true" />
     </section>
   );
 }
