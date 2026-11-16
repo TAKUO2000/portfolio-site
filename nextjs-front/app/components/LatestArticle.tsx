@@ -21,10 +21,13 @@ export default function LatestArticle({
   article,
 }: LatestArticleProps) {
   return (
-    <section id={id} className="bg-[#f4f1eb] px-6 py-20">
+    <section id={id} className="bg-[#f4f1eb] px-6 py-12 md:py-20">
       <div className="mx-auto max-w-197.5">
-        <div className="mb-10 flex justify-center">
-          <h2 className="text-4xl font-bold">{title}</h2>
+        <div className="mb-6 flex justify-center md:mb-10">
+          {/* スマホの幅でも1行に収まる大きさにする（人気記事の見出しと同じ） */}
+          <h2 className="text-2xl font-bold min-[360px]:text-3xl md:text-4xl">
+            {title}
+          </h2>
         </div>
         {article ? (
           <article>
@@ -36,7 +39,7 @@ export default function LatestArticle({
                 md以上は文章の列と横並びになる。文章が長いと行が高くなるので、画像の枠も行の高さいっぱいに広げ、
                 画像の下に余白ができないようにする（短いときは16:10相当の高さを保つ）
               */}
-              <div className="relative aspect-16/10 w-full bg-black md:aspect-auto md:h-full md:min-h-62">
+              <div className="relative aspect-2/1 w-full bg-black md:aspect-auto md:h-full md:min-h-62">
                 {article.header_image && (
                   <Image
                     src={article.header_image}
@@ -78,7 +81,7 @@ export default function LatestArticle({
                 </h3>
 
                 {/* 右下のアイコンと重ならないよう余白を空ける */}
-                <p className="mt-2 line-clamp-3 flex-1 pr-28 text-base leading-relaxed text-gray-700 wrap-break-word md:line-clamp-4">
+                <p className="mt-2 line-clamp-2 flex-1 pr-8 text-base leading-relaxed text-gray-700 wrap-break-word md:line-clamp-4 md:pr-28">
                   {article.summary}
                 </p>
               </div>
@@ -104,7 +107,7 @@ export default function LatestArticle({
         )}
       </div>
 
-      <div className="mt-12 flex justify-center">
+      <div className="mt-8 flex justify-center md:mt-12">
         <Link
           href={moreButtonHref}
           className="bg-black px-14 py-4 text-sm font-bold text-white transition-opacity hover:opacity-80"
