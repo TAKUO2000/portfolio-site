@@ -63,9 +63,9 @@ export default function Hero() {
   };
 
   return (
-    // md未満は、ヘッダー（68px）と合わせてちょうど1画面にする（ページを開いたときに Hero だけが映る）。
+    // md未満は、ヘッダー（globals.css の --header-h）と合わせてちょうど1画面にする（ページを開いたときに Hero だけが映る）。
     // 中身は、上下中央より少し下に置く（下の「余りの高さを分ける」を参照）
-    <section className="relative bg-[#f4f1eb] text-center px-6 py-6 min-h-[calc(100svh-68px)] flex flex-col items-center justify-center max-md:overflow-hidden md:min-h-screen md:py-24">
+    <section className="relative bg-[#f4f1eb] text-center px-6 py-6 min-h-[calc(100svh_-_var(--header-h))] flex flex-col items-center justify-center max-md:overflow-hidden md:min-h-screen md:py-24">
       {/* 余りの高さを分ける（md未満だけ）。上6：下4。ボタンの下の余白を減らしつつ、ボタンが下端に寄りすぎないようにする。
           手が見出しの上に伸びるので、中身を少し下げたほうがつり合う。寄せ具合は、この flex-6 と下の flex-4 で変える */}
       <div className="flex-6 md:hidden" aria-hidden="true" />
