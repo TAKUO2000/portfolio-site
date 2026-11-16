@@ -18,7 +18,9 @@ export default function Header() {
 
   return (
     <header className="w-full bg-black text-white">
-      <nav className="max-w-5xl mx-auto px-6 py-4 flex flex-wrap items-center justify-between md:flex-nowrap">
+      {/* 高さは globals.css の --header-h（Hero の高さの計算でも使う）。上下の余白やロゴの大きさを変えて
+          高さが変わるときは、--header-h も合わせる */}
+      <nav className="max-w-5xl mx-auto px-6 py-4 min-h-(--header-h) flex flex-wrap items-center justify-between md:flex-nowrap">
         {/* スマホ幅ではロゴを中央に置くため、メニューボタンと同じ幅の空きを左に作る */}
         <span className="size-6 md:hidden" aria-hidden="true" />
         {/* Heroの見出しと同じ書体・太さにして、どのページでもサイト名がわかるようにする */}

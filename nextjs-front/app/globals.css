@@ -1,9 +1,12 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* --header-h：ヘッダーの高さ（メニューを閉じた状態）。ヘッダーの最小の高さと、
+   Hero を「画面からヘッダーを引いた高さ」にする計算で使う */
 :root {
   --background: #f4f1eb;
   --foreground: #010101;
+  --header-h: 68px;
   color-scheme: light only;
 }
 
