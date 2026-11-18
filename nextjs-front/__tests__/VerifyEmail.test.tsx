@@ -95,6 +95,22 @@ describe("VerifyEmail", () => {
     );
   });
 
+  // 送り直すたびに前の結果を消して出し直す。結果がボタンの上にあると、消えた間だけボタンが上にずれる
+  it("再送の結果は、ボタンの下に出す（ボタンの位置が動かないように）", async () => {
+    getCurrentUserMock.mockResolvedValue(unverifiedUser);
+    mockFetch(200, { status: "verification-link-sent" });
+
+    render(<VerifyEmail />);
+    const button = await screen.findByRole("button");
+    fireEvent.click(button);
+    const message = await screen.findByText("確認メールを送り直しました。");
+
+    expect(
+      button.compareDocumentPosition(message) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("再送しようとしたら確認済みだった場合は、確認済みの表示に切り替える", async () => {
     // 別のタブやスマホで確認リンクを開いたあと、この画面に戻って再送を押した場合
     getCurrentUserMock.mockResolvedValue(unverifiedUser);

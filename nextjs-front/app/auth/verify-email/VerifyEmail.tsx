@@ -121,10 +121,6 @@ export default function VerifyEmail() {
             に確認メールを送りました。メールのリンクを開くと、確認が終わります。確認が済むまで、いいねはできません。
           </p>
 
-          {errorMessage && <p className={AUTH_ERROR}>{errorMessage}</p>}
-
-          {statusMessage && <p className={AUTH_SUCCESS}>{statusMessage}</p>}
-
           <button
             className={AUTH_SUBMIT}
             type="button"
@@ -133,6 +129,12 @@ export default function VerifyEmail() {
           >
             {isSending ? "送信中..." : "確認メールを送り直す"}
           </button>
+
+          {/* 結果はボタンの下に出す。送り直すたびに前の結果を消して出し直すので、
+              ボタンの上に置くと、消えた間だけボタンが上にずれる */}
+          {errorMessage && <p className={AUTH_ERROR}>{errorMessage}</p>}
+
+          {statusMessage && <p className={AUTH_SUCCESS}>{statusMessage}</p>}
         </div>
       )}
     </AuthPage>
