@@ -71,8 +71,11 @@ function parseArgs(argv) {
         .slice("--widths=".length)
         .split(",")
         .map((width) => Number(width));
-      if (options.widths.some((width) => !Number.isInteger(width))) {
-        throw new Error(`幅は整数をカンマで区切って渡す: ${arg}`);
+      // Number("") は 0 になるので、空の値（--widths= や末尾のカンマ）も正の整数かどうかで弾く
+      if (
+        options.widths.some((width) => !Number.isInteger(width) || width <= 0)
+      ) {
+        throw new Error(`幅は正の整数をカンマで区切って渡す: ${arg}`);
       }
     } else if (arg.startsWith("--user=")) {
       options.user = arg.slice("--user=".length);
