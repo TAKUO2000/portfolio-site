@@ -3,13 +3,19 @@
 import Link from "next/link";
 import { tv } from "tailwind-variants";
 
+// 枠は box-shadow で外側に描く（globals.css の pixel-*）。隣のボタンとは、枠の分より広く空ける
 const button = tv({
-  base: "px-4 py-1.5 rounded font-medium transition-colors duration-150 cursor-pointer active:scale-95 text-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
+  base: "inline-block cursor-pointer whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50",
   variants: {
     color: {
-      white: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50",
-      green: "bg-green-600 text-white hover:bg-green-600",
-      red: "bg-red-500 text-white hover:bg-red-600",
+      white:
+        "pixel-border-2 pixel-press-sm px-4 py-1.5 text-sm leading-5 bg-white text-gray-700 [--pixel-c:var(--color-gray-300)]",
+      green:
+        "pixel-border-2 pixel-press-sm px-4 py-1.5 text-sm leading-5 bg-green-600 text-white [--pixel-c:var(--color-green-600)]",
+      red: "pixel-border-2 pixel-press-sm px-4 py-1.5 text-sm leading-5 bg-red-500 text-white [--pixel-c:var(--color-red-500)]",
+      // ページの主な操作に使う大きいボタン（404 の「トップへ戻る」など）
+      black:
+        "pixel-card pixel-press px-10 py-4 text-base bg-foreground text-white [--pixel-c:var(--color-foreground)]",
     },
   },
   defaultVariants: {
@@ -18,7 +24,7 @@ const button = tv({
 });
 
 interface NormalButtonBaseProps {
-  color?: "white" | "green" | "red";
+  color?: "white" | "green" | "red" | "black";
   buttonLabel: string;
 }
 

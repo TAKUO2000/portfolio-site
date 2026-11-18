@@ -231,12 +231,13 @@ export default function ManageArticles() {
   const counts = response?.meta.status_counts;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-8">
+    <main className="mx-auto w-full max-w-5xl px-5 pt-8 pb-16 sm:px-4 sm:pb-18">
       <h1 className="mb-8 text-3xl font-bold">記事管理</h1>
 
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* ボタンと入力欄の枠は外側に 2px ずつはみ出すので、その分より広く間を空ける */}
+      <div className="mb-7 flex flex-col gap-4.5 px-0.5 sm:flex-row sm:items-center sm:justify-between">
         <div
-          className="flex gap-2"
+          className="flex gap-3"
           role="group"
           aria-label="ステータスで絞り込む"
         >
@@ -254,7 +255,7 @@ export default function ManageArticles() {
         <form
           key={keyword}
           role="search"
-          className="flex gap-2"
+          className="flex gap-3"
           onSubmit={(e) => {
             e.preventDefault();
             const input = new FormData(e.currentTarget).get("keyword");
@@ -267,7 +268,7 @@ export default function ManageArticles() {
             defaultValue={keyword}
             placeholder="タイトルで検索"
             aria-label="タイトルで検索"
-            className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm sm:w-64"
+            className="pixel-border-2 h-8 w-full min-w-0 bg-white px-3 text-sm outline-none [--pixel-c:var(--color-gray-300)] focus:[--pixel-c:var(--color-blue-400)] sm:w-64"
           />
           {/* NormalButtonはtype未指定のbuttonなので、form内ではsubmitとして働く */}
           <NormalButton buttonLabel="検索" />
@@ -283,7 +284,11 @@ export default function ManageArticles() {
           // 一覧が出る前から1ページ分の高さを取っておき、出たときにフッターが跳ねないようにする。
           // 本物の行を見えない状態で並べるので、画面幅で行の高さが変わっても合う
           <div className="relative">
-            <ul aria-hidden inert className="invisible flex flex-col gap-3">
+            <ul
+              aria-hidden
+              inert
+              className="invisible flex flex-col gap-5.5 px-1 sm:gap-5 sm:px-0"
+            >
               {Array.from({ length: PER_PAGE }, (_, index) => (
                 <li key={index}>
                   <ManageArticleRow
@@ -304,7 +309,8 @@ export default function ManageArticles() {
             </p>
           </div>
         ) : articles.length > 0 ? (
-          <ul className="flex flex-col gap-3">
+          // 行の枠は外側に 4px はみ出すので、その分より広く間を空ける
+          <ul className="flex flex-col gap-5.5 px-1 sm:gap-5 sm:px-0">
             {articles.map((article) => (
               <li key={article.id}>
                 <ManageArticleRow
@@ -322,14 +328,14 @@ export default function ManageArticles() {
             ))}
           </ul>
         ) : (
-          <p className="rounded-xl bg-white py-16 text-center text-sm text-gray-500 ring-1 ring-black/5">
+          <p className="pixel-border-4 mx-1 bg-white py-16 text-center text-sm text-gray-500 [--pixel-c:var(--color-foreground)] sm:mx-0">
             該当する記事がありません
           </p>
         )}
       </div>
 
       {response && (
-        <div className="mt-8">
+        <div className="mt-9">
           <Pagination
             currentPage={response.meta.current_page}
             lastPage={response.meta.last_page}
@@ -379,10 +385,10 @@ function ManageArticleRow({
   return (
     // 概要は省略せず全文を出すため、行の高さは中身に合わせて伸びる。
     // 伸びたときにサムネイルが縦中央へ浮かないよう上揃えにしている
-    <article className="flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5 sm:flex-row sm:items-start">
+    <article className="pixel-border-4 flex flex-col gap-4 bg-white p-4 [--pixel-c:var(--color-foreground)] sm:flex-row sm:items-start">
       <Link
         href={editHref}
-        className="relative aspect-16/10 w-full shrink-0 overflow-hidden rounded-lg bg-black transition-opacity hover:opacity-80 sm:w-36"
+        className="relative aspect-16/10 w-full shrink-0 bg-foreground hover:opacity-80 sm:w-36"
         tabIndex={-1}
         aria-hidden
       >
@@ -399,7 +405,7 @@ function ManageArticleRow({
 
       <div className="min-w-0 flex-1">
         {/* CategoryBoxとTagBoxは自前で右マージンを持つので、gapは付けない */}
-        <div className="mb-1.5 flex items-center">
+        <div className="mb-2 flex items-center pl-0.5">
           <CategoryBox
             category={article.category.name}
             id={article.category.id}
@@ -426,13 +432,13 @@ function ManageArticleRow({
         </p>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-4 border-t border-gray-100 pt-3 sm:flex-col sm:items-end sm:border-t-0 sm:pt-0">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-t-2 border-gray-100 px-0.5 pt-3.5 sm:flex-col sm:items-end sm:gap-4.5 sm:border-t-0 sm:pt-0.5">
         <StatusToggle
           status={article.status}
           disabled={isBusy}
           onToggle={onToggleStatus}
         />
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <NormalButton buttonLabel="編集" href={editHref} />
           <NormalButton
             color="red"
@@ -471,15 +477,18 @@ function StatusToggle({
       title={isPublished ? "押すと非公開にします" : "押すと公開します"}
       onClick={onToggle}
       disabled={disabled}
-      className={`flex cursor-pointer items-center disabled:cursor-not-allowed disabled:opacity-50 gap-2 rounded-full py-1 pr-3 pl-1 text-xs font-semibold transition-colors ${ARTICLE_STATUS_COLORS[status]} ${
-        isPublished ? "hover:bg-green-200" : "hover:bg-gray-100"
+      // 非公開は破線の枠が内側に 2px あるので、余白をその分だけ減らして、公開と同じ大きさにする
+      className={`flex cursor-pointer items-center gap-2 text-xs disabled:cursor-not-allowed disabled:opacity-50 ${ARTICLE_STATUS_COLORS[status]} ${
+        isPublished
+          ? "py-1 pr-3 pl-1 hover:[--pixel-c:var(--color-green-200)]"
+          : "py-0.5 pr-2.5 pl-0.5 hover:bg-gray-100"
       }`}
     >
       <span
-        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${isPublished ? "bg-green-600" : "bg-gray-300"}`}
+        className={`relative h-5 w-9 shrink-0 ${isPublished ? "bg-green-600" : "bg-gray-300"}`}
       >
         <span
-          className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${isPublished ? "translate-x-4" : ""}`}
+          className={`absolute top-0.5 left-0.5 size-4 bg-white ${isPublished ? "translate-x-4" : ""}`}
         />
       </span>
       {/* 幅が状態で変わると隣のボタンがずれるため、長い方の「非公開」に揃える */}

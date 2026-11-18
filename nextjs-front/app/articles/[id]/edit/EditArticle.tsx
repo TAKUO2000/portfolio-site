@@ -89,7 +89,7 @@ export default function EditArticle() {
 
   if (loadError) {
     return (
-      <main className="mx-auto flex w-full max-w-3xl flex-col items-start gap-6 px-6 py-12">
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-start gap-6 px-6 py-12">
         <h1 className="text-2xl font-bold">記事編集</h1>
         <p role="alert" className="text-sm text-red-700">
           {loadError}
@@ -103,7 +103,10 @@ export default function EditArticle() {
 
   if (!article) {
     return (
-      <p className="py-16 text-center text-sm text-gray-500">読み込み中...</p>
+      // 読み込み中は中身が短いので、フッターが画面の途中に浮かないよう、残りの高さを埋める
+      <p className="flex-1 py-16 text-center text-sm text-gray-500">
+        読み込み中...
+      </p>
     );
   }
 
@@ -116,7 +119,7 @@ export default function EditArticle() {
         // フォームの初期値には使われ終わっているので、差し替えても入力中の内容は変わらない。
         // 削除モーダルのタイトルを保存後のものにするために持ち直す
         onSaved={setArticle}
-        // ヘッダーの無い画面なので、削除せずに一覧へ戻る道をここに置く
+        // 削除せずに一覧へ戻る道を、見出しの横にも置く（ヘッダーのメニューを開かずに済むように）
         headingActions={
           <NormalButton buttonLabel="記事管理へ戻る" href={manageHref} />
         }

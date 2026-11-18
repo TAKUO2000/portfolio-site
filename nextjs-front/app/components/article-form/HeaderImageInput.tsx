@@ -78,7 +78,7 @@ export default function HeaderImageInput({
   const previewUrl = pendingHeader?.blobUrl ?? savedHeaderImageUrl;
 
   return (
-    <div className="flex flex-col gap-1  ">
+    <div className="flex flex-col gap-1.5">
       <p className="text-sm font-medium text-gray-700">ヘッダー画像</p>
 
       <input
@@ -90,7 +90,7 @@ export default function HeaderImageInput({
       />
 
       {previewUrl ? (
-        <div className="relative mx-auto max-w-90 overflow-hidden rounded-lg border border-gray-300 bg-white">
+        <div className="pixel-border-2 relative mx-auto max-w-90 bg-white [--pixel-c:var(--color-gray-300)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={previewUrl}
@@ -100,7 +100,7 @@ export default function HeaderImageInput({
           <button
             type="button"
             onClick={removeHeaderImage}
-            className="absolute top-2 right-2 cursor-pointer rounded-full bg-black/60 px-2 py-1 text-xs text-white hover:bg-black/80"
+            className="absolute top-2 right-2 cursor-pointer bg-black/60 px-2 py-1 text-xs text-white hover:bg-black/80"
           >
             削除
           </button>
@@ -114,10 +114,11 @@ export default function HeaderImageInput({
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`flex mx-auto h-60 w-90 cursor-pointer items-center justify-center rounded-lg border border-dashed text-sm text-gray-400 transition-colors bg-white ${
+          // 狭い幅では、画面の幅いっぱいまで縮める
+          className={`mx-auto flex h-60 w-full max-w-90 cursor-pointer items-center justify-center border-2 border-dashed px-6 text-center text-sm text-gray-400 ${
             isDragging
               ? "border-blue-400 bg-blue-200"
-              : "border-gray-500 hover:bg-gray-200"
+              : "border-gray-500 bg-white hover:bg-gray-200"
           }`}
         >
           クリックまたはドラッグ&ドロップで画像を選択

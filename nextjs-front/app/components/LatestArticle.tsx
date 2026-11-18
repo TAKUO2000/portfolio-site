@@ -2,7 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArticleMeta } from "@/app/components/ArticleCard";
 import CategoryBox from "@/app/components/ui/CategoryBox";
+import SectionHeading from "@/app/components/ui/SectionHeading";
 import TagBox from "@/app/components/ui/TagBox";
+import WindowTitleBar from "@/app/components/ui/WindowTitleBar";
 import type { ArticleSummary } from "@/app/types/models";
 
 interface LatestArticleProps {
@@ -23,23 +25,20 @@ export default function LatestArticle({
   return (
     <section id={id} className="bg-[#f4f1eb] px-6 py-12 md:py-20">
       <div className="mx-auto max-w-197.5">
-        <div className="mb-6 flex justify-center md:mb-10">
-          {/* スマホの幅でも1行に収まる大きさにする（人気記事の見出しと同じ） */}
-          <h2 className="text-2xl font-bold min-[360px]:text-3xl md:text-4xl">
-            {title}
-          </h2>
-        </div>
+        <SectionHeading>{title}</SectionHeading>
         {article ? (
-          <article>
+          // md未満は、枠と影（外側に 4px、右と下は 8px）が画面の端に寄りすぎないよう、左右を少し空ける
+          <article className="mx-1 md:mx-0">
             <Link
               href={`/articles/${article.id}`}
-              className="group relative grid overflow-hidden bg-white shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-lg md:grid-cols-2"
+              className="pixel-window pixel-press-window relative grid bg-white [--pixel-c:var(--color-foreground)] md:grid-cols-2"
             >
+              <WindowTitleBar className="col-span-full" />
               {/*
                 md以上は文章の列と横並びになる。文章が長いと行が高くなるので、画像の枠も行の高さいっぱいに広げ、
                 画像の下に余白ができないようにする（短いときは16:10相当の高さを保つ）
               */}
-              <div className="relative aspect-2/1 w-full bg-black md:aspect-auto md:h-full md:min-h-62">
+              <div className="relative aspect-2/1 w-full bg-foreground md:aspect-auto md:h-full md:min-h-62">
                 {article.header_image && (
                   <Image
                     src={article.header_image}
@@ -50,7 +49,15 @@ export default function LatestArticle({
                     priority
                   />
                 )}
-                <div className="absolute left-2 top-2 drop-shadow-sm">
+                {/* md未満は画像が小さいので、アイコンの無い小さなラベルにする */}
+                <div className="absolute left-2.5 top-2.5 md:hidden">
+                  <CategoryBox
+                    category={article.category.name}
+                    id={article.category.id}
+                    compact
+                  />
+                </div>
+                <div className="absolute left-3 top-3 max-md:hidden">
                   <CategoryBox
                     category={article.category.name}
                     id={article.category.id}
@@ -58,10 +65,11 @@ export default function LatestArticle({
                 </div>
               </div>
 
-              <div className="flex min-w-0 flex-col p-5 md:p-6">
-                {/* タグは左、著者・日付・♡は右上に寄せる */}
-                <div className="mb-1.5 flex min-h-6 items-start justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-y-1">
+              {/* 下の余白は、右下の「記事を読む」と文章が重ならないように広くしている */}
+              <div className="flex min-w-0 flex-col px-4.5 pt-4.5 pb-9 md:p-6 md:pb-10">
+                {/* タグは左、著者・日付・♡は右上に寄せる。入りきらないときは折り返す */}
+                <div className="mb-2.5 flex min-h-6 flex-wrap items-center justify-between gap-x-3 gap-y-2 md:items-start">
+                  <div className="flex flex-wrap items-center gap-y-1.5 pl-0.5">
                     {article.tags.slice(0, 3).map((tag) => (
                       <TagBox key={tag.id} tag={tag.name} />
                     ))}
@@ -70,33 +78,28 @@ export default function LatestArticle({
                     author={article.user.name}
                     publishedAt={article.published_at}
                     likeCount={article.like_count}
-                    className="shrink-0"
+                    className="shrink-0 leading-6"
                   />
                 </div>
 
-                {/* 最新記事は主役なので、人気記事のカードより一段大きくする */}
+                {/* 最新記事は主役なので、人気記事のカードより一段大きくする。
+                    ドット絵の書体は太字にするとつぶれるので、大きさで目立たせる */}
                 {/* 区切りの無い長い英数字も、カードの幅で折り返す */}
-                <h3 className="text-2xl font-bold leading-tight wrap-break-word md:text-3xl">
+                <h3 className="text-2xl leading-tight wrap-break-word md:text-[32px]">
                   {article.title}
                 </h3>
 
-                {/* 右下のアイコンと重ならないよう余白を空ける */}
-                <p className="mt-2 line-clamp-2 flex-1 pr-8 text-base leading-relaxed text-gray-700 wrap-break-word md:line-clamp-4 md:pr-28">
+                <p className="mt-2 line-clamp-2 flex-1 text-base leading-relaxed text-gray-700 wrap-break-word md:line-clamp-4">
                   {article.summary}
                 </p>
               </div>
 
-              {/* クリックで詳細へ飛ぶことを示す。ホバーでラベルが開く */}
+              {/* クリックで詳細へ飛ぶことを示す */}
               <span
                 aria-hidden
-                className="absolute bottom-3 right-4 flex items-center gap-1 text-xs text-gray-500 transition-colors group-hover:text-foreground"
+                className="absolute right-3.5 bottom-2.5 text-xs text-gray-500 md:right-4 md:bottom-3"
               >
-                <span className="max-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 group-hover:max-w-20">
-                  記事を読む
-                </span>
-                <span className="transition-transform duration-200 group-hover:translate-x-0.5">
-                  →
-                </span>
+                記事を読む ▶
               </span>
             </Link>
           </article>
@@ -107,10 +110,10 @@ export default function LatestArticle({
         )}
       </div>
 
-      <div className="mt-8 flex justify-center md:mt-12">
+      <div className="mt-11 flex justify-center md:mt-14">
         <Link
           href={moreButtonHref}
-          className="bg-black px-14 py-4 text-sm font-bold text-white transition-opacity hover:opacity-80"
+          className="pixel-card pixel-press bg-foreground px-14 py-4 text-base text-white [--pixel-c:var(--color-foreground)]"
         >
           最近の投稿
         </Link>

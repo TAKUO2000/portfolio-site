@@ -20,8 +20,10 @@ export default function Error({
   }, [error]);
 
   return (
-    <main className="mx-auto flex min-h-100 w-full max-w-5xl flex-col items-center justify-center gap-4 px-4 py-16 text-center">
-      <h1 className="text-2xl font-bold">ページを表示できませんでした</h1>
+    <main className="mx-auto flex min-h-100 w-full max-w-5xl flex-col items-center justify-center gap-4.5 px-4 py-16 text-center">
+      <h1 className="text-[22px] leading-tight font-bold md:text-2xl">
+        ページを表示できませんでした
+      </h1>
       <p className="text-sm text-gray-600">
         時間をおいて再度お試しください。続く場合はしばらく経ってからアクセスしてください。
       </p>

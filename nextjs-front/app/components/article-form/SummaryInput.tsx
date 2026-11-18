@@ -10,7 +10,7 @@ export default function SummaryInput({
   setSummary,
 }: SummaryInputProps) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <label htmlFor="summary" className="text-sm font-medium text-gray-700">
         概要
       </label>
@@ -21,7 +21,8 @@ export default function SummaryInput({
         rows={3}
         maxLength={255}
         placeholder="概要を入力（記事一覧の記事カード内に表示されます）"
-        className="border border-gray-300 rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+        // 枠は box-shadow で描く（globals.css の pixel-border-2）。フォーカス中は枠の色を変える
+        className="pixel-border-2 resize-none bg-white px-3 py-2 text-sm outline-none [--pixel-c:var(--color-gray-300)] focus:[--pixel-c:var(--color-blue-400)]"
       />
     </div>
   );

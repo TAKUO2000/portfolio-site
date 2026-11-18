@@ -13,8 +13,14 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* カードや大きいボタンの右下に付ける、ずれた影の色 */
+  --color-pixel-shadow: #8b7355;
+  /* 本文と日本語（ドット絵調）。太字は 400 の字形をブラウザが太らせて出す */
+  --font-sans: var(--font-dotgothic), sans-serif;
+  /* 英字の見出し・ロゴ・ナビ。日本語が混ざったら本文と同じ書体で出す */
+  --font-pixel: var(--font-silkscreen), var(--font-dotgothic), monospace;
+  /* コードは読みやすさを優先して、ドット絵調にしない */
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
 }
 
 /*＠いつかやる：ダークモードの追加
@@ -29,5 +35,277 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/*
+ * ドット絵調の枠と影。
+ *
+ * 枠は border ではなく box-shadow で上下左右に1本ずつ描く。四隅が欠けて、ドット絵の角になる。
+ * - 枠は要素の外側にはみ出す（レイアウトの大きさに入らない）。隣と並べるときは、枠の太さの分だけ間を空ける。
+ *   overflow: hidden の親の中では切れるので、親に余白を付ける
+ * - 色は --pixel-c（枠）と --pixel-s（影）で決める。例：`pixel-border-2 [--pixel-c:#fff]`
+ */
+
+/* 2px の枠：タグ・カテゴリ・入力欄・小さいボタン */
+@utility pixel-border-2 {
+  box-shadow:
+    -2px 0 0 var(--pixel-c, currentColor),
+    2px 0 0 var(--pixel-c, currentColor),
+    0 -2px 0 var(--pixel-c, currentColor),
+    0 2px 0 var(--pixel-c, currentColor);
+}
+
+/* 4px の枠 */
+@utility pixel-border-4 {
+  box-shadow:
+    -4px 0 0 var(--pixel-c, currentColor),
+    4px 0 0 var(--pixel-c, currentColor),
+    0 -4px 0 var(--pixel-c, currentColor),
+    0 4px 0 var(--pixel-c, currentColor);
+}
+
+/* 4px の枠 + 右下にずれた影：記事カード・大きいボタン */
+@utility pixel-card {
+  box-shadow:
+    -4px 0 0 var(--pixel-c, currentColor),
+    4px 0 0 var(--pixel-c, currentColor),
+    0 -4px 0 var(--pixel-c, currentColor),
+    0 4px 0 var(--pixel-c, currentColor),
+    4px 4px 0 var(--pixel-s, var(--color-pixel-shadow)),
+    8px 4px 0 var(--pixel-s, var(--color-pixel-shadow)),
+    4px 8px 0 var(--pixel-s, var(--color-pixel-shadow));
+}
+
+/* ウィンドウ風の枠（角は欠けない）：記事の本文など。タイトルバーは中身の側で描く */
+@utility pixel-window {
+  box-shadow:
+    0 0 0 4px var(--pixel-c, currentColor),
+    4px 4px 0 4px var(--pixel-s, var(--color-pixel-shadow));
+}
+
+/* 枠と同じ色で塗る：カテゴリ・タグのように、地の色がそのまま枠になるもの */
+@utility pixel-fill-2 {
+  background-color: var(--pixel-c);
+  box-shadow:
+    -2px 0 0 var(--pixel-c),
+    2px 0 0 var(--pixel-c),
+    0 -2px 0 var(--pixel-c),
+    0 2px 0 var(--pixel-c);
+}
+
+/*
+ * 押し込む動き。なめらかに動かさず、steps() で2コマにする。
+ * pixel-press は pixel-card と組み合わせて使う（影の位置まで動いて、影が消える）。
+ * pixel-press-window は pixel-window と、pixel-press-sm は 2px の枠の小さいボタンと組み合わせる
+ */
+@utility pixel-press {
+  transition: transform 0.08s steps(2);
+
+  &:hover:not(:disabled),
+  &:active:not(:disabled) {
+    transform: translate(4px, 4px);
+    box-shadow:
+      -4px 0 0 var(--pixel-c, currentColor),
+      4px 0 0 var(--pixel-c, currentColor),
+      0 -4px 0 var(--pixel-c, currentColor),
+      0 4px 0 var(--pixel-c, currentColor);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover:not(:disabled),
+    &:active:not(:disabled) {
+      transform: none;
+    }
+  }
+}
+
+/* pixel-window と組み合わせる押し込み。影が消えても、枠の四隅は欠けさせない */
+@utility pixel-press-window {
+  transition: transform 0.08s steps(2);
+
+  &:hover,
+  &:active {
+    transform: translate(4px, 4px);
+    box-shadow: 0 0 0 4px var(--pixel-c, currentColor);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover,
+    &:active {
+      transform: none;
+    }
+  }
+}
+
+@utility pixel-press-sm {
+  transition: transform 0.08s steps(2);
+
+  &:hover:not(:disabled),
+  &:active:not(:disabled) {
+    transform: translate(2px, 2px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover:not(:disabled),
+    &:active:not(:disabled) {
+      transform: none;
+    }
+  }
+}
+
+/*
+ * ヘッダーとフッターの境目のディザ模様（高さ 16px、4px のドットを4段）。
+ * 黒い面から離れるほどドットがまばらになる。色は文字色（currentColor）で決める。
+ * -down は黒い面が上（ヘッダーの下）、-up は黒い面が下（フッターの上）
+ */
+@utility pixel-dither-down {
+  height: 16px;
+  background:
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 8px) 0
+      0 / 100% 4px repeat-x,
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 8px)
+      4px 4px / 100% 4px repeat-x,
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 16px) 0
+      8px / 100% 4px repeat-x,
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 16px)
+      8px 12px / 100% 4px repeat-x;
+}
+
+@utility pixel-dither-up {
+  height: 16px;
+  background:
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 8px) 0
+      12px / 100% 4px repeat-x,
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 8px)
+      4px 8px / 100% 4px repeat-x,
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 16px) 0
+      4px / 100% 4px repeat-x,
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 16px)
+      8px 0 / 100% 4px repeat-x;
+}
+
+/*
+ * 記事の本文（Markdown から作った HTML）の見た目。typography プラグインの prose と一緒に付けて、
+ * ドット絵調に合わせる所だけを上書きする（表など、ここに無いものは prose のまま）。
+ * 記事詳細と、記事フォームのプレビューで同じものを使う
+ */
+@utility prose-pixel {
+  --tw-prose-body: var(--color-gray-700);
+  --tw-prose-headings: var(--color-foreground);
+  --tw-prose-bold: var(--color-foreground);
+  --tw-prose-counters: var(--color-foreground);
+  --tw-prose-quotes: var(--color-gray-700);
+  --tw-prose-quote-borders: var(--color-foreground);
+  font-size: 16px;
+  line-height: 1.75;
+
+  & p {
+    margin: 0 0 20px;
+  }
+
+  /* 見出しの下に、4px のドットの点線を引く（余白 8px + 線 4px） */
+  & h2 {
+    margin: 36px 0 16px;
+    padding-bottom: 12px;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.35;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--color-foreground) 0 4px,
+        transparent 4px 8px
+      )
+      left bottom / 100% 4px no-repeat;
+  }
+
+  & h3 {
+    margin: 28px 0 12px;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  /* リストの点は、丸ではなく 8px の四角にする。チェックボックス付きのリストには付けない */
+  & ul:not(.contains-task-list) {
+    margin: 0 0 20px;
+    padding-left: 0;
+    list-style: none;
+
+    & > li {
+      position: relative;
+      margin: 0 0 8px;
+      padding-left: 20px;
+
+      &::before {
+        content: "";
+        position: absolute;
+        top: 10px;
+        left: 0;
+        width: 8px;
+        height: 8px;
+        background: var(--color-foreground);
+      }
+    }
+  }
+
+  /* 色は prose-neutral の変数より優先させるため、直接決める */
+  & pre {
+    margin: 0 0 20px;
+    padding: 14px 16px;
+    border-radius: 0;
+    background-color: var(--color-foreground);
+    color: var(--color-background);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  /* 引用は、斜体と引用符をやめて、左に 4px の線だけを引く */
+  & blockquote {
+    margin: 0 0 20px;
+    padding: 4px 0 4px 16px;
+    border-left-width: 4px;
+    font-style: normal;
+    font-weight: 400;
+    quotes: none;
+
+    & p {
+      margin: 0;
+
+      &::before,
+      &::after {
+        content: none;
+      }
+    }
+  }
+
+  & > :first-child {
+    margin-top: 0;
+  }
+
+  & > :last-child {
+    margin-bottom: 0;
+  }
+
+  @media (min-width: 48rem) {
+    & h2 {
+      margin-top: 40px;
+      font-size: 24px;
+    }
+
+    & h3 {
+      font-size: 20px;
+    }
+
+    & pre {
+      padding: 16px 20px;
+      font-size: 14px;
+    }
+  }
 }

@@ -148,16 +148,16 @@ export default function MarkdownEditor({
 
   return (
     <div className="w-full">
-      <p className="mb-1 text-sm font-medium text-gray-700">本文</p>
+      <p className="mb-1.5 text-sm font-medium text-gray-700">本文</p>
       {/* タブ */}
-      <div className="flex items-center gap-0.5 border-b border-black/11">
+      <div className="flex items-end gap-1 border-b-2 border-[#c9ccd1]">
         <button
           type="button"
           onClick={() => setActiveTab("write")}
-          className={`relative top-px rounded-t-[9px] px-4 py-2.25 text-[13px] transition-colors ${
+          className={`relative top-0.5 px-3.5 py-2 font-pixel text-[13px] sm:px-4 ${
             activeTab === "write"
-              ? "border border-t-black/11 border-x-black/11 border-b-white bg-white font-semibold text-[#17181a]"
-              : "font-medium text-[#8a9099] hover:text-[#5b6068]"
+              ? "border-2 border-[#c9ccd1] border-b-white bg-white text-[#17181a]"
+              : "border-2 border-transparent text-[#8a9099] hover:text-[#5b6068]"
           }`}
         >
           Write
@@ -165,10 +165,10 @@ export default function MarkdownEditor({
         <button
           type="button"
           onClick={() => setActiveTab("preview")}
-          className={`relative top-px rounded-t-[9px] px-4 py-2.25 text-[13px] transition-colors ${
+          className={`relative top-0.5 px-3.5 py-2 font-pixel text-[13px] sm:px-4 ${
             activeTab === "preview"
-              ? "border border-t-black/11 border-x-black/11 border-b-white bg-white font-semibold text-[#17181a]"
-              : "font-medium text-[#8a9099] hover:text-[#5b6068]"
+              ? "border-2 border-[#c9ccd1] border-b-white bg-white text-[#17181a]"
+              : "border-2 border-transparent text-[#8a9099] hover:text-[#5b6068]"
           }`}
         >
           Preview
@@ -178,11 +178,12 @@ export default function MarkdownEditor({
         </span>
       </div>
 
-      <div className="rounded-b-[11px] border-x border-b border-black/11 bg-white">
+      <div className="border-2 border-t-0 border-[#c9ccd1] bg-white">
         {activeTab === "write" ? (
           <>
             {/* ツールバー */}
-            <div className="flex items-center gap-px border-b border-black/8 px-2.25 py-1.75">
+            {/* 狭い幅では、ボタンを折り返す */}
+            <div className="flex flex-wrap items-center gap-0.5 border-b-2 border-gray-200 px-1.5 py-1.5 sm:px-2">
               <ToolbarButton
                 title="見出し"
                 onClick={() => insertMarkdown("## ")}
@@ -193,31 +194,31 @@ export default function MarkdownEditor({
               <ToolbarButton
                 title="太字"
                 onClick={() => insertMarkdown("**", "**")}
-                className="text-sm font-serif font-bold"
+                className="text-sm font-bold"
               >
                 B
               </ToolbarButton>
               <ToolbarButton
                 title="斜体"
                 onClick={() => insertMarkdown("*", "*")}
-                className="text-[15px] font-serif font-semibold italic"
+                className="text-sm italic"
               >
                 I
               </ToolbarButton>
               <ToolbarButton
                 title="打ち消し線"
                 onClick={() => insertMarkdown("~~", "~~")}
-                className="text-[15px] font-serif font-semibold line-through"
+                className="text-sm line-through"
               >
                 S
               </ToolbarButton>
 
-              <span className="mx-1.25 h-4 w-px bg-black/10" />
+              <span className="mx-0.75 h-4 w-0.5 bg-gray-200 sm:mx-1.25" />
 
               <ToolbarButton
                 title="引用"
                 onClick={() => insertMarkdown("> ")}
-                className="text-sm font-serif font-bold"
+                className="text-sm font-bold"
               >
                 &#8220;
               </ToolbarButton>
@@ -266,14 +267,14 @@ export default function MarkdownEditor({
               }}
               onPaste={handlePasteImage}
               placeholder="Markdownで本文を入力してください..."
-              className="min-h-100 w-full resize-none overflow-hidden bg-transparent px-5 py-4.5 font-mono text-[13px] leading-[1.9] text-[#2b2f36] outline-none [font-variant-ligatures:none] font-features-['liga'_0,'calt'_0]"
+              className="min-h-100 w-full resize-none overflow-hidden bg-transparent px-4 py-4.5 sm:px-5 font-mono text-[13px] leading-[1.9] text-[#2b2f36] outline-none [font-variant-ligatures:none] font-features-['liga'_0,'calt'_0]"
             />
             {errorMessage && (
               <p className="px-5 pb-3 text-xs text-red-600">{errorMessage}</p>
             )}
           </>
         ) : (
-          <div className="prose prose-neutral min-h-74 max-w-none px-5 py-4.5 [&_ul>li::marker]:text-black">
+          <div className="prose prose-neutral prose-pixel min-h-74 max-w-none px-4 py-4.5 sm:px-5">
             {body ? (
               <ReactMarkdown
                 urlTransform={previewUrlTransform}
@@ -295,7 +296,7 @@ export default function MarkdownEditor({
         )}
 
         {/* フッター */}
-        <div className="flex items-center justify-between border-t border-black/7 px-3.75 py-2.25 text-[11.5px] text-[#adb2ba]">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t-2 border-[#eef0f2] px-3 py-2.25 text-[11.5px] text-[#adb2ba] sm:px-3.75">
           <span className="flex items-center gap-1.5">
             <ListLinesIcon />
             Markdownがサポートされています
@@ -323,7 +324,7 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       title={title}
-      className={`flex h-7.25 w-7.75 items-center justify-center rounded-[7px] text-[#5b6068] transition-colors hover:bg-[#f2f3f5] ${className}`}
+      className={`flex h-7.25 w-7 items-center justify-center text-[#5b6068] hover:bg-[#f2f3f5] sm:w-7.75 ${className}`}
     >
       {children}
     </button>

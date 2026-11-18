@@ -18,7 +18,7 @@ export default function TitleInput({ title, setTitle }: TitleInputProps) {
   }, [title]);
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <label htmlFor="title" className="text-sm font-medium text-gray-700">
         タイトル
       </label>
@@ -33,7 +33,8 @@ export default function TitleInput({ title, setTitle }: TitleInputProps) {
         maxLength={255}
         placeholder="タイトルを入力"
         rows={1}
-        className="border border-gray-300 rounded px-3 py-2 font-medium text-xl resize-none overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+        // 枠は box-shadow で描く（globals.css の pixel-border-2）。フォーカス中は枠の色を変える
+        className="pixel-border-2 resize-none overflow-hidden bg-white px-3 py-2 text-xl leading-[1.4] outline-none [--pixel-c:var(--color-gray-300)] focus:[--pixel-c:var(--color-blue-400)]"
       />
     </div>
   );

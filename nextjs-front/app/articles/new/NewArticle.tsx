@@ -17,7 +17,7 @@ export default function NewArticle() {
     <>
       <ArticleForm
         heading="記事投稿"
-        // ヘッダーの無い画面なので、書くのをやめて記事管理へ移る道をここに置く。
+        // 書くのをやめて記事管理へ移る道を、見出しの横にも置く（ヘッダーのメニューを開かずに済むように）。
         // ヘッダーのメニューからどの画面でも来られるため、「戻る」ではなく行き先で呼ぶ
         headingActions={
           <NormalButton buttonLabel="記事管理へ" href="/articles/manage" />

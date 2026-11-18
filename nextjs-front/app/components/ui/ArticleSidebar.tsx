@@ -30,7 +30,7 @@ export default function ArticleSidebar({
   };
 
   return (
-    <aside className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-3 border-t border-black/10 bg-background/95 px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur md:sticky md:top-8 md:right-auto md:bottom-auto md:left-auto md:z-auto md:w-1/5 md:shrink-0 md:gap-4 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+    <aside className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-3 border-t-2 border-black/10 bg-background/95 px-4.5 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] backdrop-blur md:sticky md:top-8 md:right-auto md:bottom-auto md:left-auto md:z-auto md:min-w-0 md:flex-1 md:gap-5 md:border-0 md:bg-transparent md:p-0.5 md:backdrop-blur-none">
       {hasToc && (
         <div
           id="article-toc"
@@ -44,28 +44,16 @@ export default function ArticleSidebar({
         {hasToc && (
           <button
             type="button"
-            className="flex items-center gap-2 rounded-full border border-gray-400 px-4 py-2 text-sm font-semibold text-gray-600 transition-opacity hover:opacity-70 md:hidden"
+            className="pixel-border-2 flex h-10 cursor-pointer items-center gap-2 px-4 text-sm text-gray-600 [--pixel-c:var(--color-gray-400)] md:hidden"
             onClick={() => setIsTocOpen((isOpen) => !isOpen)}
             aria-expanded={isTocOpen}
             aria-controls="article-toc"
           >
             目次
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={clsx(
-                "size-4 transition-transform",
-                isTocOpen && "rotate-180",
-              )}
-              aria-hidden="true"
-            >
-              {/* 開くと上に伸びるので、閉じているときは上向きの矢印にする */}
-              <path d="M6 15l6-6 6 6" />
-            </svg>
+            {/* 開くと上に伸びるので、閉じているときは上向き、開いているときは下向きにする */}
+            <span aria-hidden="true" className="text-[10px]">
+              {isTocOpen ? "▼" : "▲"}
+            </span>
           </button>
         )}
         <ArticleActionButtons

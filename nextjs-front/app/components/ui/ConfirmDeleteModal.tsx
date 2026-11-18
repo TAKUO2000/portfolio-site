@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import NormalButton from "@/app/components/ui/NormalButton";
+import WindowTitleBar from "@/app/components/ui/WindowTitleBar";
 
 interface ConfirmDeleteModalProps {
   /** 開いている間は削除対象のタイトル、閉じているときはnull */
@@ -44,27 +45,31 @@ export default function ConfirmDeleteModal({
         e.preventDefault();
         if (!isDeleting) onCancel();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/50"
+      // 枠と影は外側にはみ出す（右と下は 8px）ので、左右の余白はその分より広く取る
+      className="pixel-window m-auto w-[calc(100%-2.5rem)] max-w-md bg-white [--pixel-c:var(--color-foreground)] backdrop:bg-black/50"
     >
-      <h2 id="confirm-delete-title" className="text-lg font-bold">
-        記事を削除しますか？
-      </h2>
-      <p className="mt-3 rounded bg-gray-50 px-3 py-2 text-sm break-words text-gray-700">
-        {targetTitle}
-      </p>
+      <WindowTitleBar />
+      <div className="p-6">
+        <h2 id="confirm-delete-title" className="text-lg font-bold">
+          記事を削除しますか？
+        </h2>
+        <p className="mt-3 bg-gray-50 px-3 py-2 text-sm break-words text-gray-700">
+          {targetTitle}
+        </p>
 
-      <div className="mt-6 flex justify-end gap-3">
-        <NormalButton
-          buttonLabel="キャンセル"
-          onClick={onCancel}
-          disabled={isDeleting}
-        />
-        <NormalButton
-          color="red"
-          buttonLabel={isDeleting ? "削除中..." : "削除する"}
-          onClick={onConfirm}
-          disabled={isDeleting}
-        />
+        <div className="mt-6 flex justify-end gap-4">
+          <NormalButton
+            buttonLabel="キャンセル"
+            onClick={onCancel}
+            disabled={isDeleting}
+          />
+          <NormalButton
+            color="red"
+            buttonLabel={isDeleting ? "削除中..." : "削除する"}
+            onClick={onConfirm}
+            disabled={isDeleting}
+          />
+        </div>
       </div>
     </dialog>
   );

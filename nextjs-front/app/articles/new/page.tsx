@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import Footer from "@/app/components/Footer";
+import Header from "@/app/components/Header";
 import NewArticle from "./NewArticle";
 
 export const metadata: Metadata = {
@@ -7,5 +9,11 @@ export const metadata: Metadata = {
 };
 
 export default function NewArticlePage() {
-  return <NewArticle />;
+  return (
+    <>
+      <Header />
+      <NewArticle />
+      <Footer />
+    </>
+  );
 }

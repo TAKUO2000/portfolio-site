@@ -4,6 +4,16 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 
 import { API_BASE_URL, getApiErrorMessage, getCsrfToken } from "../authClient";
+import AuthPage from "@/app/auth/AuthPage";
+import {
+  AUTH_ERROR,
+  AUTH_FORM,
+  AUTH_INPUT,
+  AUTH_LABEL,
+  AUTH_LINK,
+  AUTH_SUBMIT,
+  AUTH_SUCCESS,
+} from "@/app/auth/authStyles";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -63,60 +73,38 @@ export default function ForgotPassword() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f1eb] px-6 py-16">
-      <section className="mx-auto flex w-full max-w-sm flex-col gap-8">
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-neutral-600">
-            Forgot password
-          </p>
-          <h1 className="text-3xl font-bold text-neutral-950">
-            パスワードの再設定
-          </h1>
-          <p className="text-sm text-neutral-600">
-            登録したメールアドレスを入力してください。パスワード再設定用のURLをメールでお送りします。
-          </p>
-        </div>
+    <AuthPage
+      eyebrow="Forgot password"
+      title="パスワードの再設定"
+      description="登録したメールアドレスを入力してください。パスワード再設定用のURLをメールでお送りします。"
+    >
+      <form className={AUTH_FORM} onSubmit={handleSubmit}>
+        <label className={AUTH_LABEL}>
+          メールアドレス
+          <input
+            className={AUTH_INPUT}
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </label>
 
-        <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
-          <label className="flex flex-col gap-2 text-sm font-semibold text-neutral-800">
-            メールアドレス
-            <input
-              className="h-11 rounded border border-neutral-300 bg-white px-3 text-base font-normal outline-none transition focus:border-neutral-950"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </label>
+        {errorMessage && <p className={AUTH_ERROR}>{errorMessage}</p>}
 
-          {errorMessage && (
-            <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {errorMessage}
-            </p>
-          )}
+        {statusMessage && <p className={AUTH_SUCCESS}>{statusMessage}</p>}
 
-          {statusMessage && (
-            <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-              {statusMessage}
-            </p>
-          )}
+        <button className={AUTH_SUBMIT} type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "送信中..." : "再設定用メールを送る"}
+        </button>
+      </form>
 
-          <button
-            className="h-11 rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400"
-            type="submit"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "送信中..." : "再設定用メールを送る"}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-neutral-600">
-          <Link className="font-semibold text-neutral-950" href="/auth/sign-in">
-            ログインに戻る
-          </Link>
-        </p>
-      </section>
-    </main>
+      <p className="text-center text-sm text-neutral-600">
+        <Link className={AUTH_LINK} href="/auth/sign-in">
+          ログインに戻る
+        </Link>
+      </p>
+    </AuthPage>
   );
 }

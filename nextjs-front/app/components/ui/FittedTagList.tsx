@@ -34,7 +34,10 @@ export default function FittedTagList({ tags }: FittedTagListProps) {
     if (!container || !measure || !ellipsis) return;
 
     function fit() {
-      const available = container!.clientWidth;
+      // clientWidthは余白を含むので、左の余白（枠の分）を引いて、タグを置ける幅にする
+      const available =
+        container!.clientWidth -
+        parseFloat(getComputedStyle(container!).paddingLeft);
       const ellipsisWidth = ellipsis!.offsetWidth;
       // 測定用の行は絶対配置なので、子のoffsetLeftはその行の左端からの距離になる
       // 「…」はタグの右マージンの外側に並ぶので、マージン込みの右端で測る
@@ -77,12 +80,14 @@ export default function FittedTagList({ tags }: FittedTagListProps) {
   return (
     <div
       ref={containerRef}
-      className="relative flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap"
+      // タグの枠（外側に 2px）がoverflow-hiddenで切れないよう、上下左に余白を付ける。
+      // 右は、入りきらないタグを切るために付けない
+      className="relative flex min-w-0 flex-1 items-center overflow-hidden py-0.5 pl-0.5 whitespace-nowrap"
     >
       <div
         ref={measureRef}
         aria-hidden
-        className="invisible absolute top-0 left-0 flex items-center whitespace-nowrap"
+        className="invisible absolute top-0.5 left-0.5 flex items-center whitespace-nowrap"
       >
         {candidates.map((tag) => (
           <TagBox key={tag.id} tag={tag.name} />

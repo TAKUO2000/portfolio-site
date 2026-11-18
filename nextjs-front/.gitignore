@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+# npm run screenshot の出力（見た目の確認用）
+/screenshots
 
 # next.js
 /.next/
