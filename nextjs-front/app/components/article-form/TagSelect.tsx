@@ -92,9 +92,9 @@ export default function TagSelect({
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <p className="text-sm font-medium text-gray-700">タグ</p>
-      <div className="flex flex-wrap gap-1.75 items-center">
+      <div className="flex flex-wrap items-center gap-y-2 pl-0.5">
         {selectedTags.map((tag) => (
           <TagBox
             key={tag.id}
@@ -116,14 +116,14 @@ export default function TagSelect({
         <div className="relative" ref={pickerRef}>
           <span
             onClick={togglePicker}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white text-xs font-medium text-[#8a9099] border border-dashed border-black/20 cursor-pointer hover:bg-[#f9f9f9] whitespace-nowrap"
+            className="inline-flex cursor-pointer items-center gap-1 border-2 border-dashed border-[#c4c7cc] bg-white px-2.5 py-0.75 text-xs whitespace-nowrap text-[#8a9099] hover:bg-[#f9f9f9]"
           >
             <Plus className="w-3 h-3 shrink-0" />
             追加
           </span>
           {/* ポップーオーバー */}
           {showPicker && (
-            <div className="absolute top-8 left-0 bg-white border border-black/10 rounded-lg shadow-lg z-10 w-56 overflow-hidden">
+            <div className="pixel-border-2 absolute top-9 left-0.5 z-10 w-56 bg-white [--pixel-c:var(--color-gray-400)]">
               <input
                 ref={inputRef}
                 value={query}
@@ -132,7 +132,7 @@ export default function TagSelect({
                   if (e.key === "Enter" && canCreateTag) createPendingTag();
                 }}
                 placeholder="タグを検索"
-                className="w-full px-3 py-2 text-xs border-b border-black/10 outline-none"
+                className="w-full border-b-2 border-gray-200 px-3 py-2 text-xs outline-none"
               />
               <div className="max-h-48 overflow-y-auto py-1">
                 {/* クエリ検索結果表示 */}
