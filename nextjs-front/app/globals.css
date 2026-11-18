@@ -97,7 +97,7 @@ body {
 /*
  * 押し込む動き。なめらかに動かさず、steps() で2コマにする。
  * pixel-press は pixel-card と組み合わせて使う（影の位置まで動いて、影が消える）。
- * pixel-press-sm は 2px の枠の小さいボタン用
+ * pixel-press-window は pixel-window と、pixel-press-sm は 2px の枠の小さいボタンと組み合わせる
  */
 @utility pixel-press {
   transition: transform 0.08s steps(2);
@@ -117,6 +117,26 @@ body {
 
     &:hover:not(:disabled),
     &:active:not(:disabled) {
+      transform: none;
+    }
+  }
+}
+
+/* pixel-window と組み合わせる押し込み。影が消えても、枠の四隅は欠けさせない */
+@utility pixel-press-window {
+  transition: transform 0.08s steps(2);
+
+  &:hover,
+  &:active {
+    transform: translate(4px, 4px);
+    box-shadow: 0 0 0 4px var(--pixel-c, currentColor);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover,
+    &:active {
       transform: none;
     }
   }
