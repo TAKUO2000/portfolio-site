@@ -10,6 +10,13 @@ import {
   getCurrentUser,
 } from "../authClient";
 import type { User } from "@/app/types/models";
+import AuthPage from "@/app/auth/AuthPage";
+import {
+  AUTH_ERROR,
+  AUTH_LINK,
+  AUTH_SUBMIT,
+  AUTH_SUCCESS,
+} from "@/app/auth/authStyles";
 
 // 登録の直後と、確認前にいいねしようとしたときに来る画面。確認メールの再送もここで行う
 export default function VerifyEmail() {
@@ -83,76 +90,51 @@ export default function VerifyEmail() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f1eb] px-6 py-16">
-      <section className="mx-auto flex w-full max-w-sm flex-col gap-8">
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-neutral-600">Verify email</p>
-          <h1 className="text-3xl font-bold text-neutral-950">
-            メールアドレスの確認
-          </h1>
+    <AuthPage eyebrow="Verify email" title="メールアドレスの確認">
+      {user === undefined && (
+        <p className="text-sm text-neutral-600">読み込み中...</p>
+      )}
+
+      {user === null && (
+        <p className="text-sm text-neutral-600">
+          確認メールを送り直すには、
+          <Link className={AUTH_LINK} href="/auth/sign-in">
+            ログイン
+          </Link>
+          してください。
+        </p>
+      )}
+
+      {user?.email_verified === true && (
+        <div className="flex flex-col gap-5.5">
+          <p className={AUTH_SUCCESS}>メールアドレスは確認済みです。</p>
+          <Link className={AUTH_SUBMIT} href="/">
+            トップへ
+          </Link>
         </div>
+      )}
 
-        {user === undefined && (
-          <p className="text-sm text-neutral-600">読み込み中...</p>
-        )}
-
-        {user === null && (
-          <p className="text-sm text-neutral-600">
-            確認メールを送り直すには、
-            <Link
-              className="font-semibold text-neutral-950 underline"
-              href="/auth/sign-in"
-            >
-              ログイン
-            </Link>
-            してください。
+      {user && user.email_verified === false && (
+        <div className="flex flex-col gap-5.5">
+          <p className="text-sm text-neutral-700">
+            <span className="text-neutral-950">{user.email}</span>
+            に確認メールを送りました。メールのリンクを開くと、確認が終わります。確認が済むまで、いいねはできません。
           </p>
-        )}
 
-        {user?.email_verified === true && (
-          <div className="flex flex-col gap-5">
-            <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-              メールアドレスは確認済みです。
-            </p>
-            <Link
-              className="flex h-11 items-center justify-center rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
-              href="/"
-            >
-              トップへ
-            </Link>
-          </div>
-        )}
+          {errorMessage && <p className={AUTH_ERROR}>{errorMessage}</p>}
 
-        {user && user.email_verified === false && (
-          <div className="flex flex-col gap-5">
-            <p className="text-sm text-neutral-700">
-              <span className="font-semibold">{user.email}</span>
-              に確認メールを送りました。メールのリンクを開くと、確認が終わります。確認が済むまで、いいねはできません。
-            </p>
+          {statusMessage && <p className={AUTH_SUCCESS}>{statusMessage}</p>}
 
-            {errorMessage && (
-              <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {errorMessage}
-              </p>
-            )}
-
-            {statusMessage && (
-              <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                {statusMessage}
-              </p>
-            )}
-
-            <button
-              className="h-11 rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400"
-              type="button"
-              onClick={handleResend}
-              disabled={isSending}
-            >
-              {isSending ? "送信中..." : "確認メールを送り直す"}
-            </button>
-          </div>
-        )}
-      </section>
-    </main>
+          <button
+            className={AUTH_SUBMIT}
+            type="button"
+            onClick={handleResend}
+            disabled={isSending}
+          >
+            {isSending ? "送信中..." : "確認メールを送り直す"}
+          </button>
+        </div>
+      )}
+    </AuthPage>
   );
 }
