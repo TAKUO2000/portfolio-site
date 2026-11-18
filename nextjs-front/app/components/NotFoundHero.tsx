@@ -13,17 +13,22 @@ export default function NotFoundHero() {
 
   return (
     <section className="bg-[#f4f1eb] text-center py-24 px-6 min-h-screen flex flex-col items-center justify-center">
-      <p className="text-7xl font-extrabold mb-3">404</p>
-      <h1 className="text-2xl font-bold mb-3">ページが見つかりませんでした</h1>
+      <p className="mb-4 font-pixel text-[80px] leading-none font-bold md:text-8xl">
+        404
+      </p>
+      <h1 className="mb-3 text-[22px] leading-tight font-bold md:text-2xl">
+        ページが見つかりませんでした
+      </h1>
       <p className="text-lg text-[#010101] mb-8">
         URLが間違っているか、ページが移動・削除された可能性があります。
       </p>
-      <div className="mt-12 flex flex-wrap justify-center gap-4 sm:gap-10">
+      {/* ボタンの枠と影は外側にはみ出す（右と下は 8px）ので、その分より広く間を空ける */}
+      <div className="mt-12 flex flex-wrap justify-center gap-x-5 gap-y-6 sm:gap-10">
         {navLinks.map((link) => (
           <Link
             key={link.href}
             href={link.href}
-            className="bg-black text-white text-base px-6 sm:px-10 py-4 hover:opacity-70 transition-opacity"
+            className="pixel-card pixel-press bg-foreground px-6 py-4 text-base text-white [--pixel-c:var(--color-foreground)] sm:px-10"
           >
             {link.label}
           </Link>
