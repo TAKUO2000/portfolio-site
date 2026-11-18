@@ -60,7 +60,7 @@ export default function Toast({ notice, onClose }: ToastProps) {
       <div role="status" className="w-full">
         {success && (
           <ToastBody
-            className="border-green-200 bg-green-50 text-green-800"
+            className="bg-green-50 text-green-800 [--pixel-c:var(--color-green-600)]"
             message={success.message}
             onClose={onClose}
           />
@@ -70,7 +70,7 @@ export default function Toast({ notice, onClose }: ToastProps) {
       <div role="alert" className="w-full">
         {error && (
           <ToastBody
-            className="border-red-200 bg-red-50 text-red-700"
+            className="bg-red-50 text-red-700 [--pixel-c:var(--color-red-500)]"
             message={error.message}
             onClose={onClose}
           />
@@ -93,7 +93,8 @@ function ToastBody({
 
   return (
     <div
-      className={`pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-lg ${className}`}
+      // 枠の色は、呼び出し側が --pixel-c で決める
+      className={`pixel-border-2 pointer-events-auto flex items-start gap-3 px-4 py-3 text-sm ${className}`}
     >
       {messages.length === 1 ? (
         <p className="flex-1 break-words">{messages[0]}</p>
@@ -109,7 +110,7 @@ function ToastBody({
         type="button"
         onClick={onClose}
         aria-label="通知を閉じる"
-        className="shrink-0 cursor-pointer leading-none opacity-60 transition-opacity hover:opacity-100"
+        className="shrink-0 cursor-pointer leading-none opacity-60 hover:opacity-100"
       >
         ×
       </button>

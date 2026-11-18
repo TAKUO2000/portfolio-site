@@ -310,7 +310,7 @@ export default function ArticleForm({
           savedHeaderImageUrl={savedHeaderImage?.url}
           onRemoveSavedHeaderImage={() => setSavedHeaderImage(null)}
         />
-        <div className="flex gap-2">
+        <div className="flex gap-5 sm:gap-6">
           <CategorySelect
             categories={categories}
             selectedCategoryId={selectedCategoryId}
@@ -335,7 +335,8 @@ export default function ArticleForm({
         />
       </div>
 
-      <div className="flex justify-end gap-3">
+      {/* ボタンの枠は外側に 2px ずつはみ出すので、その分より広く間を空ける。狭い幅では折り返す */}
+      <div className="flex flex-wrap items-center justify-end gap-x-3.5 gap-y-4 px-0.5 sm:gap-x-4">
         {extraActions && (
           // 保存中は削除などの操作も止める。保存の通信が削除した記事へ届いて失敗するのを防ぐため
           <div
@@ -372,20 +373,20 @@ function SavedStatusBadge({
 }: {
   status: ArticleEdit["status"] | null;
 }) {
+  // 破線の枠（非公開・未保存）は内側に 2px あるので、余白をその分だけ減らして、公開と同じ大きさにする
   const { label, className } = status
     ? {
         label: `${ARTICLE_STATUS_LABELS[status]}中`,
-        className: ARTICLE_STATUS_COLORS[status],
+        className: `${ARTICLE_STATUS_COLORS[status]} ${status === "published" ? "px-3 py-1" : "px-2.5 py-0.5"}`,
       }
     : {
         label: "未保存",
-        className: "border border-dashed border-gray-300 text-gray-400",
+        className:
+          "border-2 border-dashed border-gray-300 px-2.5 py-0.5 text-gray-400",
       };
 
   return (
-    <span
-      className={`self-center rounded-full px-3 py-1 text-xs font-semibold ${className}`}
-    >
+    <span className={`self-center text-xs ${className}`}>
       <span className="sr-only">現在の状態：</span>
       {label}
     </span>

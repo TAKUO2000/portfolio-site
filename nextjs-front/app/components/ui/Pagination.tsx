@@ -42,12 +42,13 @@ export default function Pagination({
   onChange,
 }: PaginationProps) {
   const arrowClass =
-    "px-2 py-1.5 text-sm text-gray-700 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-30 cursor-pointer";
+    "cursor-pointer px-2 py-1.5 text-sm text-gray-700 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30";
 
   return (
     <nav
       aria-label="ページ送り"
-      className="flex items-center justify-center gap-1"
+      // ページ番号の枠は外側に 2px ずつはみ出すので、その分より広く間を空ける
+      className="flex items-center justify-center gap-2 sm:gap-2.5"
     >
       <button
         type="button"
@@ -56,7 +57,7 @@ export default function Pagination({
         onClick={() => onChange(currentPage - 1)}
         aria-label="前のページ"
       >
-        ←
+        ◀
       </button>
 
       {getPageItems(currentPage, lastPage).map((item, index) =>
@@ -74,10 +75,10 @@ export default function Pagination({
             type="button"
             onClick={() => onChange(item)}
             aria-current={item === currentPage ? "page" : undefined}
-            className={`h-8 min-w-8 cursor-pointer rounded px-2 text-sm transition-colors ${
+            className={`pixel-border-2 h-8 min-w-8 cursor-pointer px-2 text-sm ${
               item === currentPage
-                ? "bg-green-600 font-semibold text-white"
-                : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                ? "bg-green-600 text-white [--pixel-c:var(--color-green-600)]"
+                : "pixel-press-sm bg-white text-gray-700 [--pixel-c:var(--color-gray-300)]"
             }`}
           >
             {item}
@@ -92,7 +93,7 @@ export default function Pagination({
         onClick={() => onChange(currentPage + 1)}
         aria-label="次のページ"
       >
-        →
+        ▶
       </button>
     </nav>
   );
