@@ -19,7 +19,8 @@ const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
  */
 export default function ArticleSortSwitch({ current }: ArticleSortSwitchProps) {
   return (
-    <div className="flex gap-2">
+    // ボタンの枠は外側に 2px ずつはみ出すので、その分より広く間を空ける
+    <div className="flex gap-3 pl-0.5">
       {SORT_OPTIONS.map(({ value, label }) => (
         <NormalButton
           key={value}
