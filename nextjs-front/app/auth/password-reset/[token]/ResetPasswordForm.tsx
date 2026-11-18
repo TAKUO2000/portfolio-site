@@ -8,6 +8,15 @@ import {
   getApiErrorMessage,
   getCsrfToken,
 } from "../../authClient";
+import AuthPage from "@/app/auth/AuthPage";
+import {
+  AUTH_ERROR,
+  AUTH_FORM,
+  AUTH_INPUT,
+  AUTH_LABEL,
+  AUTH_SUBMIT,
+  AUTH_SUCCESS,
+} from "@/app/auth/authStyles";
 
 type Props = {
   token: string;
@@ -78,85 +87,61 @@ export default function ResetPasswordForm({ token, initialEmail }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f1eb] px-6 py-16">
-      <section className="mx-auto flex w-full max-w-sm flex-col gap-8">
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-neutral-600">
-            Reset password
+    <AuthPage eyebrow="Reset password" title="新しいパスワードの設定">
+      {isCompleted ? (
+        <div className="flex flex-col gap-5.5">
+          <p className={AUTH_SUCCESS}>
+            パスワードを再設定しました。新しいパスワードでログインしてください。
           </p>
-          <h1 className="text-3xl font-bold text-neutral-950">
-            新しいパスワードの設定
-          </h1>
+          <Link className={AUTH_SUBMIT} href="/auth/sign-in">
+            ログイン画面へ
+          </Link>
         </div>
+      ) : (
+        <form className={AUTH_FORM} onSubmit={handleSubmit}>
+          <label className={AUTH_LABEL}>
+            メールアドレス
+            <input
+              className={AUTH_INPUT}
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
 
-        {isCompleted ? (
-          <div className="flex flex-col gap-5">
-            <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-              パスワードを再設定しました。新しいパスワードでログインしてください。
-            </p>
-            <Link
-              className="flex h-11 items-center justify-center rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
-              href="/auth/sign-in"
-            >
-              ログイン画面へ
-            </Link>
-          </div>
-        ) : (
-          <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
-            <label className="flex flex-col gap-2 text-sm font-semibold text-neutral-800">
-              メールアドレス
-              <input
-                className="h-11 rounded border border-neutral-300 bg-white px-3 text-base font-normal outline-none transition focus:border-neutral-950"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </label>
+          <label className={AUTH_LABEL}>
+            新しいパスワード
+            <input
+              className={AUTH_INPUT}
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </label>
 
-            <label className="flex flex-col gap-2 text-sm font-semibold text-neutral-800">
-              新しいパスワード
-              <input
-                className="h-11 rounded border border-neutral-300 bg-white px-3 text-base font-normal outline-none transition focus:border-neutral-950"
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </label>
+          <label className={AUTH_LABEL}>
+            新しいパスワード（確認）
+            <input
+              className={AUTH_INPUT}
+              type="password"
+              autoComplete="new-password"
+              value={passwordConfirmation}
+              onChange={(event) => setPasswordConfirmation(event.target.value)}
+              required
+            />
+          </label>
 
-            <label className="flex flex-col gap-2 text-sm font-semibold text-neutral-800">
-              新しいパスワード（確認）
-              <input
-                className="h-11 rounded border border-neutral-300 bg-white px-3 text-base font-normal outline-none transition focus:border-neutral-950"
-                type="password"
-                autoComplete="new-password"
-                value={passwordConfirmation}
-                onChange={(event) =>
-                  setPasswordConfirmation(event.target.value)
-                }
-                required
-              />
-            </label>
+          {errorMessage && <p className={AUTH_ERROR}>{errorMessage}</p>}
 
-            {errorMessage && (
-              <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {errorMessage}
-              </p>
-            )}
-
-            <button
-              className="h-11 rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400"
-              type="submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "設定中..." : "パスワードを再設定する"}
-            </button>
-          </form>
-        )}
-      </section>
-    </main>
+          <button className={AUTH_SUBMIT} type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "設定中..." : "パスワードを再設定する"}
+          </button>
+        </form>
+      )}
+    </AuthPage>
   );
 }
