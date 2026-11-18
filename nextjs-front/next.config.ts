@@ -56,6 +56,11 @@ export default function nextConfig(phase: string): NextConfig {
   }
 
   return {
+    experimental: {
+      // セキュリティ勧告のある版を使っているときだけ、next dev / next build がアップグレードを促す。
+      // 促されたら `next upgrade --agent` で上げる（自動では上がらない）
+      agentUpgrade: "security",
+    },
     turbopack: {
       rules: {
         "*.svg": {
