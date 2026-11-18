@@ -86,6 +86,7 @@ export default function DevPage() {
             <NormalButton color="green" buttonLabel="保存する" />
             <NormalButton color="red" buttonLabel="削除" />
             <NormalButton buttonLabel="キャンセル" />
+            <NormalButton color="black" buttonLabel="トップへ戻る" />
           </ComponentSectionDev>
 
           {/* Topページのカードはセクション単位なので、そのまま埋め込んで確認する */}

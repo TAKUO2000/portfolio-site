@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { DotGothic16, Silkscreen } from "next/font/google";
 import "./globals.css";
 import { SITE_DATA } from "./constants/siteData";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// 本文と日本語。日本語の字形は分割されて必要な分だけ読み込まれるので、先読みするのは英数字だけにする
+const dotGothic = DotGothic16({
+  variable: "--font-dotgothic",
+  weight: "400",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// 英字の見出し・ロゴ・ナビ（globals.css の font-pixel）
+const silkscreen = Silkscreen({
+  variable: "--font-silkscreen",
+  weight: ["400", "700"],
   subsets: ["latin"],
 });
 
@@ -30,7 +34,7 @@ export default function RootLayout({
   return (
     <html
       lang="ja"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${dotGothic.variable} ${silkscreen.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
