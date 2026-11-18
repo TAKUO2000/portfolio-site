@@ -85,22 +85,25 @@ export default function Hero() {
           modelScale={1.3}
           mobileModelScale={1.1}
         />
-        <h1 className="relative text-5xl sm:text-7xl font-extrabold mb-3">
+        {/* 英字の書体（Silkscreen）は1文字が広い。md未満は画面の幅に合わせて小さくし、幅 320px でも1行に収める */}
+        <h1 className="relative mb-3 font-pixel text-[clamp(32px,10.5vw,44px)] leading-none font-bold whitespace-nowrap md:text-[clamp(40px,7vw,84px)]">
           TAKUO_Log
         </h1>
-        <p className="relative text-lg text-[#010101] mb-8">
+        {/* スマホの幅では2行になる。文節の切れ目で折り返し、2行の長さをそろえる（「保管／庫。」のように切れないように） */}
+        <p className="relative text-base text-balance [word-break:auto-phrase] md:text-lg">
           TAKUO2000が読んだ本と、学んだ技術の保管庫。
         </p>
       </div>
       {/* md未満は3つを横に等分して並べる（折り返して詰まって見えないように）。md以上は今までどおり */}
-      <div className="relative mt-20 grid w-full grid-cols-3 gap-2 md:mt-40 md:flex md:w-auto md:justify-center md:gap-10">
+      {/* ボタンの枠と影は外側にはみ出すので、その分より広く間を空ける */}
+      <div className="relative mt-20 grid w-full grid-cols-3 gap-4.5 px-1 md:mt-40 md:flex md:w-auto md:justify-center md:gap-10 md:px-0">
         {navLinks.map((link) => (
           <a
             key={link.href}
             href={link.href}
             onClick={(event) => scrollToSection(event, link.href)}
             data-point-target // ホバー中は手がこのボタンの中心を指す
-            className="flex min-h-14 items-center justify-center bg-black px-1 py-2 text-center text-sm text-white transition-opacity hover:opacity-70 md:min-h-0 md:px-10 md:py-4 md:text-base"
+            className="pixel-card pixel-press flex min-h-14 items-center justify-center bg-foreground px-0.5 py-2 text-center text-sm leading-[1.35] text-white [--pixel-c:var(--color-foreground)] md:min-h-0 md:px-10 md:py-4 md:text-base md:leading-normal"
           >
             {link.shortLabel ? (
               <>
