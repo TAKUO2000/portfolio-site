@@ -11,6 +11,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
+    "screenshot": "node scripts/screenshot.mjs",
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -48,6 +49,7 @@
     "eslint-config-next": "16.4.3",
     "eslint-config-prettier": "^10.1.8",
     "jsdom": "^27.0.1",
+    "playwright": "^1.65.1",
     "prettier": "^3.9.5",
     "tailwindcss": "^4",
     "typescript": "^5",
