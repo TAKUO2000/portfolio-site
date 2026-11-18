@@ -20,6 +20,7 @@ function renderAbout(about: "site" | "me") {
     <AboutSite
       about={about}
       icon="/icon.png"
+      iconAlt="アイコン"
       title={["About", "TAKUO2000"]}
       text="本文"
     />,
@@ -40,22 +41,31 @@ describe("AboutSite", () => {
     ).toEqual(["About", "TAKUO2000"]);
   });
 
-  // 縦長の写真（犬の写真は1108x1477）も、楕円にならず丸く切り抜く
-  it("画像は、どの幅でも正方形に切り抜いてから丸くする", () => {
+  it("画像に、渡した文言を代替テキストとして付ける", () => {
+    const { image } = renderAbout("me");
+
+    expect(image.getAttribute("alt")).toBe("アイコン");
+  });
+
+  // 小さなドット絵を拡大して出す。ぼかすとドットの角が消える
+  it("画像は、正方形にして、ぼかさずに拡大する", () => {
     const { image } = renderAbout("me");
 
     expect(classesOf(image)).toContain("aspect-square");
     expect(classesOf(image)).toContain("object-cover");
-    expect(classesOf(image)).toContain("rounded-full");
+    expect(classesOf(image)).toContain("[image-rendering:pixelated]");
   });
 
-  // md未満は、小さな画像と見出しを横に並べ、文章をその下に置く（スマホで画像が消えないように）
-  it("md未満では画像を小さくし、md以上で大きくする", () => {
+  // md未満は、小さな画像と見出しを横に並べ、文章をその下に置く（スマホで画像が消えないように）。
+  // 大きさは、画像を囲むウィンドウ風の枠で決める
+  it("md未満では画像の枠を小さくし、md以上で大きくする", () => {
     const { image } = renderAbout("site");
+    const frame = classesOf(image.parentElement);
 
-    expect(classesOf(image)).toContain("size-26");
-    expect(classesOf(image)).toContain("md:w-full");
-    expect(classesOf(image)).toContain("md:h-auto");
+    expect(frame).toContain("pixel-window");
+    expect(frame).toContain("w-25");
+    expect(frame).toContain("md:w-full");
+    expect(frame).toContain("md:max-w-70");
   });
 
   it("サイトの紹介は、md未満で見出しを左に、md以上で右に寄せる", () => {
@@ -110,12 +120,13 @@ describe("AboutSite の説明文の折り返し", () => {
 });
 
 describe("AboutSite の見出しの大きさ", () => {
-  // 30pxの「TAKUO2000」（約173px）は、360px未満の幅だと画像（104px）の横に収まらず、画像に重なる
-  it("見出しは、360px未満で24px、360px以上で30px、md以上で48px", () => {
+  // 英字の書体（Silkscreen）の「TAKUO2000」は 26px で約 200px 要り、狭い幅だと画像（100px）の横に収まらない
+  it("見出しは、360px未満で18px、360px以上で22px、390px以上で26px、md以上で40px", () => {
     const { heading } = renderAbout("me");
 
-    expect(heading.classList.contains("text-2xl")).toBe(true);
-    expect(heading.classList.contains("min-[360px]:text-3xl")).toBe(true);
-    expect(heading.classList.contains("md:text-5xl")).toBe(true);
+    expect(heading.classList.contains("text-lg")).toBe(true);
+    expect(heading.classList.contains("min-[360px]:text-[22px]")).toBe(true);
+    expect(heading.classList.contains("min-[390px]:text-[26px]")).toBe(true);
+    expect(heading.classList.contains("md:text-[40px]")).toBe(true);
   });
 });
