@@ -34,10 +34,11 @@ export default function CategoryBox({
     <div
       onClick={onClick}
       title={title}
-      className={`inline-flex items-center gap-1.5 mr-2 px-2.75 py-1 rounded-lg ${color.bg} ${color.hoverBg} active:opacity-60 transition-colors ${onClick ? "cursor-pointer" : ""}`}
+      // 地と枠を同じ色で塗る。枠が外側に 2px ずつはみ出すので、右の余白はその分を足している
+      className={`pixel-fill-2 inline-flex items-center gap-1.5 mr-2.5 px-2.5 py-1 ${color.fill} ${onClick ? `cursor-pointer active:opacity-60 ${color.hoverFill}` : ""}`}
     >
       <Icon className={`w-6 h-6 ${color.icon}`} />
-      <span className={`text-xs font-semibold ${color.text}`}>{category}</span>
+      <span className={`text-xs ${color.text}`}>{category}</span>
     </div>
   );
 }

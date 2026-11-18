@@ -158,10 +158,10 @@ export function VerticalArticleCard({
   priority = false,
 }: VerticalArticleCardProps) {
   return (
-    // 画像は角丸で切り抜いてカード上端まで出すため、余白はテキスト側だけに付ける
+    // 枠と影は外側にはみ出す（左右と上に 4px、右と下は影を入れて 8px）。並べる側で、その分より広く間を空ける
     <Link
       href={href}
-      className="group relative z-0 flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:z-10 hover:scale-[1.02] hover:shadow-[0_12px_32px_rgba(0,0,0,0.25)]"
+      className="pixel-card pixel-press group flex h-full flex-col bg-white [--pixel-c:var(--color-foreground)]"
     >
       <article className="contents">
         <ArticleThumbnail
@@ -172,7 +172,7 @@ export function VerticalArticleCard({
           priority={priority}
           overlay={
             category && (
-              <div className="absolute left-2 top-2 drop-shadow-sm">
+              <div className="absolute left-2.5 top-2.5">
                 <CategoryBox category={category.name} id={category.id} />
               </div>
             )
@@ -180,12 +180,12 @@ export function VerticalArticleCard({
         />
 
         {/* flex-1で高さを揃え、投稿日をカード下端に寄せる */}
-        <div className="flex min-w-0 flex-1 flex-col px-4 pb-3 pt-3">
+        <div className="flex min-w-0 flex-1 flex-col px-4 py-3">
           {/*
             カードを並べたときに各行の開始位置を揃えるため、タグとタイトルは
             中身の量にかかわらず高さを固定する（タグ無し・1行タイトルでも詰めない）
           */}
-          <div className="mb-1.5 flex min-h-6 flex-wrap items-center gap-y-1">
+          <div className="mb-2 flex min-h-6 flex-wrap items-center gap-y-1.5 pl-0.5">
             {/* タグが多い記事もあるため、はみ出さないよう先頭3件だけ出す */}
             {tags?.slice(0, 3).map((tag) => (
               <TagBox key={tag.id} tag={tag.name} />
@@ -198,10 +198,9 @@ export function VerticalArticleCard({
           <h3 className="line-clamp-2 min-h-[2lh] text-lg font-bold leading-snug wrap-break-word">
             {title}
           </h3>
-          <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-snug text-gray-700 wrap-break-word">
+          <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-normal text-gray-700 wrap-break-word">
             {summary}
           </p>
-          {/* Topページのカードと同じく、ホバーでラベルが開く */}
           <div className="mt-2.5 flex items-center justify-between gap-2">
             <ArticleMeta
               author={author}
@@ -209,16 +208,8 @@ export function VerticalArticleCard({
               likeCount={likeCount}
               className="min-w-0"
             />
-            <span
-              aria-hidden
-              className="flex shrink-0 items-center gap-1 text-xs text-gray-500 transition-colors group-hover:text-foreground"
-            >
-              <span className="max-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 group-hover:max-w-20">
-                記事を読む
-              </span>
-              <span className="transition-transform duration-200 group-hover:translate-x-0.5">
-                →
-              </span>
+            <span aria-hidden className="shrink-0 text-xs text-gray-500">
+              ▶
             </span>
           </div>
         </div>
