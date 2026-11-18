@@ -13,7 +13,13 @@ function classesOf(element: Element | null | undefined): string[] {
 
 // CategoryBox は SVG をコンポーネントとして読み込むので、テストでは名前だけを出す
 vi.mock("@/app/components/ui/CategoryBox", () => ({
-  default: ({ category }: { category: string }) => <div>{category}</div>,
+  default: ({
+    category,
+    compact = false,
+  }: {
+    category: string;
+    compact?: boolean;
+  }) => <div data-compact={compact}>{category}</div>,
 }));
 
 const article: ArticleSummary = {
@@ -43,13 +49,14 @@ function renderPopular() {
 }
 
 describe("PopularArticles", () => {
-  // 左右に余白（px-16）があると、スマホの幅で見出しが2行になる
-  it("見出しの左右の余白は、md以上だけに付ける", () => {
+  // 英字の書体は1文字が広いので、スマホの幅では画面の幅に合わせて文字を小さくする
+  it("見出しは、折り返さず、md未満は画面の幅に合わせた大きさにする", () => {
     renderPopular();
     const heading = classesOf(screen.getByRole("heading", { level: 2 }));
 
-    expect(heading).toContain("md:px-16");
-    expect(heading).not.toContain("px-16");
+    expect(heading).toContain("whitespace-nowrap");
+    expect(heading).toContain("text-[clamp(18px,6vw,26px)]");
+    expect(heading).toContain("md:text-[clamp(24px,4vw,36px)]");
   });
 
   it("md未満は、画像を左に置いた小さなカードにする", () => {
@@ -62,7 +69,7 @@ describe("PopularArticles", () => {
     expect(card).toContain("md:grid-cols-[288px_1fr]");
   });
 
-  it("md未満は、概要文・タグ・右下の矢印を出さない", () => {
+  it("md未満は、概要文・タグ・右下の「記事を読む」を出さない", () => {
     renderPopular();
 
     expect(classesOf(screen.getByText("記事の概要"))).toContain(
@@ -71,7 +78,7 @@ describe("PopularArticles", () => {
     expect(classesOf(screen.getByText("Laravel").parentElement)).toContain(
       "max-md:hidden",
     );
-    expect(classesOf(screen.getByText("記事を読む").parentElement)).toContain(
+    expect(classesOf(screen.getByText("記事を読む ▶"))).toContain(
       "max-md:hidden",
     );
   });
@@ -82,6 +89,7 @@ describe("PopularArticles", () => {
     const [onImage, textOnly] = screen.getAllByText("技術");
 
     expect(classesOf(onImage.closest(".absolute"))).toContain("max-md:hidden");
-    expect(classesOf(textOnly)).toContain("md:hidden");
+    expect(classesOf(textOnly.parentElement)).toContain("md:hidden");
+    expect(textOnly.getAttribute("data-compact")).toBe("true");
   });
 });
