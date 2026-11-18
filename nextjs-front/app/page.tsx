@@ -43,13 +43,15 @@ export default async function Home() {
         <AboutSite
           id="about-site"
           about={"site"}
-          icon={"/IconAboutSite.png"}
+          icon={"/IconAboutSitePixel.png"}
+          iconAlt="サイトのアイコン（ドット絵）"
           title={SITE_DATA.aboutSite.title}
           text={SITE_DATA.aboutSite.description}
         />
         <AboutSite
           about={"me"}
-          icon={"/IconAboutMe.jpg"}
+          icon={"/IconAboutMePixel.png"}
+          iconAlt="犬のチロ（ドット絵）"
           title={SITE_DATA.aboutMe.title}
           text={SITE_DATA.aboutMe.description}
         />
