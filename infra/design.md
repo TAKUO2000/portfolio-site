@@ -244,7 +244,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 | コンテナ | イメージ | 役割 | メモリの目安 |
 | --- | --- | --- | --- |
-| `nginx` | `nginx:stable-alpine` | TLS 終端、FastCGI で php-fpm へ渡す、HTTP から HTTPS へのリダイレクト | 約 10MB（ローカルの計測で 7MB） |
+| `nginx` | `nginx:1.30.7-alpine` | TLS 終端、FastCGI で php-fpm へ渡す、HTTP から HTTPS へのリダイレクト | 約 10MB（ローカルの計測で 7MB） |
 | `certbot` | `certbot/certbot` | Let's Encrypt の証明書の取得と更新。常駐させず、更新するときだけ `docker compose run --rm` で動かす | 0MB（実行中だけ約 50MB） |
 | `app` | ECR の `portfolio/app` | php-fpm（Laravel）。起動時に migrate と optimize を実行する | 約 150MB（待機中は 35MB。ワーカー1つあたり数十MB増える） |
 | `scheduler` | `app` と同じイメージ | `php artisan schedule:work`（`images:prune` などを実行） | 約 60MB（ローカルの計測で 34MB） |
