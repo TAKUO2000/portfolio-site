@@ -58,7 +58,7 @@ services:
         condition: service_healthy
 
   web:
-    image: nginx:stable-alpine
+    image: nginx:1.30.7-alpine
     restart: unless-stopped
     ports:
       - "127.0.0.1:${BACKEND_PORT}:80"
