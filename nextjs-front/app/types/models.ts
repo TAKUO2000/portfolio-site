@@ -44,6 +44,7 @@ export interface ArticleSummary {
   summary: string;
   header_image: string | null;
   published_at: string;
+  updated_at: string;
   /** idは著者ページに飛ぶ際に使用予定。現在は不要だが取得している */
   user: Pick<User, "id" | "name">;
   category: Category;
@@ -62,8 +63,10 @@ export interface ArticleImage {
 export interface ArticleDetail {
   id: number;
   title: string;
+  summary: string;
   body: string;
   published_at: string;
+  updated_at: string;
   user: Pick<User, "id" | "name">;
   category: Category;
   tags: Tag[];

@@ -388,7 +388,7 @@ Vercel の環境変数 `S3_IMAGE_HOST` に本番のバケットのホスト名�
 | ビルドするブランチ | 本番と `develop`（ステージング）だけ（Settings → Build and Deployment → Ignored Build Step に `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`）。ほかのブランチの Preview は API の向き先が無く、ビルドが失敗するため |
 | 独自ドメイン | `takuosblog.com`。Cloudflare に Vercel 向けのレコード（頂点の CNAME。Cloudflare の CNAME flattening で A として返る。DNS only）を手で作った（[DNS（Cloudflare）](#dnscloudflare)） |
 | 独自ドメイン（ステージング） | `stg.takuosblog.com` を Preview の `develop` ブランチに割り当てる（Settings → Domains で、Preview の `develop` に接続する）。Cloudflare のレコード（CNAME。DNS only）は手で作る |
-| 環境変数 | Production：`NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`S3_IMAGE_HOST=<本番のバケット名>.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（秘密。下記）。Preview：[ステージング環境](#環境変数)の値。同じ名前で Production と Preview に別の値を入れ、本番の値（とくに `REVALIDATE_SECRET`）を Preview には渡さない。`NEXT_PUBLIC_` の変数はブラウザに埋め込まれるので、種類は Secret ではなく Config にする |
+| 環境変数 | Production：`NEXT_PUBLIC_API_BASE_URL=https://api.takuosblog.com`、`SITE_URL=https://takuosblog.com`（canonical・サイトマップのURLになる）、`S3_IMAGE_HOST=<本番のバケット名>.s3.ap-northeast-1.amazonaws.com`、`REVALIDATE_SECRET`（秘密。下記）。Preview：[ステージング環境](#環境変数)の値。同じ名前で Production と Preview に別の値を入れ、本番の値（とくに `REVALIDATE_SECRET`）を Preview には渡さない。`NEXT_PUBLIC_` の変数はブラウザに埋め込まれるので、種類は Secret ではなく Config にする |
 
 `REVALIDATE_SECRET` は、記事の変更時に API が `/api/revalidate` を呼ぶときのシークレットです（`nextjs-front/app/api/revalidate/route.ts`）。トップページは記事一覧を静的なページとしてキャッシュし、記事が変わったときと1時間ごとに作り直します。API 側の `FRONTEND_REVALIDATE_SECRET` と同じ値にし、Production（本番）と Preview（`develop` のステージング）で別の値を入れます。
 
@@ -396,7 +396,9 @@ Vercel の環境変数 `S3_IMAGE_HOST` に本番のバケットのホスト名�
 
 `/api/revalidate` はインターネットから呼べます。シークレットが違えば何もせずに 401 を返すだけなので、レート制限は置いていません。不正なリクエストが目立つようなら、Vercel の Firewall でこのパスを制限します。
 
-`NEXT_PUBLIC_API_BASE_URL` と `S3_IMAGE_HOST` が無いと、本番のビルドは失敗します（`next.config.ts`）。
+`NEXT_PUBLIC_API_BASE_URL`・`S3_IMAGE_HOST`・`SITE_URL` が無いと、本番のビルドは失敗します（`next.config.ts`）。
+
+検索エンジンに載せるのは本番（`VERCEL_ENV=production`）だけです。それ以外では、`robots.txt` を全体 `Disallow` にし、全ページに `noindex` を付けます（`nextjs-front/app/lib/site.ts`）。ステージングは Preview に独自ドメインを割り当てているため、Vercel が `*.vercel.app` に自動で付ける `noindex` が付かないからです。
 
 `API_INTERNAL_BASE_URL` は設定しません。`app/lib/apiBaseUrl.ts` は、これが無ければ `NEXT_PUBLIC_API_BASE_URL` を使います。`S3_PUBLIC_ENDPOINT` も設定しません（MinIO 用で、設定すると画像最適化が無効になります）。
 
@@ -589,6 +591,7 @@ Vercel の Preview 環境には、次の値を設定します。どれも作り�
 | 環境変数 | Preview の値 |
 | --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | `https://api.stg.takuosblog.com` |
+| `SITE_URL` | `https://stg.takuosblog.com` |
 | `S3_IMAGE_HOST` | `takuosblog-images-stg.s3.ap-northeast-1.amazonaws.com` |
 | `REVALIDATE_SECRET` | `/portfolio/stg/FRONTEND_REVALIDATE_SECRET` と同じ値（本番とは別の値） |
 

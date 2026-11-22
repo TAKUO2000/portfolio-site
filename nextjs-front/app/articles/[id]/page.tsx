@@ -12,7 +12,10 @@ import {
   articleRemarkPlugins,
   extractHeadings,
 } from "@/app/lib/articleMarkdown";
+import JsonLd from "@/app/components/JsonLd";
+import { SITE_DATA } from "@/app/constants/siteData";
 import { fetchArticle } from "@/app/lib/articles";
+import { getSiteUrl } from "@/app/lib/site";
 
 // fetchArticleはページ本体と同じURL・オプションで呼ぶため、1回の表示の中では結果が共有され、APIへのリクエストは増えない
 export async function generateMetadata({
@@ -23,7 +26,11 @@ export async function generateMetadata({
   const { id } = await params;
   const article = await fetchArticle(id);
 
-  return { title: article.title };
+  return {
+    title: article.title,
+    description: article.summary,
+    alternates: { canonical: `/articles/${article.id}` },
+  };
 }
 
 export default async function ArticlePage({
@@ -36,9 +43,31 @@ export default async function ArticlePage({
   const headings = extractHeadings(article.body);
 
   const headerImage = article.images.find((img) => img.type === "header");
+  const siteUrl = getSiteUrl();
+  const articleUrl = `${siteUrl}/articles/${article.id}`;
 
   return (
     <>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "BlogPosting",
+          headline: article.title,
+          description: article.summary,
+          image: headerImage ? [headerImage.url] : undefined,
+          datePublished: article.published_at,
+          dateModified: article.updated_at,
+          author: { "@type": "Person", name: article.user.name },
+          publisher: {
+            "@type": "Organization",
+            name: SITE_DATA.title,
+            url: siteUrl,
+          },
+          mainEntityOfPage: { "@type": "WebPage", "@id": articleUrl },
+          url: articleUrl,
+          inLanguage: "ja",
+        }}
+      />
       <Header />
       <main className="mx-auto w-full max-w-5xl px-5 pt-8 pb-16 md:px-4 md:pb-18">
         {/* md以上は本文と目次の横並び */}

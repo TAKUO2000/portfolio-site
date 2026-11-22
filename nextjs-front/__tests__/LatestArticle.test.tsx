@@ -28,6 +28,7 @@ const article: ArticleSummary = {
   summary: "記事の概要",
   header_image: null,
   published_at: "2026-09-10T18:35:39.000000Z",
+  updated_at: "2026-09-10T18:35:39.000000Z",
   user: { id: 1, name: "Admin User" },
   category: { id: 1, name: "技術" },
   tags: [

@@ -1,7 +1,11 @@
 import { notFound } from "next/navigation";
 
 import { getApiBaseUrl } from "@/app/lib/apiBaseUrl";
-import type { ArticleDetail, ArticleIndexResponse } from "@/app/types/models";
+import type {
+  ArticleDetail,
+  ArticleIndexResponse,
+  ArticleSummary,
+} from "@/app/types/models";
 
 export type SortOrder = "latest" | "popular";
 
@@ -17,6 +21,9 @@ export const ARTICLES_CACHE_TAG = "articles";
  */
 const ARTICLES_REVALIDATE_SECONDS = 3600;
 
+/** 全件を取るときの1ページの件数。APIが受け付ける上限（IndexArticleRequestのper_page） */
+const ARTICLES_MAX_PER_PAGE = 100;
+
 /** クエリ文字列など外から来た値をsortに落とす。未知の値は既定のlatestにする */
 export function toSortOrder(value: string | undefined): SortOrder {
   return value === "popular" ? "popular" : "latest";
@@ -31,13 +38,18 @@ export function toSortOrder(value: string | undefined): SortOrder {
 export async function fetchArticles({
   sort,
   perPage,
+  page,
 }: {
   sort: SortOrder;
   perPage?: number;
+  page?: number;
 }): Promise<ArticleIndexResponse> {
   const params = new URLSearchParams({ sort });
   if (perPage !== undefined) {
     params.set("per_page", String(perPage));
+  }
+  if (page !== undefined) {
+    params.set("page", String(page));
   }
 
   const res = await fetch(`${getApiBaseUrl()}/api/articles?${params}`, {
@@ -53,6 +65,23 @@ export async function fetchArticles({
   }
 
   return res.json();
+}
+
+/** 公開記事をすべて取得する（サイトマップ用）。APIのページを最後までたどる */
+export async function fetchAllArticles(): Promise<ArticleSummary[]> {
+  const articles: ArticleSummary[] = [];
+
+  for (let page = 1, lastPage = 1; page <= lastPage; page++) {
+    const res = await fetchArticles({
+      sort: "latest",
+      perPage: ARTICLES_MAX_PER_PAGE,
+      page,
+    });
+    articles.push(...res.data);
+    lastPage = res.meta.last_page;
+  }
+
+  return articles;
 }
 
 /**

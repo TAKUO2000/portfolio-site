@@ -21,7 +21,18 @@ const FOOTER_ACCOUNTS: {
 
 export const SITE_DATA = {
   title: "TAKUO_Log",
-  description: "TAKUO2000が読んだ本と、学んだ技術の保管庫。",
+  // 検索結果に出る説明文（meta description）。画面には出さない。
+  // 「TAKUO Log」「ブログ」と分けた表記でも検索に掛かるよう、文中に入れている
+  description:
+    "TAKUO Log（TAKUO_Log）は、TAKUO2000のブログです。読んだ本と、学んだ技術を書き残しています。",
+  // サイト名の別の書き方。構造化データ（WebSiteのalternateName）で検索エンジンに伝える
+  alternateNames: [
+    "TAKUO Log",
+    "takuolog",
+    "TAKUO's Blog",
+    "takuoblog",
+    "takuosblog",
+  ],
 
   aboutSite: {
     title: ["About", "This Site"],
