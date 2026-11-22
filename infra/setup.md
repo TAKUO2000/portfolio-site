@@ -746,7 +746,7 @@ gh secret list --env staging   # CLOUDFLARE_API_TOKEN と CLOUDFLARE_ZONE_ID
 | --- | --- |
 | Settings → Build and Deployment → Ignored Build Step | Behavior を自分でコマンドを書くものにし、Command に `if [ "$VERCEL_ENV" = "production" ] \|\| [ "$VERCEL_GIT_COMMIT_REF" = "develop" ]; then exit 1; else exit 0; fi`（本番と `develop` だけビルドする） |
 | Settings → Domains | `stg.takuosblog.com` を足し、Connect to an environment で Preview、ブランチに `develop` を選ぶ |
-| Settings → Environment Variables | 先に、本番の3つ（`NEXT_PUBLIC_API_BASE_URL`・`S3_IMAGE_HOST`・`REVALIDATE_SECRET`）の対象を **Production だけ**にする（Preview に付いていると、同じ名前を足せず、`develop` のビルドに本番の値と秘密が渡る）。そのうえで、対象を Preview だけにして `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com`・`S3_IMAGE_HOST=takuosblog-images-stg.s3.ap-northeast-1.amazonaws.com`（どちらも種類は Config）、`REVALIDATE_SECRET`（`/portfolio/stg/FRONTEND_REVALIDATE_SECRET` の値。種類は Secret）を足す |
+| Settings → Environment Variables | 先に、本番の4つ（`NEXT_PUBLIC_API_BASE_URL`・`SITE_URL`・`S3_IMAGE_HOST`・`REVALIDATE_SECRET`）の対象を **Production だけ**にする（Preview に付いていると、同じ名前を足せず、`develop` のビルドに本番の値と秘密が渡る）。そのうえで、対象を Preview だけにして `NEXT_PUBLIC_API_BASE_URL=https://api.stg.takuosblog.com`・`SITE_URL=https://stg.takuosblog.com`・`S3_IMAGE_HOST=takuosblog-images-stg.s3.ap-northeast-1.amazonaws.com`（いずれも種類は Config）、`REVALIDATE_SECRET`（`/portfolio/stg/FRONTEND_REVALIDATE_SECRET` の値。種類は Secret）を足す |
 
 `REVALIDATE_SECRET` の値は `aws ssm get-parameter --name /portfolio/stg/FRONTEND_REVALIDATE_SECRET --with-decryption --query Parameter.Value --output text` で見ます。
 
