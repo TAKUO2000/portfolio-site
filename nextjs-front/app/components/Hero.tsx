@@ -52,10 +52,10 @@ export default function Hero() {
 
       window.scrollTo(0, startY + distance * easeInOutCubic(progress));
 
+      // URL には位置（#〜）を入れない。入れると、リロードや共有した URL でそのセクションへ飛ばされ、
+      // 押すたびに履歴も増えて「戻る」で前のページに戻れなくなる
       if (progress < 1) {
         requestAnimationFrame(scrollFrame);
-      } else {
-        history.pushState(null, "", href);
       }
     };
 
