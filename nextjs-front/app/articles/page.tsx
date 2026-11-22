@@ -8,6 +8,8 @@ import { fetchArticles, toSortOrder } from "@/app/lib/articles";
 
 export const metadata: Metadata = {
   title: "記事一覧",
+  // 並び順（?sort=）が違っても載っている記事は同じなので、検索エンジンには /articles を正のURLとして伝える
+  alternates: { canonical: "/articles" },
 };
 
 export default async function ArticlesListPage({

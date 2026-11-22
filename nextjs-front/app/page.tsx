@@ -1,11 +1,21 @@
+import type { Metadata } from "next";
+
 import AboutSite from "./components/AboutSite";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import Hero from "./components/Hero";
+import JsonLd from "./components/JsonLd";
 import LatestArticle from "./components/LatestArticle";
 import PopularArticles from "./components/PopularArticles";
 import { fetchArticles } from "./lib/articles";
 import { SITE_DATA } from "./constants/siteData";
+import { getSiteUrl } from "./lib/site";
+
+export const metadata: Metadata = {
+  // サイト名だけだと検索語（ブログ）に掛かりにくいので、トップだけ何のサイトかを添える
+  title: { absolute: `${SITE_DATA.title} | ${SITE_DATA.footer.name}のブログ` },
+  alternates: { canonical: "/" },
+};
 
 /** Topページの人気記事に並べる件数 */
 const POPULAR_ARTICLES_COUNT = 3;
@@ -25,6 +35,18 @@ export default async function Home() {
 
   return (
     <>
+      {/* サイト名とその別の書き方を検索エンジンに伝える（検索結果のサイト名の表示に使われる） */}
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: SITE_DATA.title,
+          alternateName: SITE_DATA.alternateNames,
+          url: getSiteUrl(),
+          description: SITE_DATA.description,
+          inLanguage: "ja",
+        }}
+      />
       <Header />
       <main>
         <Hero />

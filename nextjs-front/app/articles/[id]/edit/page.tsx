@@ -6,6 +6,8 @@ import EditArticle from "./EditArticle";
 
 export const metadata: Metadata = {
   title: "記事編集",
+  // ログインした人だけが使うページなので、検索結果に出さない
+  robots: { index: false, follow: false },
 };
 
 export default function EditArticlePage() {

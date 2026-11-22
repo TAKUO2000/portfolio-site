@@ -12,8 +12,11 @@ class ArticleDetailResource extends JsonResource
         return [
             'id'           => $this->id,
             'title'        => $this->title,
+            // 検索結果などに出す説明文（meta description）に使う
+            'summary'      => $this->summary,
             'body'         => $this->body,
             'published_at' => $this->published_at,
+            'updated_at'   => $this->updated_at,
             'user'         => ['id' => $this->user->id, 'name' => $this->user->name],
             'category'     => ['id' => $this->category->id, 'name' => $this->category->name],
             'tags'         => $this->tags->map(fn($tag) => ['id' => $tag->id, 'name' => $tag->name]),

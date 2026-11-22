@@ -967,6 +967,7 @@ test('記事一覧のレスポンス構造が正しい', function () {
                     'summary',
                     'header_image',
                     'published_at',
+                    'updated_at',
                     'user' => ['id', 'name'],
                     'category' => ['id', 'name'],
                     'tags' => [['id', 'name']],
@@ -1269,7 +1270,9 @@ test('未認証でも表示可能', function () {
 
     $response->assertStatus(200)
         ->assertJsonFragment(['title' => '公開記事'])
-        ->assertJsonStructure(['data' => ['id', 'title', 'body', 'published_at', 'user', 'category', 'tags', 'like_count', 'images']]);
+        // summaryとupdated_atは、フロントが記事ページの説明文（meta description）と構造化データに使う
+        ->assertJsonFragment(['summary' => '概要'])
+        ->assertJsonStructure(['data' => ['id', 'title', 'summary', 'body', 'published_at', 'updated_at', 'user', 'category', 'tags', 'like_count', 'images']]);
 });
 
 test('記事が非公開の場合表示不可', function () {

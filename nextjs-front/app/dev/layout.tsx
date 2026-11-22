@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 // 部品の見本ページ。開発環境（next dev）でだけ開け、本番やプレビューでは404にする。
 // テスト（NODE_ENV=test）でも404になるので、E2Eで/devを開くときはこの条件を見直す
