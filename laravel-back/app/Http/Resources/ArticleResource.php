@@ -15,6 +15,8 @@ class ArticleResource extends JsonResource
             'summary'      => $this->summary,
             'header_image' => $this->headerImage?->url,
             'published_at' => $this->published_at,
+            // サイトマップの最終更新日に使う
+            'updated_at'   => $this->updated_at,
             'user'         => ['id' => $this->user->id, 'name' => $this->user->name],
             'category'     => ['id' => $this->category->id, 'name' => $this->category->name],
             'tags'         => $this->tags->map(fn($tag) => ['id' => $tag->id, 'name' => $tag->name]),
