@@ -91,10 +91,10 @@ export default function ResetPasswordForm({ token, initialEmail }: Props) {
       {isCompleted ? (
         <div className="flex flex-col gap-5.5">
           <p className={AUTH_SUCCESS}>
-            パスワードを再設定しました。新しいパスワードでログインしてください。
+            パスワードを再設定しました。新しいパスワードでサインインしてください。
           </p>
           <Link className={AUTH_SUBMIT} href="/auth/sign-in">
-            ログイン画面へ
+            サインイン画面へ
           </Link>
         </div>
       ) : (

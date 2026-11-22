@@ -20,7 +20,7 @@ import {
 
 // 登録の直後と、確認前にいいねしようとしたときに来る画面。確認メールの再送もここで行う
 export default function VerifyEmail() {
-  // undefinedは読み込み中、nullは未ログイン
+  // undefinedは読み込み中、nullは未サインイン
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -99,7 +99,7 @@ export default function VerifyEmail() {
         <p className="text-sm text-neutral-600">
           確認メールを送り直すには、
           <Link className={AUTH_LINK} href="/auth/sign-in">
-            ログイン
+            サインイン
           </Link>
           してください。
         </p>

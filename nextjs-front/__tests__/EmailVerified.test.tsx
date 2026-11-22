@@ -30,7 +30,7 @@ describe("EmailVerified", () => {
 
       expect(
         screen.getByText(
-          "このリンクは無効か、期限が切れています。ログインして、確認メールを送り直してください。",
+          "このリンクは無効か、期限が切れています。サインインして、確認メールを送り直してください。",
         ),
       ).toBeDefined();
       expect(

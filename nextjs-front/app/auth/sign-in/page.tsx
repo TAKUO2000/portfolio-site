@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import SignIn from "./SignIn";
 
 export const metadata: Metadata = {
-  title: "ログイン",
+  title: "サインイン",
 };
 
 export default function SignInPage() {

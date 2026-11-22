@@ -51,7 +51,7 @@ describe("HeaderAuthStatus", () => {
     expect(screen.queryByRole("link", { name: "メールを確認" })).toBeNull();
   });
 
-  it("未ログインなら、登録とログインのリンクを出す", async () => {
+  it("未サインインなら、登録とサインインのリンクを出す", async () => {
     getCurrentUserMock.mockResolvedValue(null);
 
     render(<HeaderAuthStatus />);

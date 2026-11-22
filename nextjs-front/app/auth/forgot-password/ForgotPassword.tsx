@@ -102,7 +102,7 @@ export default function ForgotPassword() {
 
       <p className="text-center text-sm text-neutral-600">
         <Link className={AUTH_LINK} href="/auth/sign-in">
-          ログインに戻る
+          サインインに戻る
         </Link>
       </p>
     </AuthPage>

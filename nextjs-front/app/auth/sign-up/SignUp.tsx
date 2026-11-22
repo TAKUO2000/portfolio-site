@@ -54,7 +54,7 @@ export default function SignUp() {
           getApiErrorMessage(
             registerResponse.status,
             responseBody,
-            "登録に失敗しました。入力内容を確認してください。",
+            "サインアップに失敗しました。入力内容を確認してください。",
           ),
         );
         return;
@@ -67,7 +67,7 @@ export default function SignUp() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "登録処理中にエラーが発生しました。",
+          : "サインアップ処理中にエラーが発生しました。",
       );
     } finally {
       setIsSubmitting(false);
@@ -128,14 +128,14 @@ export default function SignUp() {
         {errorMessage && <p className={AUTH_ERROR}>{errorMessage}</p>}
 
         <button className={AUTH_SUBMIT} type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "登録中..." : "登録"}
+          {isSubmitting ? "サインアップ中..." : "サインアップ"}
         </button>
       </form>
 
       <p className="text-center text-sm text-neutral-600">
         すでにアカウントをお持ちですか？{" "}
         <Link className={AUTH_LINK} href="/auth/sign-in">
-          ログイン
+          サインイン
         </Link>
       </p>
     </AuthPage>
