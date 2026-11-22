@@ -43,6 +43,11 @@ function assertProductionEnv(): void {
     missing.push("S3_IMAGE_HOST");
   }
 
+  // canonical・サイトマップ・構造化データのURLになる。未設定だとlocalhostのURLが検索エンジンに伝わる
+  if (!process.env.SITE_URL) {
+    missing.push("SITE_URL");
+  }
+
   if (missing.length > 0) {
     throw new Error(
       `本番のビルドに必要な環境変数が設定されていません: ${missing.join(", ")}（nextjs-front/.env.example を参照）`,

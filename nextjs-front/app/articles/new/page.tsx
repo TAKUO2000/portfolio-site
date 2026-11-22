@@ -6,6 +6,8 @@ import NewArticle from "./NewArticle";
 
 export const metadata: Metadata = {
   title: "記事投稿",
+  // ログインした人だけが使うページなので、検索結果に出さない
+  robots: { index: false, follow: false },
 };
 
 export default function NewArticlePage() {

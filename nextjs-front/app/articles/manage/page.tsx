@@ -7,6 +7,8 @@ import ManageArticles from "./ManageArticles";
 
 export const metadata: Metadata = {
   title: "記事管理",
+  // ログインした人だけが使うページなので、検索結果に出さない
+  robots: { index: false, follow: false },
 };
 
 export default function ManageArticlesPage() {
