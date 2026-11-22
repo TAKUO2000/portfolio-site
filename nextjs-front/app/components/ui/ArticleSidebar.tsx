@@ -60,6 +60,7 @@ export default function ArticleSidebar({
           articleId={articleId}
           likeCount={likeCount}
           className="ml-auto md:ml-0"
+          hideMessageOnMobile={isTocOpen}
         />
       </div>
     </aside>

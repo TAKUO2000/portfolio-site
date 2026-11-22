@@ -122,7 +122,7 @@ export default function HeaderAuthStatus() {
   }
 
   return (
-    // 管理者向けの記事投稿・記事管理ボタンと同じ形にそろえ、新規登録の方を塗りで目立たせる
+    // 管理者向けの記事投稿・記事管理ボタンと同じ形にそろえ、サインアップの方を塗りで目立たせる
     <ul className="flex flex-col items-start gap-4.5 md:flex-row md:items-center md:gap-4">
       <li>
         <Link

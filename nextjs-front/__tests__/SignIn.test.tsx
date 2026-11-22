@@ -15,9 +15,9 @@ afterEach(() => {
 });
 
 describe("SignIn", () => {
-  // アカウントを持っていない人が、ログインのページから登録の場所へ移れるように
-  it("会員登録のページへのリンクがある", () => {
-    const link = screen.getByRole("link", { name: "新規登録" });
+  // アカウントを持っていない人が、サインインのページから登録の場所へ移れるように
+  it("サインアップのページへのリンクがある", () => {
+    const link = screen.getByRole("link", { name: "サインアップ" });
 
     expect(link.getAttribute("href")).toBe("/auth/sign-up");
   });

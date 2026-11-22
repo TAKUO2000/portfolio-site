@@ -14,24 +14,44 @@ interface ArticleActionButtonsProps {
   articleId: number;
   likeCount: number;
   className?: string;
+  /** md未満で案内の吹き出しを出さない（目次を開いている間、目次に重ならないように） */
+  hideMessageOnMobile?: boolean;
 }
+
+/** 案内を出しておく時間。リンクを押すのに足りる長さにする */
+const MESSAGE_DURATION_MS = 10_000;
+
+// いいねの下に出す案内。md未満は画面下のバーの中なので、バーの高さを変えないよう（いいねの位置が
+// ずれないよう）、吹き出しにしてバーの上に重ねる
+const MESSAGE_CLASS =
+  "text-center text-xs max-md:absolute max-md:right-0 max-md:bottom-full max-md:mb-4.5 max-md:w-max max-md:max-w-[calc(100vw-2.25rem)] max-md:pixel-border-2 max-md:bg-background max-md:px-3 max-md:py-2 max-md:[--pixel-c:var(--color-gray-400)] md:mt-3";
 
 // Bad・保存ボタンはAPIが無く押しても何も起きないため、実装されるまで出さない
 export default function ArticleActionButtons({
   articleId,
   likeCount,
   className,
+  hideMessageOnMobile = false,
 }: ArticleActionButtonsProps) {
   const [like, setLikeState] = useState<LikeStatus>({
     liked: false,
     like_count: likeCount,
   });
-  // 自分がいいね済みか分かるまでは押せない。未ログインはnull
+  // 自分がいいね済みか分かるまでは押せない。未サインインはnull
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [message, setMessage] = useState<"login" | "verify" | "error" | null>(
-    null,
-  );
+  // 同じ案内をもう一度出したときも消すまでの時間を数え直せるよう、文字列ではなくオブジェクトで持つ
+  const [message, setMessage] = useState<{
+    kind: "login" | "verify" | "error";
+  } | null>(null);
+
+  // 案内は伝われば役目が終わるので、しばらくしたら消す（md未満は本文に重なる吹き出しなので、残さない）
+  useEffect(() => {
+    if (!message) return;
+
+    const timer = setTimeout(() => setMessage(null), MESSAGE_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [message]);
 
   useEffect(() => {
     let isActive = true;
@@ -54,7 +74,7 @@ export default function ArticleActionButtons({
 
   async function handleLike() {
     if (isLoggedIn === false) {
-      setMessage("login");
+      setMessage({ kind: "login" });
       return;
     }
 
@@ -73,17 +93,24 @@ export default function ArticleActionButtons({
       setLikeState(await setLike(articleId, nextLiked));
     } catch (error) {
       setLikeState(previous);
-      setMessage(error instanceof EmailNotVerifiedError ? "verify" : "error");
+      setMessage({
+        kind: error instanceof EmailNotVerifiedError ? "verify" : "error",
+      });
     } finally {
       setIsSending(false);
     }
   }
 
+  const messageClass = clsx(
+    MESSAGE_CLASS,
+    hideMessageOnMobile && "max-md:hidden",
+  );
+
   return (
     // md未満は画面下のバーに入るので、枠と見出しを外して小さく出す
     <div
       className={clsx(
-        "text-sm text-gray-500 md:pixel-border-2 md:p-4 md:[--pixel-c:var(--color-gray-500)]",
+        "relative text-sm text-gray-500 md:pixel-border-2 md:p-4 md:[--pixel-c:var(--color-gray-500)]",
         className,
       )}
     >
@@ -134,17 +161,17 @@ export default function ArticleActionButtons({
         </button>
       </div>
 
-      {message === "login" && (
-        <p className="mt-3 text-center text-xs">
+      {message?.kind === "login" && (
+        <p className={messageClass}>
           いいねするには
           <Link href="/auth/sign-in" className="text-blue-500 underline">
-            ログイン
+            サインイン
           </Link>
           してください
         </p>
       )}
-      {message === "verify" && (
-        <p className="mt-3 text-center text-xs">
+      {message?.kind === "verify" && (
+        <p className={messageClass}>
           いいねするには
           <Link href="/auth/verify-email" className="text-blue-500 underline">
             メールアドレスを確認
@@ -152,8 +179,8 @@ export default function ArticleActionButtons({
           してください
         </p>
       )}
-      {message === "error" && (
-        <p className="mt-3 text-center text-xs text-red-500" role="alert">
+      {message?.kind === "error" && (
+        <p className={clsx(messageClass, "text-red-500")} role="alert">
           いいねできませんでした。時間をおいてもう一度お試しください。
         </p>
       )}

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -47,15 +48,39 @@ describe("ArticleActionButtons", () => {
     expect(screen.getByText("good:5")).toBeDefined();
   });
 
-  it("未ログインで押すとログインを案内し、APIは呼ばない", async () => {
+  it("未サインインで押すとサインインを案内し、APIは呼ばない", async () => {
     fetchLikeStatusMock.mockResolvedValue(null);
 
     render(<ArticleActionButtons articleId={1} likeCount={3} />);
     await waitFor(() => expect(likeButton().disabled).toBe(false));
     fireEvent.click(likeButton());
 
-    expect(screen.getByText("ログイン")).toBeDefined();
+    expect(screen.getByText("サインイン")).toBeDefined();
     expect(setLikeMock).not.toHaveBeenCalled();
+  });
+
+  it("案内は10秒たつと消える", async () => {
+    fetchLikeStatusMock.mockResolvedValue(null);
+
+    render(<ArticleActionButtons articleId={1} likeCount={3} />);
+    await waitFor(() => expect(likeButton().disabled).toBe(false));
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(likeButton());
+      expect(screen.queryByText("サインイン")).not.toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(9_999);
+      });
+      expect(screen.queryByText("サインイン")).not.toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.queryByText("サインイン")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("取り消しで件数が0未満にならない", async () => {

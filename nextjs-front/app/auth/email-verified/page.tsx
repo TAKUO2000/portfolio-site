@@ -29,7 +29,7 @@ export default async function EmailVerified({
         </p>
       ) : (
         <p className={AUTH_ERROR}>
-          このリンクは無効か、期限が切れています。ログインして、確認メールを送り直してください。
+          このリンクは無効か、期限が切れています。サインインして、確認メールを送り直してください。
         </p>
       )}
 
@@ -45,7 +45,7 @@ export default async function EmailVerified({
           className={`text-center text-sm ${AUTH_LINK}`}
           href="/auth/sign-in"
         >
-          ログイン
+          サインイン
         </Link>
       </div>
     </AuthPage>

@@ -44,12 +44,12 @@ afterEach(() => {
 });
 
 describe("VerifyEmail", () => {
-  it("未ログインなら、ログインを案内する", async () => {
+  it("未サインインなら、サインインを案内する", async () => {
     getCurrentUserMock.mockResolvedValue(null);
 
     render(<VerifyEmail />);
 
-    const link = await screen.findByRole("link", { name: "ログイン" });
+    const link = await screen.findByRole("link", { name: "サインイン" });
     expect(link.getAttribute("href")).toBe("/auth/sign-in");
     expect(screen.queryByRole("button")).toBeNull();
   });

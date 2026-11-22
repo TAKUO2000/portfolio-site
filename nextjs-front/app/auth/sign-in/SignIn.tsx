@@ -47,7 +47,7 @@ export default function SignIn() {
           getApiErrorMessage(
             loginResponse.status,
             responseBody,
-            "ログインに失敗しました。入力内容を確認してください。",
+            "サインインに失敗しました。入力内容を確認してください。",
           ),
         );
         return;
@@ -59,7 +59,7 @@ export default function SignIn() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "ログイン処理中にエラーが発生しました。",
+          : "サインイン処理中にエラーが発生しました。",
       );
     } finally {
       setIsSubmitting(false);
@@ -67,7 +67,7 @@ export default function SignIn() {
   }
 
   return (
-    <AuthPage eyebrow="Sign in" title="ログイン">
+    <AuthPage eyebrow="Sign in" title="サインイン">
       <form className={AUTH_FORM} onSubmit={handleSubmit}>
         <label className={AUTH_LABEL}>
           メールアドレス
@@ -96,7 +96,7 @@ export default function SignIn() {
         {errorMessage && <p className={AUTH_ERROR}>{errorMessage}</p>}
 
         <button className={AUTH_SUBMIT} type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "ログイン中..." : "ログイン"}
+          {isSubmitting ? "サインイン中..." : "サインイン"}
         </button>
       </form>
 
@@ -106,11 +106,11 @@ export default function SignIn() {
             パスワードを忘れた方はこちら
           </Link>
         </p>
-        {/* 会員登録のページの「すでにアカウントをお持ちですか？ ログイン」と同じ見た目にそろえる */}
+        {/* サインアップのページの「すでにアカウントをお持ちですか？ サインイン」と同じ見た目にそろえる */}
         <p className="text-center text-sm text-neutral-600">
           アカウントをお持ちでない方は{" "}
           <Link className={AUTH_LINK} href="/auth/sign-up">
-            新規登録
+            サインアップ
           </Link>
         </p>
       </div>

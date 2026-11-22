@@ -58,18 +58,20 @@ describe("ResetPasswordForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("再設定できたら、ログインへの案内を出す", async () => {
+  it("再設定できたら、サインインへの案内を出す", async () => {
     const fetchMock = mockFetch(200, { status: "再設定しました" });
 
     submit("new-password", "new-password");
 
     expect(
       await screen.findByText(
-        "パスワードを再設定しました。新しいパスワードでログインしてください。",
+        "パスワードを再設定しました。新しいパスワードでサインインしてください。",
       ),
     ).toBeDefined();
     expect(
-      screen.getByRole("link", { name: "ログイン画面へ" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: "サインイン画面へ" })
+        .getAttribute("href"),
     ).toBe("/auth/sign-in");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://api.test/api/reset-password",
