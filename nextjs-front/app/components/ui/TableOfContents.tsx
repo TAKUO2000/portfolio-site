@@ -34,8 +34,11 @@ function scrollToHeading(event: React.MouseEvent<HTMLAnchorElement>) {
   ).matches;
   // 止まる位置は、見出しの scroll-margin（記事ページの scroll-mt-8）に従う
   target.scrollIntoView({ behavior: reduceMotion ? "instant" : "smooth" });
-  // リンクを普通にたどったときと同じく、URL に見出しを残す（見出しの位置を共有できるように）
-  history.pushState(null, "", hash);
+  // リンクを普通にたどったときと同じく、URL に見出しを残す（見出しの位置を共有できるように）。
+  // 同じ見出しを続けて押しても履歴は増やさない（増やすと「戻る」で前のページに戻れなくなる）
+  if (window.location.hash !== hash) {
+    history.pushState(null, "", hash);
+  }
 }
 
 export default function TableOfContents({ headings }: TableOfContentsProps) {
