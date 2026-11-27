@@ -1,6 +1,6 @@
-# ワークフローの外部のアクションは SHA で固定しているので、新しい版が出たら Dependabot に PR を作らせる
 version: 2
 updates:
+  # ワークフローの外部のアクションは SHA で固定しているので、新しい版が出たら Dependabot に PR を作らせる
   - package-ecosystem: github-actions
     directory: /
     target-branch: develop
@@ -9,3 +9,33 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+
+  # Dockerfile のベースイメージ（php、node）はパッチまで固定しているので、新しいパッチが出たら PR を作らせる
+  - package-ecosystem: docker
+    directories:
+      - /laravel-back/docker/php # Dockerfile と Dockerfile.prod
+      - /nextjs-front
+    target-branch: develop
+    schedule:
+      interval: weekly
+    # マイナー・メジャー（PHP 8.5、Node 26 など）は、アップグレードガイドを読んで別の issue で上げる
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
+
+  # compose ファイルのイメージは、本番に出る nginx だけを対象にする
+  # （mysql はデータを持つので手で上げる。minio と certbot はタグを固定していない）
+  - package-ecosystem: docker-compose
+    directory: / # docker-compose.yml と docker-compose.prod.yml
+    target-branch: develop
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: nginx
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
