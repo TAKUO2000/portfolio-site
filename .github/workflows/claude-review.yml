@@ -80,7 +80,7 @@ jobs:
 
           echo "スレッド: $(wc -l < .review-context/threads.jsonl) 件、会話のコメント: $(wc -l < .review-context/comments.jsonl) 件"
 
-      - uses: anthropics/claude-code-action@d1f58ad5e6f4d2b79547e63e37c2116064135896 # v1.0.277
+      - uses: anthropics/claude-code-action@eb56b6666facdbd501035f4a0269d8caee2e7a8b # v1.0.289
         id: review
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
